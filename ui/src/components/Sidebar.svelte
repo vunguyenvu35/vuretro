@@ -41,6 +41,7 @@
     <div class="label gap">App</div>
     <button class:active={app.view === 'cores'} onclick={() => (app.view = 'cores')}>Cores &amp; BIOS</button>
     <button class:active={app.view === 'controls'} onclick={() => (app.view = 'controls')}>Controls</button>
+    <button class:active={app.view === 'macros'} onclick={() => (app.view = 'macros')}>Macros</button>
     <button class:active={app.view === 'settings'} onclick={() => (app.view = 'settings')}>Settings</button>
   </nav>
 

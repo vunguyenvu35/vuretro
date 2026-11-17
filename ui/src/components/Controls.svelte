@@ -3,6 +3,7 @@
   import { api } from '../lib/api.js';
   import { app, toast } from '../lib/store.svelte.js';
   import { modKey } from '../lib/systems.js';
+  import Select from './Select.svelte';
   import { ACTIONS, HOTKEYS, RESERVED, keyName, keyLabel, padLabel, deviceValue, parseDevice } from '../lib/controls.js';
 
   let cfg = $state(null);
@@ -140,17 +141,18 @@
           </header>
           <label class="field">
             <span class="label">Device</span>
-            <select value={deviceValue(p.device)} onchange={(e) => setDevice(i, e.currentTarget.value)}>
-              <option value="auto">Auto {i === 0 ? '(keyboard + first gamepad)' : '(' + nth(i) + ' free gamepad)'}</option>
-              <option value="keyboard">Keyboard only</option>
-              {#each pads as pad (pad.id + pad.name)}
-                <option value={'gamepad:' + pad.id}>{pad.name}</option>
-              {/each}
-              {#if p.device.kind === 'gamepad' && !pads.some((x) => x.id === p.device.id)}
-                <option value={'gamepad:' + p.device.id}>Gamepad {shortId(p.device.id)} (not connected)</option>
-              {/if}
-              <option value="none">Disabled</option>
-            </select>
+            <Select
+              value={deviceValue(p.device)}
+              onchange={(v) => setDevice(i, v)}
+              ariaLabel="Device for player {i + 1}"
+              options={[
+                { value: 'auto', label: `Auto ${i === 0 ? '(keyboard + first gamepad)' : '(' + nth(i) + ' free gamepad)'}` },
+                { value: 'keyboard', label: 'Keyboard only' },
+                ...pads.map((pad) => ({ value: 'gamepad:' + pad.id, label: pad.name })),
+                ...(p.device.kind === 'gamepad' && !pads.some((x) => x.id === p.device.id) ? [{ value: 'gamepad:' + p.device.id, label: `Gamepad ${shortId(p.device.id)} (not connected)` }] : []),
+                { value: 'none', label: 'Disabled' },
+              ]}
+            />
           </label>
           <label class="field">
             <span class="label">Stick dead zone <b>{Math.round(p.deadzone * 100)}%</b></span>

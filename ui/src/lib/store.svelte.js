@@ -1,22 +1,74 @@
 import { api } from './api.js';
 
+function readLayout() {
+  try {
+    return localStorage.getItem('vuretro.layout') === 'list' ? 'list' : 'grid';
+  } catch {
+    return 'grid';
+  }
+}
+
 export const app = $state({
-  view: 'library', // library | cores | controls | settings
+  view: 'library', // library | cores | controls | macros | settings
   overview: null,
   loaded: false,
   filter: 'all', // all | recent | favorites
   system: null, // system id or null
   query: '',
   sort: 'recent', // recent | az | size
+  layout: readLayout(), // grid | list // grid | list // grid | list // grid | list // grid | list // grid | list // grid | list
   selected: null, // game path
-  toast: null, // { text, kind }
   busy: false,
+  selecting: false, // choosing several games to remove at once
+  picked: [], // paths of the chosen games
   capturing: false, // a key or button is being recorded on the Controls screen
 });
 
 const hash = typeof location !== "undefined" ? location.hash.slice(1).split(",") : [];
-if (["cores", "controls", "settings"].includes(hash[0])) app.view = hash[0];
+if (["cores", "controls", "macros", "settings"].includes(hash[0])) app.view = hash[0];
 export const startSelect = hash.includes("select");
+
+export function setLayout(layout) {
+  app.layout = layout;
+  try {
+    localStorage.setItem('vuretro.layout', layout);
+  } catch {
+    /* remembering the choice is a convenience only */
+  }
+}
+
+/**
+ * Our own confirmation box. The browser's confirm() cannot be used here: inside the app it
+ * answers at once instead of waiting (the dialog plugin makes it asynchronous), so a
+ * "Remove?" question would run its action before anyone had a chance to say no.
+ */
+export const dlg = $state({ open: false, title: '', message: '', note: '', confirmLabel: 'OK', cancelLabel: 'Cancel', danger: false });
+let dlgResolve = null;
+
+/** Ask a yes/no question; resolves to true only when the user confirms. */
+export function confirmDialog(opts) {
+  dlgResolve?.(false);
+  Object.assign(dlg, { note: '', confirmLabel: 'OK', cancelLabel: 'Cancel', danger: false, ...opts, open: true });
+  return new Promise((resolve) => (dlgResolve = resolve));
+}
+export function answerDialog(yes) {
+  dlg.open = false;
+  dlgResolve?.(yes);
+  dlgResolve = null;
+}
+
+/** The right-click menu: where it is, what it says, what each entry does. */
+export const ctx = $state({ open: false, x: 0, y: 0, title: '', items: [] });
+
+/** Open the menu at the pointer. `items` are { label, hint?, danger?, disabled?, action } or { separator: true }. */
+export function openMenu(e, items, title = '') {
+  e.preventDefault();
+  e.stopPropagation();
+  Object.assign(ctx, { open: true, x: e.clientX, y: e.clientY, title, items });
+}
+export function closeMenu() {
+  ctx.open = false;
+}
 
 /** Preview images (data URLs) by game path. */
 export const covers = $state({});
@@ -44,11 +96,17 @@ export async function reloadLastPlayed() {
   if (last?.last_played) await loadCovers([last.path]);
 }
 
-let toastTimer;
+/** Notifications in the bottom-right corner; the newest is at the bottom. */
+export const toasts = $state([]);
+let toastId = 0;
+
 export function toast(text, kind = 'info') {
-  app.toast = { text, kind };
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (app.toast = null), kind === 'error' ? 7000 : 3500);
+  toasts.push({ id: ++toastId, text, kind, ms: kind === 'error' ? 8000 : 4200 });
+  if (toasts.length > 4) toasts.splice(0, toasts.length - 4);
+}
+export function dismissToast(id) {
+  const i = toasts.findIndex((t) => t.id === id);
+  if (i >= 0) toasts.splice(i, 1);
 }
 
 export async function refresh() {
@@ -118,6 +176,24 @@ export async function removeRom(game) {
   } catch (e) {
     toast(String(e), 'error');
   }
+  await refresh();
+}
+
+/** Remove several imported games at once. Linked-folder games are never deleted. */
+export async function removeMany(games) {
+  if (!games.length) return;
+  try {
+    const results = await api.removeRoms(games.map((g) => g.path));
+    const ok = results.filter((r) => r.ok).length;
+    const bad = results.filter((r) => !r.ok);
+    const lines = [`Removed ${ok} game${ok === 1 ? '' : 's'} from the library`];
+    lines.push(...bad.slice(0, 3).map((r) => `✕ ${r.source.split(/[\\/]/).pop()}: ${r.message}`));
+    toast(lines.join('\n'), bad.length ? 'error' : 'info');
+  } catch (e) {
+    toast(String(e), 'error');
+  }
+  app.picked = [];
+  app.selecting = false;
   await refresh();
 }
 

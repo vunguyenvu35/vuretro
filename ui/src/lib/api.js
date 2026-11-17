@@ -23,11 +23,11 @@ const fullMock = () => ({
     { id: 'gba', name: 'Game Boy Advance', core: 'mgba_libretro', extensions: ['gba'], enabled: true, core_installed: true, bios_ready: true, game_count: 1, bios: [mockBios('gba', 'gba_bios.bin', false, 'optional')] },
   ],
   games: [
-    { system: 'neogeo', title: 'Sample Shooter', path: '/roms/neogeo/shooter.zip', size: 31_000_000, last_played: Date.now() / 1000 - 7200, play_secs: 11520, favorite: true, blocked: null },
+    { system: 'neogeo', title: 'Sample Shooter', path: '/roms/neogeo/shooter.zip', size: 31_000_000, last_played: Date.now() / 1000 - 7200, play_secs: 11520, favorite: true, blocked: null, imported: true },
     { system: 'psx', title: 'Sample Racer', path: '/roms/psx/racer.chd', size: 400_000_000, last_played: 0, play_secs: 0, favorite: false, blocked: 'BIOS missing' },
-    { system: 'snes', title: 'Sample Adventure', path: '/roms/snes/adventure.sfc', size: 1_048_576, last_played: Date.now() / 1000 - 90000, play_secs: 3600, favorite: false, blocked: null },
+    { system: 'snes', title: 'Sample Adventure', path: '/roms/snes/adventure.sfc', size: 1_048_576, last_played: Date.now() / 1000 - 90000, play_secs: 3600, favorite: false, blocked: null, imported: true },
     { system: 'gba', title: 'Sample Platformer', path: '/roms/gba/platformer.gba', size: 4_194_304, last_played: 0, play_secs: 0, favorite: false, blocked: null },
-    { system: 'neogeo', title: 'Sample Fighter', path: '/roms/neogeo/fighter.zip', size: 28_000_000, last_played: 0, play_secs: 0, favorite: false, blocked: null },
+    { system: 'neogeo', title: 'Sample Fighter', path: '/roms/neogeo/fighter.zip', size: 28_000_000, last_played: 0, play_secs: 0, favorite: false, blocked: null, imported: true },
   ],
 });
 
@@ -51,6 +51,7 @@ export const api = {
   importBios: (paths) => call('import_bios', { paths }),
   importRoms: (paths, system = null) => call('import_roms', { paths, system }),
   removeRom: (path) => call('remove_rom', { path }),
+  removeRoms: (paths) => call('remove_roms', { paths }),
   launchGame: (path) => call('launch_game', { path }),
   launchDemo: () => call('launch_demo'),
   async pickFolder(title = 'Choose a folder') {
@@ -99,6 +100,7 @@ api.onPadButton = (fn) => (inTauri ? listen('pad-button', (e) => fn(e.payload)) 
 let mockGame = { window_scale: 2, sound: true, volume: 100, sync_display: true, pause_on_blur: false };
 mock.import_roms = async () => [];
 mock.remove_rom = async () => {};
+mock.remove_roms = async ({ paths }) => paths.map((p) => ({ source: p, ok: true, message: 'removed' }));
 mock.get_game_settings = async () => ({ ...mockGame });
 mock.set_game_settings = async ({ settings }) => ((mockGame = { ...settings }), { ...mockGame });
 api.gameSettings = () => call('get_game_settings');
@@ -115,3 +117,14 @@ api.onCoversDone = (fn) => (inTauri ? listen('covers-done', () => fn()) : Promis
 
 // ---- native menu bar ----
 api.onMenu = (fn) => (inTauri ? listen('menu', (e) => fn(e.payload)) : Promise.resolve(() => {}));
+
+// ---- macros ----
+let mockMacros = { global: [], games: {} };
+mock.get_macros = async () => mockMacros;
+mock.set_macros = async ({ config }) => ((mockMacros = config), config);
+api.macros = () => call('get_macros');
+api.setMacros = (config) => call('set_macros', { config });
+
+// ---- reveal a file in the system file manager ----
+mock.reveal_path = async () => {};
+api.reveal = (path) => call('reveal_path', { path });
