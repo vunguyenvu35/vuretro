@@ -36,8 +36,29 @@ jobs:
             Windows) CORE=target/debug/vuretro_test_core.dll ;;
             *)       CORE=target/debug/libvuretro_test_core.so ;;
           esac
-          echo test > game.test
-          cargo run -p vuretro-runner -- --core "$CORE" --rom game.test \
-            --headless-frames 120 --screenshot shot.ppm \
-            --system-dir ./tmp/system --save-dir ./tmp/saves
-          test -s shot.ppm
+          ./scripts/smoke.sh "$CORE"
+
+  app:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - run: npm ci
+      - run: npm run build
+      - run: cargo check --manifest-path src-tauri/Cargo.toml

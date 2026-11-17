@@ -20,6 +20,9 @@ pub const RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY: c_uint = 30;
 pub const RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: c_uint = 31;
 
 // Pixel formats
+// Memory regions
+pub const RETRO_MEMORY_SAVE_RAM: c_uint = 0;
+
 pub const RETRO_PIXEL_FORMAT_0RGB1555: c_uint = 0;
 pub const RETRO_PIXEL_FORMAT_XRGB8888: c_uint = 1;
 pub const RETRO_PIXEL_FORMAT_RGB565: c_uint = 2;

@@ -8,14 +8,19 @@ The runner is a **separate process**: cores are third-party C code, so if one cr
 
 Try the runner now: `make dev` (see [DEVELOPMENT.md](DEVELOPMENT.md)).
 
+## The app
+
+`src-tauri/` (crate `vuretro-app`, binary `vuretro`) exposes commands to the Svelte UI: `get_overview` (scan + system and BIOS status), `set_rom_dir`, `set_system_enabled`, `toggle_favorite`, `import_bios`, `launch_game`, `launch_demo`. It reuses `vuretro-library` directly and starts games as `vuretro-runner` child processes: it waits 1.5 s to catch immediate failures (missing BIOS, bad file) and shows the tail of `logs/runner.log`, then tracks play time until the process exits. It lives in its own Cargo workspace so the core workspace builds without system webview libraries.
+
 ## Crates
 
 | Crate | Role |
 |---|---|
 | `libretro-sys` | FFI types from `libretro.h`, only what is used. Add constants as cores need them. |
-| `vuretro-runner` | Binary that runs one game. `core.rs` loads symbols, `frontend.rs` holds the C callbacks, plus `audio.rs` and `input.rs`. |
+| `vuretro-runner` | Binary that runs one game. `core.rs` loads symbols, `frontend.rs` holds the C callbacks, plus `audio.rs` and `input.rs`, `options.rs` (core options). |
 | `vuretro-library` | `registry.rs` (system → core, file extensions, BIOS + MD5), `scan.rs`, `bios.rs`. The `vuretro-scan` binary prints JSON. |
-| `vuretro-test-core` | Fake core (cdylib) for tests and CI. `make dev` uses it. |
+| `vuretro-app` (`src-tauri/`) | Tauri shell: commands for the UI, launches the runner. Separate workspace. |
+| `vuretro-test-core` | Fake core (cdylib) for tests and CI, with fake save RAM and one core option. `make dev` and `make smoke` use it. |
 
 ## How a game runs
 
@@ -25,7 +30,12 @@ Try the runner now: `make dev` (see [DEVELOPMENT.md](DEVELOPMENT.md)).
 2. `load_game`: if the core has `need_fullpath`, pass only the path; otherwise read the file into RAM. A missing BIOS is the usual failure here.
 3. `retro_get_system_av_info` → frame size, fps, sample rate.
 4. Each iteration: read input → `retro_run` (fast-forward runs it 4 times) → the core calls `video_cb` (pixels converted to `0RGB` u32) and `audio_batch_cb` (pushed into the ring buffer) → draw the window.
-5. The `cpal` audio thread pulls samples from the ring buffer and linearly resamples from the core rate to the device rate. The buffer is capped at ~250 ms; on overflow the oldest samples are dropped.
+5. The `cpal` audio thread pulls samples from the ring buffer and linearly resamples from the core rate to the device rate. **Dynamic rate control** nudges the resampling speed by at most ±0.5 % so the buffer level converges to ~60 ms: video is paced by a timer, audio follows it without crackles or growing latency. The buffer is capped at ~250 ms; on overflow the oldest samples are dropped.
+6. Save RAM: after `load_game` the runner copies `<rom>.srm` into `retro_get_memory_data(SAVE_RAM)`; it writes it back every 30 s and on exit.
+
+## Core options
+
+The core announces options with `SET_VARIABLES` (`"Description; a|b|c"`, first value = default). The runner answers `GET_VARIABLE` from `<data dir>/config/<core>.cfg` (`key = value` lines). `--list-options` prints every option as a ready-to-edit template. Newer cores that only use `SET_CORE_OPTIONS_V2` still work through the `SET_VARIABLES` fallback (verified with snes9x and mGBA).
 
 ## Callbacks and global state
 
@@ -33,7 +43,7 @@ libretro callbacks carry no user-data pointer, so frontend state lives in `OnceL
 
 ## Supported environment calls
 
-`GET_CAN_DUPE`, `SET_PIXEL_FORMAT`, `GET_SYSTEM_DIRECTORY`, `GET_CORE_ASSETS_DIRECTORY`, `GET_SAVE_DIRECTORY`, `GET_VARIABLE` (returns defaults), `GET_VARIABLE_UPDATE`, `SET_VARIABLES`, `SET_INPUT_DESCRIPTORS`, `SET_PERFORMANCE_LEVEL`. Other commands return `false` and are logged at `trace` level (`RUST_LOG=trace make dev`).
+`GET_CAN_DUPE`, `SET_PIXEL_FORMAT`, `GET_SYSTEM_DIRECTORY`, `GET_CORE_ASSETS_DIRECTORY`, `GET_SAVE_DIRECTORY`, `GET_VARIABLE` (values from the options file, otherwise the core default), `GET_VARIABLE_UPDATE`, `SET_VARIABLES` (recorded for `--list-options`), `SET_INPUT_DESCRIPTORS`, `SET_PERFORMANCE_LEVEL`. Other commands return `false` and are logged at `trace` level (`RUST_LOG=trace make dev`).
 
 ## System detection during ROM scan
 
@@ -59,7 +69,8 @@ Resolved with the `directories` crate (`ProjectDirs::from("dev", "vuvn", "vuretr
 ```
 <data dir>/
 ├─ system/   BIOS (neogeo.zip, scph5501.bin, …)
-└─ saves/    SRAM, <rom>.state1 … .state4
+├─ config/   per-core option files (<core>.cfg)
+└─ saves/    <rom>.srm, <rom>.state1 … .state4
 ```
 
 ## License

@@ -1,7 +1,9 @@
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/logo-horizontal.png"><img src="docs/assets/brand/logo-horizontal-light.png" alt="vuretro" width="420"></picture></p>
+
 # vuretro
 
 A cross-platform retro game frontend (macOS, Windows, Linux) that runs games through **libretro cores**.
-It starts with Neo Geo (FBNeo) and PlayStation (PCSX ReARMed) and will grow to SNES, GBA and more.
+Supported systems: Neo Geo (FBNeo), PlayStation (PCSX ReARMed), SNES (snes9x) and Game Boy Advance (mGBA). More to come.
 
 > vuretro does **not** ship ROMs or BIOS files. You provide them from copies you own.
 
@@ -13,31 +15,42 @@ Phase 1 (runner) is in progress. See [docs/PLAN.md](docs/PLAN.md).
 |---|---|
 | `vuretro-runner`: core loading, video, audio, keyboard, gamepad, save states | ✅ working |
 | `vuretro-library`: ROM scan, system detection, BIOS check (MD5) | ✅ tested |
+| Systems: Neo Geo, PlayStation, **SNES**, **GBA** | ✅ cores load and run |
+| Save RAM (`.srm`), core options file, audio rate control | ✅ |
 | `vuretro-test-core`: fake core for testing without real ROMs | ✅ |
-| Tauri UI (Library, Cores & BIOS, Controls) | ⏳ Phase 2 |
+| Tauri app (Library, Cores & BIOS, Controls) | ✅ first version, see below |
 
 ## Quick start
 
-Requires the latest stable Rust (`rustup update`). Linux also needs:
+Requires the latest stable Rust (`rustup update`) and Node.js 20+ for the app. Linux also needs:
 `sudo apt install libasound2-dev libudev-dev libx11-dev libxkbcommon-dev`.
 
 ```bash
-make dev                                         # fake core, no ROM needed
-make cores                                       # download fbneo + pcsx_rearmed into cores/bin/
+make dev                                         # open the app (Library UI)
+make demo                                        # runner + fake core, no ROM needed
+make cores                                       # download fbneo, pcsx_rearmed, snes9x, mgba into cores/bin/
 cp /path/to/neogeo.zip "<data dir>/system/"      # BIOS; the path is printed in the log on start
 make play ROM=~/Games/roms/neogeo/mslug.zip      # Neo Geo
 make play CORE=pcsx ROM=~/Games/roms/psx/crash.chd SCALE=4
+make play CORE=snes ROM=~/Games/roms/snes/zelda.sfc            # SNES
+make play CORE=gba  ROM=~/Games/roms/gba/metroid.gba          # Game Boy Advance
 make scan ROMS=~/Games/roms                      # scan ROMs + check BIOS
 make help                                        # list all commands
 ```
 
-`make dev` opens a window with color bars, a square you can move with the arrow keys, and a 440 Hz tone.
+`make dev` opens the vuretro app. Without a ROM folder it shows a welcome screen with **Try the demo**; `make demo` runs the bare runner with the fake core (color bars, a square you move with the arrow keys, a 440 Hz tone).
 More on commands, debugging and CI: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 Default `<data dir>`:
 macOS `~/Library/Application Support/dev.vuvn.vuretro`,
 Windows `%APPDATA%\vuvn\vuretro\data`,
 Linux `~/.local/share/vuretro`.
+
+## The app
+
+![Library](docs/images/app-library.png)
+
+The screenshot uses sample data. Details and the other screens: [docs/UI.md](docs/UI.md).
 
 ## Default controls
 
@@ -69,9 +82,9 @@ docs/             plan, architecture, UI design, dev guide (+ images/)
 Makefile          make dev, play, cores, scan, check, ci …
 ```
 
-Docs: [DEVELOPMENT](docs/DEVELOPMENT.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [UI](docs/UI.md) · [PLAN](docs/PLAN.md)
+Docs: [BRAND](docs/assets/brand/README.md) · [DEVELOPMENT](docs/DEVELOPMENT.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [UI](docs/UI.md) · [PLAN](docs/PLAN.md)
 
 ## License
 
 vuretro source: GPL-3.0-or-later.
-Cores have their own licenses (FBNeo: non-commercial, PCSX ReARMed: GPLv2), see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#license).
+Cores have their own licenses (FBNeo and snes9x: non-commercial, PCSX ReARMed: GPLv2, mGBA: MPL-2.0), see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#license).

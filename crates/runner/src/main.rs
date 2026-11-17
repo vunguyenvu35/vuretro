@@ -9,6 +9,7 @@ mod audio;
 mod core;
 mod frontend;
 mod input;
+mod options;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -46,10 +47,17 @@ struct Args {
     /// With --headless-frames: write the last frame to this .ppm file
     #[arg(long, value_name = "FILE")]
     screenshot: Option<PathBuf>,
+    /// Core options file, `key = value` per line (default: <data dir>/config/<core>.cfg)
+    #[arg(long, value_name = "FILE")]
+    options: Option<PathBuf>,
+    /// Print the core's options as a config template and exit
+    #[arg(long)]
+    list_options: bool,
 }
 
 const FAST_FORWARD_FRAMES: usize = 4;
 const SLOTS: u8 = 4;
+const SRAM_AUTOSAVE: std::time::Duration = std::time::Duration::from_secs(30);
 
 fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -64,13 +72,36 @@ fn main() -> Result<()> {
         .unwrap_or_else(|| dirs.data_dir().join("saves"));
     std::fs::create_dir_all(&system_dir)?;
     std::fs::create_dir_all(&save_dir)?;
+    std::fs::create_dir_all(dirs.data_dir().join("config"))?;
     log::info!("system dir: {}", system_dir.display());
+
+    let core_stem = args
+        .core
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let options_path = args.options.clone().unwrap_or_else(|| {
+        dirs.data_dir()
+            .join("config")
+            .join(format!("{core_stem}.cfg"))
+    });
+    let user_options = std::fs::read_to_string(&options_path)
+        .map(|t| options::parse_config(&t))
+        .unwrap_or_default();
+    if !user_options.is_empty() {
+        log::info!(
+            "core options: {} from {}",
+            user_options.len(),
+            options_path.display()
+        );
+    }
 
     let audio_buf = Arc::new(Mutex::new(VecDeque::<i16>::new()));
     frontend::init(
         &system_dir.to_string_lossy(),
         &save_dir.to_string_lossy(),
         audio_buf.clone(),
+        user_options,
     );
 
     let mut core = core::Core::load(&args.core)?;
@@ -81,6 +112,22 @@ fn main() -> Result<()> {
         core.info.extensions
     );
     let av = core.load_game(&args.rom)?;
+    if args.list_options {
+        let defs = frontend::with(|fe| fe.definitions.clone());
+        print!("{}", options::template(&defs));
+        return Ok(());
+    }
+    let rom_name = args
+        .rom
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let sram_path = save_dir.join(format!("{rom_name}.srm"));
+    match core.load_sram(&sram_path) {
+        Ok(0) => {}
+        Ok(n) => log::info!("loaded {n} bytes of save RAM from {}", sram_path.display()),
+        Err(e) => log::warn!("cannot load save RAM: {e}"),
+    }
     log::info!(
         "game: {}x{} @ {:.2} fps, audio {:.0} Hz",
         av.geometry.base_width,
@@ -90,7 +137,7 @@ fn main() -> Result<()> {
     );
 
     if let Some(n) = args.headless_frames {
-        return run_headless(&core, n, args.screenshot.as_deref());
+        return run_headless(&core, n, args.screenshot.as_deref(), &sram_path);
     }
 
     let _audio = match audio::start(audio_buf, av.timing.sample_rate) {
@@ -106,11 +153,6 @@ fn main() -> Result<()> {
         4 => Scale::X4,
         _ => Scale::X2,
     };
-    let rom_name = args
-        .rom
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default();
     let mut window = Window::new(
         &format!("vuretro — {rom_name}"),
         av.geometry.base_width as usize,
@@ -126,6 +168,7 @@ fn main() -> Result<()> {
     let mut input = input::Input::new();
     let mut slot: u8 = 1;
     let state_path = |slot: u8| save_dir.join(format!("{rom_name}.state{slot}"));
+    let mut last_sram_save = std::time::Instant::now();
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         if window.is_key_pressed(Key::F5, KeyRepeat::No) {
@@ -152,6 +195,13 @@ fn main() -> Result<()> {
             core.reset();
         }
 
+        if last_sram_save.elapsed() >= SRAM_AUTOSAVE {
+            last_sram_save = std::time::Instant::now();
+            if let Err(e) = core.save_sram(&sram_path) {
+                log::warn!("autosave failed: {e}");
+            }
+        }
+
         input.poll(&window);
         let runs = if window.is_key_down(Key::Tab) {
             FAST_FORWARD_FRAMES
@@ -173,6 +223,11 @@ fn main() -> Result<()> {
             _ => window.update(),
         }
     }
+    match core.save_sram(&sram_path) {
+        Ok(0) => {}
+        Ok(n) => log::info!("saved {n} bytes of save RAM"),
+        Err(e) => log::error!("cannot save save RAM: {e}"),
+    }
     Ok(())
 }
 
@@ -180,6 +235,7 @@ fn run_headless(
     core: &core::Core,
     frames: u32,
     screenshot: Option<&std::path::Path>,
+    sram_path: &std::path::Path,
 ) -> Result<()> {
     let start = std::time::Instant::now();
     for _ in 0..frames {
@@ -205,6 +261,10 @@ fn run_headless(
     if let Some(state) = core.save_state() {
         anyhow::ensure!(core.load_state(&state), "save state round-trip failed");
         log::info!("save state round-trip ok ({} bytes)", state.len());
+    }
+    let n = core.save_sram(sram_path)?;
+    if n > 0 {
+        log::info!("saved {n} bytes of save RAM to {}", sram_path.display());
     }
     Ok(())
 }

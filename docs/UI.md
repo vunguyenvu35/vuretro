@@ -1,41 +1,40 @@
-# UI design
+# UI
 
-> The images below are **design mockups** (SVG in [docs/images/](images/)). The Tauri UI is not built yet (Phase 2 in [PLAN.md](PLAN.md)).
-> Interactive version: https://claude.ai/artifact/TFnBEM1GyQF9oLw4edGJAn
+The app is built with Tauri v2 and Svelte (`ui/` for the frontend, `src-tauri/` for the Rust side). Start it with `make dev`.
+
+> The screenshots below are the real UI rendered with **sample data** (made-up game names), so they can be regenerated without ROMs. Interactive design reference: https://claude.ai/artifact/TFnBEM1GyQF9oLw4edGJAn
 
 ## Style
 
 - Dark background `#090B10`, surfaces `#0F121A` / `#131724`, border `#1C2130`
-- Amber accent `#FFB347` (configurable), one color per system: Neo Geo amber, PlayStation cyan `#5AD1FF`, SNES purple `#B79CFF`, GBA green `#9BE36B`
-- Fonts: Space Grotesk (headings), Inter (body), JetBrains Mono (file names, keys), Press Start 2P (pixel accents)
-- CRT effect: `repeating-linear-gradient` scanlines on covers and the preview screen
+- Amber accent `#FFB347`, one color per system: Neo Geo amber, PlayStation cyan `#5AD1FF`, SNES purple `#B79CFF`, GBA green `#9BE36B`
+- Brand: magenta `#FF4F8B` + amber play-button mark, see [docs/assets/brand](assets/brand/README.md)
+- Fonts (bundled, work offline): Space Grotesk (headings), Inter (body), JetBrains Mono (files, keys), Press Start 2P (cover titles)
+- CRT effect: scanlines on covers and the hero preview
 
 ## Screens
 
 ### Library
 
-![Library screen](images/ui-library.svg)
+![Library screen](images/app-library.png)
 
-Sidebar (Library: All / Recent / Favorites; Systems with game counts; ROM folder chip) · search bar · "Continue playing" hero (CRT preview, play time, save slot) · cover grid sortable by Recent / A–Z / Year · details panel (save slots, core, file, BIOS, Play button locked when BIOS is missing).
+Sidebar (Library: All / Recent / Favorites; Systems with game counts; ROM folder) · search (`⌘K` on macOS, `Ctrl+K` elsewhere) · "Continue playing" hero · cover grid sorted by Recent / A–Z / Size · details panel with core, file, BIOS state, play time and favorite. **Play** is locked with a reason when the BIOS or core is missing. Double-click a cover to play.
+
+First launch, before any ROM folder is chosen, shows a welcome screen with **Choose ROM folder** and, when the runner is built, **Try the demo** (the fake test core, no ROM needed).
 
 ### Cores & BIOS
 
-![Cores & BIOS screen](images/ui-cores.svg)
+![Cores & BIOS screen](images/app-cores.png)
 
-One card per system (core, file extensions, on/off, status, game count, BIOS) · list of BIOS files present / missing · BIOS drop zone (verify MD5, then copy into `system/`).
+One card per system (core, extensions, game count, BIOS) with a status (Ready / BIOS missing / Core missing / Off) and a switch. Drop BIOS files on the window, or click the drop zone to browse: vuretro verifies the MD5 (a renamed dump still works) and copies it into `<data dir>/system/`.
 
 ### Controls
 
-![Controls screen](images/ui-controls.svg)
+![Controls screen](images/app-controls.png)
 
-Devices (keyboard, gamepads, P1/P2 assignment, deadzone, rumble) · per-system button diagram (Neo Geo arcade cabinet, PlayStation pad) click to rebind · key binding table · global hotkeys.
+Shows the keyboard layout, in-game hotkeys and gamepad behavior. Rebinding keys from the app is planned with the in-game menu (Phase 3).
 
-Default keyboard layout used by the runner today:
+## Notes for development
 
-![Default keyboard layout](images/controls.svg)
-
-## To adjust when building for real (cross-platform)
-
-- Drop macOS-only details from the mock: "Renderer: Metal", the "arm64" label, `⌘K` / `⌘F`
-- Show hotkeys per OS: `⌘` on macOS, `Ctrl` on Windows/Linux
-- BIOS paths come from each OS's data dir (see [ARCHITECTURE.md](ARCHITECTURE.md#data-directory))
+- `npm run dev` in a plain browser (without Tauri) serves mock data, which is how the screenshots are produced. Deep links for screenshots: `#cores`, `#controls`, `#select`.
+- Hotkey hints follow the OS (`⌘` vs `Ctrl`).

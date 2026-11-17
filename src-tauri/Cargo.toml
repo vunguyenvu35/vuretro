@@ -1,0 +1,26 @@
+[package]
+name = "vuretro-app"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "vuretro desktop app (Tauri): library, cores & BIOS, controls"
+publish = false
+
+# Separate workspace: building the app needs system webview libraries, which the
+# core workspace (runner, library, CI lint) must not require.
+[workspace]
+
+[[bin]]
+name = "vuretro"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+directories = "5"
+vuretro-library = { path = "../crates/library" }

@@ -23,6 +23,8 @@ struct State {
     y: i32,
     phase: f64,
     fb: Vec<u32>,
+    sram: [u8; 64],
+    square: usize,
 }
 
 static S: Mutex<State> = Mutex::new(State {
@@ -36,6 +38,8 @@ static S: Mutex<State> = Mutex::new(State {
     y: 100,
     phase: 0.0,
     fb: Vec::new(),
+    sram: [0; 64],
+    square: 20,
 });
 
 #[no_mangle]
@@ -66,7 +70,30 @@ pub extern "C" fn retro_set_input_state(cb: retro_input_state_t) {
 }
 #[no_mangle]
 pub extern "C" fn retro_init() {
-    S.lock().unwrap().fb = vec![0; W * H];
+    let env = {
+        let mut s = S.lock().unwrap();
+        s.fb = vec![0; W * H];
+        s.env
+    };
+    // Announce one core option so the runner's option handling can be tested.
+    if let Some(env) = env {
+        let mut vars = [
+            retro_variable {
+                key: c"vuretro_test_square".as_ptr(),
+                value: c"Square size; small|large".as_ptr(),
+            },
+            retro_variable {
+                key: std::ptr::null(),
+                value: std::ptr::null(),
+            },
+        ];
+        unsafe {
+            env(
+                RETRO_ENVIRONMENT_SET_VARIABLES,
+                vars.as_mut_ptr() as *mut c_void,
+            )
+        };
+    }
 }
 #[no_mangle]
 pub extern "C" fn retro_deinit() {}
@@ -112,6 +139,18 @@ pub unsafe extern "C" fn retro_get_system_av_info(info: *mut retro_system_av_inf
 #[no_mangle]
 pub unsafe extern "C" fn retro_load_game(_game: *const retro_game_info) -> bool {
     let env = S.lock().unwrap().env;
+    let large = env.is_some_and(|env| {
+        let mut var = retro_variable {
+            key: c"vuretro_test_square".as_ptr(),
+            value: std::ptr::null(),
+        };
+        env(
+            RETRO_ENVIRONMENT_GET_VARIABLE,
+            &mut var as *mut _ as *mut c_void,
+        ) && !var.value.is_null()
+            && std::ffi::CStr::from_ptr(var.value).to_bytes() == b"large"
+    });
+    S.lock().unwrap().square = if large { 40 } else { 20 };
     let mut fmt = RETRO_PIXEL_FORMAT_XRGB8888;
     match env {
         Some(env) => env(
@@ -140,6 +179,8 @@ pub unsafe extern "C" fn retro_run() {
 
     let mut s = S.lock().unwrap();
     s.frame += 1;
+    s.sram[0] = s.sram[0].wrapping_add(1); // proves save RAM round-trips
+    let sq = s.square;
     s.x = (s.x + dx * 2).clamp(0, W as i32 - 20);
     s.y = (s.y + dy * 2).clamp(0, H as i32 - 20);
     let (frame, sx, sy) = (s.frame as usize, s.x as usize, s.y as usize);
@@ -149,7 +190,7 @@ pub unsafe extern "C" fn retro_run() {
     for y in 0..H {
         for x in 0..W {
             let bar = ((x + frame) / (W / 7 + 1)) % 7;
-            let inside = x >= sx && x < sx + 20 && y >= sy && y < sy + 20;
+            let inside = x >= sx && x < sx + sq && y >= sy && y < sy + sq;
             s.fb[y * W + x] = if inside { 0x101010 } else { BARS[bar] };
         }
     }
@@ -177,6 +218,24 @@ pub unsafe extern "C" fn retro_run() {
     }
     if let Some(b) = batch {
         b(audio.as_ptr(), n);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn retro_get_memory_data(id: c_uint) -> *mut c_void {
+    if id == RETRO_MEMORY_SAVE_RAM {
+        S.lock().unwrap().sram.as_mut_ptr() as *mut c_void
+    } else {
+        std::ptr::null_mut()
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn retro_get_memory_size(id: c_uint) -> usize {
+    if id == RETRO_MEMORY_SAVE_RAM {
+        64
+    } else {
+        0
     }
 }
 

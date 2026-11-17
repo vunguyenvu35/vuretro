@@ -1,5 +1,7 @@
 # vuretro — common commands. Run `make` to list them.
 SHELL := /bin/bash
+# rustup installs cargo here; make it work even in terminals opened before the install
+export PATH := $(HOME)/.cargo/bin:$(PATH)
 UNAME := $(shell uname -s)
 
 ifeq ($(UNAME),Darwin)
@@ -17,33 +19,52 @@ TEST_CORE := target/debug/$(LIB_PREFIX)vuretro_test_core.$(LIB_EXT)
 TEST_ROM  := target/game.test
 FBNEO     := cores/bin/fbneo_libretro.$(LIB_EXT)
 PCSX      := cores/bin/pcsx_rearmed_libretro.$(LIB_EXT)
+SNES9X    := cores/bin/snes9x_libretro.$(LIB_EXT)
+MGBA      := cores/bin/mgba_libretro.$(LIB_EXT)
 
-# Override on the command line: make play ROM=~/Games/mslug.zip CORE=fbneo SCALE=4
+# Override on the command line: make play ROM=~/Games/mslug.zip CORE=fbneo SCALE=4  (CORE: fbneo|pcsx|snes|gba)
 ROM   ?=
 CORE  ?= fbneo
 SCALE ?= 2
 ROMS  ?= $(HOME)/Games/roms
 
 .DEFAULT_GOAL := help
-.PHONY: help dev run play build release test fmt lint check ci cores scan screenshot clean
+.PHONY: help dev demo app-build run play options build release test fmt lint check ci cores scan screenshot smoke clean
 
 help: ## List available commands
 	@awk 'BEGIN{FS=":.*## "} /^[a-z-]+:.*## /{printf "  \033[33mmake %-12s\033[0m %s\n",$$1,$$2}' $(MAKEFILE_LIST)
 
-dev: $(TEST_ROM) ## Build and run the runner with the fake test core (no ROM/BIOS needed)
+dev: node_modules ## Open the vuretro app (Library UI); builds the runner and fake core first
+	cargo build -p vuretro-runner -p vuretro-test-core
+	npx tauri dev
+
+app-build: node_modules ## Build the installable app bundle (release)
+	cargo build --release -p vuretro-runner
+	npx tauri build
+
+node_modules: package.json
+	npm install
+
+demo: $(TEST_ROM) ## Run the runner alone with the fake test core (no UI, no ROM needed)
 	cargo build -p vuretro-test-core
 	cargo run -p vuretro-runner -- --core $(TEST_CORE) --rom $(TEST_ROM) --scale $(SCALE)
 
 $(TEST_ROM):
 	@mkdir -p $(dir $@) && echo test > $@
 
-play: ## Play a real game: make play ROM=~/Games/mslug.zip [CORE=fbneo|pcsx] [SCALE=4]
+play: ## Play a real game: make play ROM=<file> [CORE=fbneo|pcsx|snes|gba] [SCALE=4]
 	@test -n "$(ROM)" || { echo "missing ROM=<path>"; exit 1; }
-	@core="$(FBNEO)"; [ "$(CORE)" = "pcsx" ] && core="$(PCSX)"; \
+	@core="$(FBNEO)"; \
+	  case "$(CORE)" in pcsx) core="$(PCSX)";; snes) core="$(SNES9X)";; gba) core="$(MGBA)";; fbneo) ;; *) echo "unknown CORE=$(CORE) (fbneo|pcsx|snes|gba)"; exit 1;; esac; \
 	  test -f "$$core" || { echo "$$core not found, run: make cores"; exit 1; }; \
 	  cargo run --release -p vuretro-runner -- --core "$$core" --rom "$(ROM)" --scale $(SCALE)
 
 run: play ## Alias for play
+
+options: ## Print a core options template: make options [CORE=snes] ROM=<file>
+	@core="$(FBNEO)"; \
+	  case "$(CORE)" in pcsx) core="$(PCSX)";; snes) core="$(SNES9X)";; gba) core="$(MGBA)";; esac; \
+	  cargo run -q -p vuretro-runner -- --core "$$core" --rom "$(ROM)" --list-options
 
 build: ## Debug build of the whole workspace
 	cargo build --workspace
@@ -63,13 +84,17 @@ lint: ## fmt --check + clippy (same as CI)
 
 check: lint test ## lint + test
 
-ci: check screenshot ## Run every step GitHub Actions runs
+ci: check smoke ## Run every step GitHub Actions runs
 
-cores: ## Download fbneo + pcsx_rearmed cores into cores/bin/
+cores: ## Download fbneo, pcsx_rearmed, snes9x, mgba cores into cores/bin/
 	./cores/fetch-cores.sh
 
 scan: ## Scan a ROM folder: make scan ROMS=~/Games/roms
 	cargo run -p vuretro-library --bin vuretro-scan -- "$(ROMS)"
+
+smoke: ## Smoke test: video, save state, SRAM, core options (fake core)
+	cargo build -p vuretro-test-core
+	./scripts/smoke.sh $(TEST_CORE)
 
 screenshot: $(TEST_ROM) ## Run 120 headless frames, write target/shot.ppm (CI smoke test)
 	cargo build -p vuretro-test-core

@@ -2,7 +2,7 @@
 //! libretro callbacks carry no user pointer, so state lives in a global.
 
 use libretro_sys::*;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::ffi::CString;
 use std::os::raw::{c_char, c_uint, c_void};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -21,11 +21,20 @@ pub struct Frontend {
     pub buttons: [[bool; JOYPAD_BUTTON_COUNT]; MAX_PORTS],
     pub system_dir: CString,
     pub save_dir: CString,
+    /// User values for core options (`GET_VARIABLE`), kept alive for the core.
+    pub options: HashMap<String, CString>,
+    /// Options announced by the core (`SET_VARIABLES`).
+    pub definitions: Vec<crate::options::OptionDef>,
 }
 
 static FRONTEND: OnceLock<Mutex<Frontend>> = OnceLock::new();
 
-pub fn init(system_dir: &str, save_dir: &str, audio: Arc<Mutex<VecDeque<i16>>>) {
+pub fn init(
+    system_dir: &str,
+    save_dir: &str,
+    audio: Arc<Mutex<VecDeque<i16>>>,
+    options: HashMap<String, String>,
+) {
     let fe = Frontend {
         pixel_format: RETRO_PIXEL_FORMAT_0RGB1555,
         frame: Vec::new(),
@@ -36,6 +45,11 @@ pub fn init(system_dir: &str, save_dir: &str, audio: Arc<Mutex<VecDeque<i16>>>) 
         buttons: [[false; JOYPAD_BUTTON_COUNT]; MAX_PORTS],
         system_dir: CString::new(system_dir).unwrap_or_default(),
         save_dir: CString::new(save_dir).unwrap_or_default(),
+        options: options
+            .into_iter()
+            .filter_map(|(k, v)| Some((k, CString::new(v).ok()?)))
+            .collect(),
+        definitions: Vec::new(),
     };
     let _ = FRONTEND.set(Mutex::new(fe));
 }
@@ -59,6 +73,14 @@ fn push_audio(fe: &mut Frontend, samples: &[i16]) {
     let overflow = q.len().saturating_sub(AUDIO_MAX_SAMPLES);
     if overflow > 0 {
         q.drain(..overflow + (overflow & 1));
+    }
+}
+
+unsafe fn cstr_lossy(p: *const c_char) -> String {
+    if p.is_null() {
+        String::new()
+    } else {
+        std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned()
     }
 }
 
@@ -86,18 +108,37 @@ pub unsafe extern "C" fn environment_cb(cmd: c_uint, data: *mut c_void) -> bool 
             true
         }
         RETRO_ENVIRONMENT_GET_VARIABLE => {
-            // No core options yet: let the core use its defaults.
             let var = &mut *(data as *mut retro_variable);
-            var.value = std::ptr::null();
-            false
+            let key = std::ffi::CStr::from_ptr(var.key)
+                .to_string_lossy()
+                .into_owned();
+            with(|fe| match fe.options.get(&key) {
+                Some(v) => {
+                    var.value = v.as_ptr();
+                    true
+                }
+                None => {
+                    var.value = std::ptr::null();
+                    false // core falls back to its default
+                }
+            })
+        }
+        RETRO_ENVIRONMENT_SET_VARIABLES => {
+            let mut p = data as *const retro_variable;
+            let mut defs = Vec::new();
+            while !p.is_null() && !(*p).key.is_null() {
+                let (k, v) = (cstr_lossy((*p).key), cstr_lossy((*p).value));
+                defs.push(crate::options::parse_definition(&k, &v));
+                p = p.add(1);
+            }
+            with(|fe| fe.definitions = defs);
+            true
         }
         RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE => {
             *(data as *mut bool) = false;
             true
         }
-        RETRO_ENVIRONMENT_SET_VARIABLES
-        | RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS
-        | RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL => true,
+        RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS | RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL => true,
         _ => {
             log::trace!("unhandled environment cmd {cmd}");
             false

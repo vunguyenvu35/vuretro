@@ -6,3 +6,9 @@
 *.so
 .DS_Store
 node_modules/
+
+# Local ROM/BIOS packages (copyrighted, never commit)
+/docs/rooms/
+/ui/dist
+/src-tauri/target
+/src-tauri/gen

@@ -16,6 +16,8 @@ type FnSerializeSize = unsafe extern "C" fn() -> usize;
 type FnSerialize = unsafe extern "C" fn(*mut c_void, usize) -> bool;
 type FnUnserialize = unsafe extern "C" fn(*const c_void, usize) -> bool;
 type FnSetPortDevice = unsafe extern "C" fn(c_uint, c_uint);
+type FnMemData = unsafe extern "C" fn(c_uint) -> *mut c_void;
+type FnMemSize = unsafe extern "C" fn(c_uint) -> usize;
 
 pub struct SystemInfo {
     pub name: String,
@@ -36,6 +38,8 @@ pub struct Core {
     retro_serialize: FnSerialize,
     retro_unserialize: FnUnserialize,
     retro_set_controller_port_device: FnSetPortDevice,
+    retro_get_memory_data: FnMemData,
+    retro_get_memory_size: FnMemSize,
     pub info: SystemInfo,
     game_loaded: bool,
     // Keeps ROM bytes alive for cores that don't need a full path.
@@ -116,6 +120,8 @@ impl Core {
                 retro_serialize: sym(&lib, "retro_serialize")?,
                 retro_unserialize: sym(&lib, "retro_unserialize")?,
                 retro_set_controller_port_device: sym(&lib, "retro_set_controller_port_device")?,
+                retro_get_memory_data: sym(&lib, "retro_get_memory_data")?,
+                retro_get_memory_size: sym(&lib, "retro_get_memory_size")?,
                 info,
                 game_loaded: false,
                 _rom_data: None,
@@ -176,6 +182,37 @@ impl Core {
             let mut buf = vec![0u8; size];
             (self.retro_serialize)(buf.as_mut_ptr() as *mut c_void, size).then_some(buf)
         }
+    }
+
+    /// Battery-backed save RAM of the loaded game, if the core exposes any.
+    fn sram(&self) -> Option<(*mut u8, usize)> {
+        unsafe {
+            let size = (self.retro_get_memory_size)(RETRO_MEMORY_SAVE_RAM);
+            let ptr = (self.retro_get_memory_data)(RETRO_MEMORY_SAVE_RAM) as *mut u8;
+            (size > 0 && !ptr.is_null()).then_some((ptr, size))
+        }
+    }
+
+    /// Copy a `.srm` file into the core's save RAM. Returns bytes copied (0 if none).
+    pub fn load_sram(&self, path: &Path) -> Result<usize> {
+        let (Some((ptr, size)), Ok(data)) = (self.sram(), std::fs::read(path)) else {
+            return Ok(0);
+        };
+        let n = size.min(data.len());
+        // SAFETY: the core owns `size` valid bytes at `ptr` while the game is loaded.
+        unsafe { std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, n) };
+        Ok(n)
+    }
+
+    /// Write the core's save RAM to `path`. Returns bytes written (0 if the core has none).
+    pub fn save_sram(&self, path: &Path) -> Result<usize> {
+        let Some((ptr, size)) = self.sram() else {
+            return Ok(0);
+        };
+        // SAFETY: see load_sram.
+        let ram = unsafe { std::slice::from_raw_parts(ptr, size) };
+        std::fs::write(path, ram).with_context(|| format!("cannot write {}", path.display()))?;
+        Ok(size)
     }
 
     pub fn load_state(&self, data: &[u8]) -> bool {

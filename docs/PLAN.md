@@ -11,9 +11,9 @@ Try the current state: `make dev` (see [DEVELOPMENT.md](DEVELOPMENT.md)). Archit
 |---|---|---|---|
 | 0 | Workspace, CI, fake core | `make ci` | ✅ |
 | 1 | Runner plays games | `make dev`, `make play ROM=…` | in progress |
-| 2 | Tauri UI (3 screens, see [UI.md](UI.md)) | `make ui-dev` (to be added) | not started |
+| 2 | Tauri UI (3 screens, see [UI.md](UI.md)) | `make dev` | first version done |
 | 3 | Play experience (wgpu, CRT shader) | real play | not started |
-| 4 | More systems | `make cores` + ROMs | not started |
+| 4 | More systems | `make cores` + ROMs | SNES + GBA done, Genesis pending |
 | 5 | Release | installers for 3 OSes | not started |
 
 ## Phase 0: Setup ✅
@@ -31,19 +31,23 @@ Try the current state: `make dev` (see [DEVELOPMENT.md](DEVELOPMENT.md)). Archit
 - [x] Input: keyboard + gamepad (`gilrs`), left stick as D-pad, 2 players
 - [x] 4 save-state slots (F5/F7/F6), reset, fast-forward
 - [x] Headless mode + screenshot for CI
+- [x] Real cores load, run and save-state on macOS (fbneo, pcsx_rearmed, snes9x, mgba fetched by `make cores`; verified with synthetic ROMs, not commercial games)
 - [ ] Real-game check on all 3 OSes: `make play ROM=…/mslug.zip` (FBNeo), `make play CORE=pcsx ROM=…/crash.chd` (PCSX ReARMed)
-- [ ] Core options (`GET_VARIABLE`) read from a per-core config file
-- [ ] Audio-driven sync (dynamic rate control) instead of `set_target_fps`
-- [ ] Save SRAM (`retro_get_memory_data`) on exit
+- [x] Core options (`GET_VARIABLE`) read from `<data dir>/config/<core>.cfg`; `--list-options` prints a template
+- [x] Audio dynamic rate control (resampler speed follows buffer level); video stays timer-paced
+- [x] Save SRAM (`.srm`) on exit and every 30 s, load on start
 
 ## Phase 2: Tauri UI
 
-- [ ] Set up Tauri v2 + Svelte in `ui/` and `src-tauri/`
-- [ ] **Library** screen per design (system sidebar, "Continue playing" hero, cover grid, details panel)
-- [ ] **Cores & BIOS** screen: enable/disable cores, BIOS check, drag-and-drop BIOS files
-- [ ] **Controls** screen: pick device, button diagram, key binding, hotkeys
-- [ ] Tauri commands calling `vuretro-library` (scan, bios) and spawning `vuretro-runner`
-- [ ] Store metadata in SQLite (play time, last played, favorites, save slots)
+- [x] Tauri v2 + Svelte 5 in `ui/` and `src-tauri/` (own Cargo workspace so core CI needs no webview libs)
+- [x] **Library** screen: system sidebar, "Continue playing" hero, cover grid, details panel, search, sort, favorites, welcome screen with demo
+- [x] **Cores & BIOS** screen: switch systems on/off, BIOS status, drag-and-drop or browse BIOS files (MD5 check, renamed dumps accepted)
+- [x] **Controls** screen: keyboard layout, hotkeys, gamepad notes (read-only)
+- [ ] Controls: device picker, button diagram, rebinding (needs the Phase 3 remap file)
+- [x] Tauri commands calling `vuretro-library` (scan, BIOS check/import) and spawning `vuretro-runner`, reporting early failures from `runner.log`
+- [x] Metadata (play time, last played, favorites) in `library.json`; SQLite deferred until the library is big enough to need it
+- [ ] Save-slot thumbnails and slot picker in the details panel (needs runner stdout JSON)
+- [ ] Verify the window on Windows and Linux; CI job `app` is added but not yet seen green
 
 ## Phase 3: Play experience
 
@@ -55,7 +59,8 @@ Try the current state: `make dev` (see [DEVELOPMENT.md](DEVELOPMENT.md)). Archit
 
 ## Phase 4: More systems
 
-- [ ] Enable SNES (snes9x), GBA (mGBA), Genesis (Genesis Plus GX)
+- [x] SNES (snes9x) and GBA (mGBA) enabled: registry, extensions (incl. zip), optional GBA BIOS, `make play CORE=snes|gba`
+- [ ] Genesis (Genesis Plus GX)
 - [ ] Multi-disc PS1 via `.m3u` + disc swap (`SET_DISK_CONTROL_INTERFACE`)
 - [ ] Cover art: user-supplied, or from a metadata source (ScreenScraper…)
 
