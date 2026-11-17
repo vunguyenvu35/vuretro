@@ -1,6 +1,7 @@
 <script>
   import { app, play, refresh, importRoms, removeRom, removeMany, covers, setLayout, openMenu, confirmDialog, pickRomFiles, pickRomFolder } from '../lib/store.svelte.js';
   import Welcome from "./Welcome.svelte";
+  import Icon from './Icon.svelte';
   import { api } from '../lib/api.js';
   import { colorOf, formatAgo, formatPlaytime, modKey } from '../lib/systems.js';
 
@@ -295,7 +296,7 @@
               {/if}
               <span class="thumb cover scan" style="--c:{colorOf(g.system)}">{#if covers[g.path]}<img src={covers[g.path]} alt="" loading="lazy" />{/if}</span>
               <span class="rname"><b>{g.title}</b>{#if g.favorite}<i class="rstar" title="Favorite">★</i>{/if}{#if g.blocked}<i class="rlock" title={g.blocked}>🔒</i>{/if}</span>
-              <span class="rsys"><i style="background:{colorOf(g.system)}"></i>{sysName(g.system)}</span>
+              <span class="rsys"><span class="sico" style="color:{colorOf(g.system)}"><Icon name={g.system} size={16} /></span>{sysName(g.system)}</span>
               <span class="r muted2">{mb(g.size)}</span>
               <span class="muted2">{g.last_played ? formatAgo(g.last_played) : '—'}</span>
               <span class="r muted2">{g.play_secs ? formatPlaytime(g.play_secs) : '—'}</span>
@@ -453,7 +454,7 @@
   .lrow:hover .thumb img { transform: none; }
   .rname { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .rsys { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; min-width: 0; white-space: nowrap; }
-  .rsys i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .sico { display: inline-flex; flex: none; }
   .rplay { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #17110a; opacity: 0; transform: scale(.85); transition: opacity .12s, transform .12s; padding-left: 2px; }
   .lrow:hover .rplay, .lrow.sel .rplay { opacity: 1; transform: none; }
   .rplay:hover { filter: brightness(1.1); }

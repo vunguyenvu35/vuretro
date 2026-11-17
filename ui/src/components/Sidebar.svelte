@@ -2,6 +2,7 @@
   import { app, pickRomFiles, pickRomFolder, linkFolder, unlinkFolder } from '../lib/store.svelte.js';
   import { colorOf } from '../lib/systems.js';
   import logo from '../lib/logo-mark.svg';
+  import Icon from './Icon.svelte';
 
   const total = $derived(app.overview?.games.length ?? 0);
   const recent = $derived(app.overview?.games.filter((g) => g.last_played).length ?? 0);
@@ -23,9 +24,9 @@
 
   <nav>
     <div class="label">Library</div>
-    <button class:active={libActive('all')} onclick={() => go('all')}>All <small>{total}</small></button>
-    <button class:active={libActive('recent')} onclick={() => go('recent')}>Recent <small>{recent}</small></button>
-    <button class:active={libActive('favorites')} onclick={() => go('favorites')}>Favorites <small>{favs}</small></button>
+    <button class:active={libActive('all')} onclick={() => go('all')}><Icon name="all" />All <small>{total}</small></button>
+    <button class:active={libActive('recent')} onclick={() => go('recent')}><Icon name="recent" />Recent <small>{recent}</small></button>
+    <button class:active={libActive('favorites')} onclick={() => go('favorites')}><Icon name="favorites" />Favorites <small>{favs}</small></button>
 
     <div class="label gap">Systems</div>
     {#each app.overview?.systems ?? [] as s (s.id)}
@@ -34,15 +35,15 @@
         class:off={!s.enabled}
         onclick={() => go('all', s.id)}
       >
-        <i style="background:{colorOf(s.id)}"></i>{s.name} <small>{s.game_count}</small>
+        <span class="sysico" style="color:{colorOf(s.id)}"><Icon name={s.id} /></span>{s.name} <small>{s.game_count}</small>
       </button>
     {/each}
 
     <div class="label gap">App</div>
-    <button class:active={app.view === 'cores'} onclick={() => (app.view = 'cores')}>Cores &amp; BIOS</button>
-    <button class:active={app.view === 'controls'} onclick={() => (app.view = 'controls')}>Controls</button>
-    <button class:active={app.view === 'macros'} onclick={() => (app.view = 'macros')}>Macros</button>
-    <button class:active={app.view === 'settings'} onclick={() => (app.view = 'settings')}>Settings</button>
+    <button class:active={app.view === 'cores'} onclick={() => (app.view = 'cores')}><Icon name="cores" />Cores &amp; BIOS</button>
+    <button class:active={app.view === 'controls'} onclick={() => (app.view = 'controls')}><Icon name="controls" />Controls</button>
+    <button class:active={app.view === 'macros'} onclick={() => (app.view = 'macros')}><Icon name="macros" />Macros</button>
+    <button class:active={app.view === 'settings'} onclick={() => (app.view = 'settings')}><Icon name="settings" />Settings</button>
   </nav>
 
   <div class="folder">
@@ -80,13 +81,16 @@
   .label { padding: 0 8px; margin: 4px 0; }
   .gap { margin-top: 16px; }
   nav button {
-    display: flex; align-items: center; gap: 8px; text-align: left; background: none; border: 0;
-    border-left: 3px solid transparent; padding: 6px 8px; border-radius: 0 6px 6px 0; color: var(--muted);
+    display: flex; align-items: center; gap: 10px; text-align: left; background: none; border: 0; white-space: nowrap;
+    border-left: 3px solid transparent; padding: 7px 8px; border-radius: 0 6px 6px 0; color: var(--muted);
   }
   nav button:hover { background: var(--surface-2); color: var(--text); }
   nav button.active { color: var(--accent); background: var(--surface-2); border-left-color: var(--accent); }
   nav button.off { opacity: .45; }
   small { margin-left: auto; color: var(--faint); }
+  nav button :global(svg) { flex: none; opacity: .85; transition: opacity .12s; }
+  nav button:hover :global(svg), nav button.active :global(svg) { opacity: 1; }
+  .sysico { display: inline-flex; flex: none; }
   i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
   .folder { padding: 10px 8px 0; border-top: 1px solid var(--border); }
   .folder .label { padding: 0; }

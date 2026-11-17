@@ -53,7 +53,7 @@
 </div>
 
 <style>
-  .shell { display: grid; grid-template-columns: 200px 1fr; height: 100%; }
+  .shell { display: grid; grid-template-columns: 224px 1fr; height: 100%; }
   main { min-width: 0; overflow: hidden; display: flex; }
   .loading { margin: auto; color: var(--muted); }
 </style>
