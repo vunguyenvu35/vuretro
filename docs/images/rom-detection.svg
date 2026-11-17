@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 330" font-family="Inter,Helvetica,Arial,sans-serif" font-size="13">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#FFB347"/></marker></defs>
+<rect width="900" height="330" fill="#090B10"/>
+<text x="24" y="34" fill="#E8EAF0" font-size="18" font-weight="700">System detection during ROM scan</text>
+<g fill="#131724" stroke="#1C2130"><rect x="24" y="56" width="190" height="64" rx="8"/><rect x="262" y="56" width="190" height="64" rx="8"/><rect x="500" y="56" width="190" height="64" rx="8"/><rect x="738" y="56" width="138" height="64" rx="8"/></g>
+<g text-anchor="middle" fill="#E8EAF0"><text x="119" y="82" font-weight="700">1. Folder</text><text x="119" y="102" fill="#8B93A7">roms/neogeo/…</text>
+<text x="357" y="82" font-weight="700">2. Extension</text><text x="357" y="102" fill="#8B93A7">.chd → PS1</text>
+<text x="595" y="82" font-weight="700">3. Archives</text><text x="595" y="102" fill="#8B93A7">.zip/.7z need a folder</text>
+<text x="807" y="82" font-weight="700">4. Skip BIOS</text><text x="807" y="102" fill="#8B93A7">neogeo.zip, scph*</text></g>
+<g stroke="#FFB347" stroke-width="1.5" marker-end="url(#a)"><path d="M214 88H260"/><path d="M452 88H498"/><path d="M690 88H736"/></g>
+<text x="24" y="160" fill="#8B93A7">Example ROM folder → scan result</text>
+<rect x="24" y="172" width="410" height="136" rx="8" fill="#0F121A" stroke="#1C2130"/>
+<g font-family="JetBrains Mono,Menlo,monospace" font-size="12" fill="#E8EAF0"><text x="42" y="196">~/Games/roms/</text><text x="42" y="216">├─ neogeo/mslug.zip</text><text x="42" y="236">├─ neogeo/neogeo.zip</text><text x="42" y="256">├─ psx/crash.chd</text><text x="42" y="276">├─ misc/crash2.chd</text><text x="42" y="296">└─ misc/unknown.zip</text></g>
+<path d="M434 240H478" stroke="#FFB347" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="480" y="172" width="396" height="136" rx="8" fill="#0F121A" stroke="#1C2130"/>
+<g font-family="JetBrains Mono,Menlo,monospace" font-size="12"><text x="498" y="196" fill="#FFB347">mslug.zip      → Neo Geo</text><text x="498" y="216" fill="#8B93A7">neogeo.zip     → BIOS (hidden from list)</text><text x="498" y="236" fill="#5AD1FF">crash.chd      → PlayStation</text><text x="498" y="256" fill="#5AD1FF">crash2.chd     → PlayStation (by extension)</text><text x="498" y="276" fill="#FF7A7A">unknown.zip    → skipped (unknown system)</text></g>
+</svg>

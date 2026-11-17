@@ -1,77 +1,77 @@
 # vuretro
 
-Frontend chơi game retro đa nền tảng (macOS, Windows, Linux), chạy game qua các **libretro core**.
-Bắt đầu với Neo Geo (FBNeo) và PlayStation (PCSX ReARMed), mở rộng dần sang SNES, GBA…
+A cross-platform retro game frontend (macOS, Windows, Linux) that runs games through **libretro cores**.
+It starts with Neo Geo (FBNeo) and PlayStation (PCSX ReARMed) and will grow to SNES, GBA and more.
 
-> vuretro **không** đóng gói ROM hay BIOS. Người dùng tự cung cấp từ bản họ sở hữu.
+> vuretro does **not** ship ROMs or BIOS files. You provide them from copies you own.
 
-## Trạng thái
+## Status
 
-Phase 1 (runner) đang làm. Xem [docs/PLAN.md](docs/PLAN.md).
+Phase 1 (runner) is in progress. See [docs/PLAN.md](docs/PLAN.md).
 
-| Thành phần | Trạng thái |
+| Component | Status |
 |---|---|
-| `vuretro-runner`: load core, video, audio, bàn phím, tay cầm, save state | ✅ chạy được |
-| `vuretro-library`: quét ROM, nhận diện hệ máy, kiểm tra BIOS (MD5) | ✅ có test |
-| `vuretro-test-core`: core giả để test không cần ROM thật | ✅ |
-| UI Tauri (Library, Cores & BIOS, Điều khiển) | ⏳ Phase 2 |
+| `vuretro-runner`: core loading, video, audio, keyboard, gamepad, save states | ✅ working |
+| `vuretro-library`: ROM scan, system detection, BIOS check (MD5) | ✅ tested |
+| `vuretro-test-core`: fake core for testing without real ROMs | ✅ |
+| Tauri UI (Library, Cores & BIOS, Controls) | ⏳ Phase 2 |
 
-## Chạy thử
+## Quick start
 
-Yêu cầu: Rust stable mới nhất (`rustup update`). Linux cần thêm:
+Requires the latest stable Rust (`rustup update`). Linux also needs:
 `sudo apt install libasound2-dev libudev-dev libx11-dev libxkbcommon-dev`.
 
 ```bash
-# 1. Test nhanh bằng core giả (không cần ROM)
-#    Linux: libvuretro_test_core.so · Windows: vuretro_test_core.dll
-cargo build -p vuretro-test-core
-echo test > /tmp/game.test
-cargo run -p vuretro-runner -- \
-  --core target/debug/libvuretro_test_core.dylib \
-  --rom /tmp/game.test
-
-# 2. Chạy game thật
-./cores/fetch-cores.sh                      # tải fbneo + pcsx_rearmed vào cores/bin/
-cp /path/to/neogeo.zip "<data dir>/system/" # BIOS, xem đường dẫn trong log khi chạy
-cargo run --release -p vuretro-runner -- \
-  --core cores/bin/fbneo_libretro.dylib \
-  --rom ~/Games/roms/neogeo/mslug.zip
-
-# 3. Quét thư mục ROM
-cargo run -p vuretro-library --bin vuretro-scan -- ~/Games/roms "<data dir>/system"
+make dev                                         # fake core, no ROM needed
+make cores                                       # download fbneo + pcsx_rearmed into cores/bin/
+cp /path/to/neogeo.zip "<data dir>/system/"      # BIOS; the path is printed in the log on start
+make play ROM=~/Games/roms/neogeo/mslug.zip      # Neo Geo
+make play CORE=pcsx ROM=~/Games/roms/psx/crash.chd SCALE=4
+make scan ROMS=~/Games/roms                      # scan ROMs + check BIOS
+make help                                        # list all commands
 ```
 
-`<data dir>` mặc định:
+`make dev` opens a window with color bars, a square you can move with the arrow keys, and a 440 Hz tone.
+More on commands, debugging and CI: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+Default `<data dir>`:
 macOS `~/Library/Application Support/dev.vuvn.vuretro`,
 Windows `%APPDATA%\vuvn\vuretro\data`,
 Linux `~/.local/share/vuretro`.
 
-## Điều khiển mặc định
+## Default controls
 
-| Phím | RetroPad | Neo Geo |
+![Default keyboard layout](docs/images/controls.svg)
+
+| Key | RetroPad | Neo Geo |
 |---|---|---|
-| Mũi tên | D-pad | Cần gạt |
+| Arrow keys | D-pad | Joystick |
 | `Z` / `X` / `A` / `S` | B / A / Y / X | A / B / C / D |
-| `Enter` hoặc `1` | Start | Start |
-| `Right Shift` hoặc `5` | Select | Coin |
+| `Enter` or `1` | Start | Start |
+| `Right Shift` or `5` | Select | Coin |
 | `Q` / `E` / `W` / `R` | L / R / L2 / R2 | |
 
-Phím tắt: `Esc` thoát · `F5` save state · `F7` load state · `F6` đổi slot · giữ `Tab` tua nhanh · `F2` reset.
-Tay cầm (Xbox, DualSense, Switch Pro…) nhận tự động, tay thứ 2 là người chơi 2.
+Hotkeys: `Esc` quit · `F5` save state · `F7` load state · `F6` change slot · hold `Tab` to fast-forward · `F2` reset.
+Gamepads (Xbox, DualSense, Switch Pro…) are detected automatically; the second pad is player 2.
 
-## Cấu trúc
+## Layout
+
+![vuretro architecture](docs/images/architecture.svg)
 
 ```
 crates/
-  libretro-sys/   FFI types của libretro.h (phần dùng tới)
-  runner/         vuretro-runner: cửa sổ, game loop, audio, input
-  library/        registry hệ máy, quét ROM, kiểm tra BIOS
-  test-core/      core giả: color bars + tiếng 440 Hz + ô vuông điều khiển được
-cores/            script tải core từ libretro buildbot
-docs/             kế hoạch, kiến trúc, thiết kế UI
+  libretro-sys/   FFI types from libretro.h (only what is used)
+  runner/         vuretro-runner: window, game loop, audio, input
+  library/        system registry, ROM scan, BIOS check
+  test-core/      fake core: color bars + 440 Hz tone + controllable square
+cores/            script that downloads cores from the libretro buildbot
+docs/             plan, architecture, UI design, dev guide (+ images/)
+Makefile          make dev, play, cores, scan, check, ci …
 ```
+
+Docs: [DEVELOPMENT](docs/DEVELOPMENT.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [UI](docs/UI.md) · [PLAN](docs/PLAN.md)
 
 ## License
 
-Mã nguồn vuretro: GPL-3.0-or-later.
-Các core có license riêng (FBNeo: phi thương mại, PCSX ReARMed: GPLv2), xem [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#license).
+vuretro source: GPL-3.0-or-later.
+Cores have their own licenses (FBNeo: non-commercial, PCSX ReARMed: GPLv2), see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#license).

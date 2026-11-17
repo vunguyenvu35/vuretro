@@ -1,68 +1,81 @@
-# Kế hoạch vuretro
+# vuretro plan
 
-Mục tiêu: frontend chơi game retro có UI, chạy trên macOS, Windows và Linux.
-Game chạy qua libretro core, app lo phần giao diện, quản lý thư viện, điều khiển.
+Goal: a retro game frontend with a real UI, running on macOS, Windows and Linux.
+Games run through libretro cores; the app handles the interface, library management and controls.
 
-## Phase 0: Khởi tạo ✅
+Try the current state: `make dev` (see [DEVELOPMENT.md](DEVELOPMENT.md)). Architecture: [ARCHITECTURE.md](ARCHITECTURE.md). Screen designs: [UI.md](UI.md).
 
-- [x] Cargo workspace, CI matrix 3 OS (fmt, clippy, test, smoke test)
-- [x] FFI libretro tối thiểu (`crates/libretro-sys`)
-- [x] Script tải core theo OS (`cores/fetch-cores.sh`)
-- [x] Core giả để test không cần ROM (`crates/test-core`)
+## Roadmap
 
-## Phase 1: Runner chạy được game (đang làm)
+| Phase | Scope | Verified by | Status |
+|---|---|---|---|
+| 0 | Workspace, CI, fake core | `make ci` | ✅ |
+| 1 | Runner plays games | `make dev`, `make play ROM=…` | in progress |
+| 2 | Tauri UI (3 screens, see [UI.md](UI.md)) | `make ui-dev` (to be added) | not started |
+| 3 | Play experience (wgpu, CRT shader) | real play | not started |
+| 4 | More systems | `make cores` + ROMs | not started |
+| 5 | Release | installers for 3 OSes | not started |
 
-- [x] Load core động (`libloading`), đăng ký đủ callback
-- [x] Video: XRGB8888 / RGB565 / 0RGB1555 → cửa sổ (`minifb`)
-- [x] Audio: `cpal` + resample tuyến tính, giới hạn độ trễ buffer
-- [x] Input: bàn phím + tay cầm (`gilrs`), stick trái thay D-pad, 2 người chơi
-- [x] Save state 4 slot (F5/F7/F6), reset, tua nhanh
-- [x] Chế độ headless + screenshot cho CI
-- [ ] Chạy thử thật: Metal Slug (FBNeo), Crash Bandicoot (PCSX ReARMed) trên cả 3 OS
-- [ ] Core options (`GET_VARIABLE`) đọc từ file cấu hình theo core
-- [ ] Đồng bộ theo audio (dynamic rate control) thay cho `set_target_fps`
-- [ ] Lưu SRAM (`retro_get_memory_data`) khi thoát
+## Phase 0: Setup ✅
 
-## Phase 2: UI Tauri
+- [x] Cargo workspace, 3-OS CI matrix (fmt, clippy, test, smoke test)
+- [x] Minimal libretro FFI (`crates/libretro-sys`)
+- [x] Per-OS core download script (`cores/fetch-cores.sh`)
+- [x] Fake core to test without ROMs (`crates/test-core`)
 
-- [ ] Khởi tạo Tauri v2 + Svelte trong `ui/` và `src-tauri/`
-- [ ] Màn **Library** theo thiết kế (sidebar hệ máy, hero "Tiếp tục chơi", lưới cover, panel chi tiết)
-- [ ] Màn **Cores & BIOS**: bật/tắt core, kiểm tra BIOS, kéo thả file BIOS
-- [ ] Màn **Điều khiển**: chọn thiết bị, sơ đồ nút, gán phím, phím tắt
-- [ ] Tauri command gọi `vuretro-library` (scan, bios) và spawn `vuretro-runner`
-- [ ] Lưu metadata vào SQLite (thời gian chơi, lần cuối, yêu thích, slot save)
+## Phase 1: Runner plays games (in progress)
 
-## Phase 3: Trải nghiệm chơi
+- [x] Dynamic core loading (`libloading`), all callbacks registered
+- [x] Video: XRGB8888 / RGB565 / 0RGB1555 → window (`minifb`)
+- [x] Audio: `cpal` + linear resampling, bounded buffer latency
+- [x] Input: keyboard + gamepad (`gilrs`), left stick as D-pad, 2 players
+- [x] 4 save-state slots (F5/F7/F6), reset, fast-forward
+- [x] Headless mode + screenshot for CI
+- [ ] Real-game check on all 3 OSes: `make play ROM=…/mslug.zip` (FBNeo), `make play CORE=pcsx ROM=…/crash.chd` (PCSX ReARMed)
+- [ ] Core options (`GET_VARIABLE`) read from a per-core config file
+- [ ] Audio-driven sync (dynamic rate control) instead of `set_target_fps`
+- [ ] Save SRAM (`retro_get_memory_data`) on exit
 
-- [ ] Renderer `wgpu` thay `minifb`: giữ tỷ lệ, integer scale, fullscreen
-- [ ] Shader CRT (scanline, curvature) bật/tắt được
-- [ ] Menu trong game (Esc): save/load, đổi slot, thoát về Library
-- [ ] Remap phím lưu JSON theo `system → device → action`, ghi đè theo game
-- [ ] Ảnh thumbnail cho save state
+## Phase 2: Tauri UI
 
-## Phase 4: Thêm hệ máy
+- [ ] Set up Tauri v2 + Svelte in `ui/` and `src-tauri/`
+- [ ] **Library** screen per design (system sidebar, "Continue playing" hero, cover grid, details panel)
+- [ ] **Cores & BIOS** screen: enable/disable cores, BIOS check, drag-and-drop BIOS files
+- [ ] **Controls** screen: pick device, button diagram, key binding, hotkeys
+- [ ] Tauri commands calling `vuretro-library` (scan, bios) and spawning `vuretro-runner`
+- [ ] Store metadata in SQLite (play time, last played, favorites, save slots)
 
-- [ ] Bật SNES (snes9x), GBA (mGBA), Genesis (Genesis Plus GX)
-- [ ] Đa đĩa PS1 qua `.m3u` + đổi đĩa (`SET_DISK_CONTROL_INTERFACE`)
-- [ ] Cover art: người dùng tự thêm, hoặc lấy từ nguồn metadata (ScreenScraper…)
+## Phase 3: Play experience
 
-## Phase 5: Phát hành
+- [ ] `wgpu` renderer replacing `minifb`: keep aspect ratio, integer scale, fullscreen
+- [ ] CRT shader (scanlines, curvature), toggleable
+- [ ] In-game menu (Esc): save/load, change slot, back to Library
+- [ ] Key remaps stored as JSON by `system → device → action`, per-game overrides
+- [ ] Thumbnails for save states
 
-- [ ] macOS: `.dmg` ký + notarize (universal arm64/x86_64)
-- [ ] Windows: MSI/NSIS ký code
+## Phase 4: More systems
+
+- [ ] Enable SNES (snes9x), GBA (mGBA), Genesis (Genesis Plus GX)
+- [ ] Multi-disc PS1 via `.m3u` + disc swap (`SET_DISK_CONTROL_INTERFACE`)
+- [ ] Cover art: user-supplied, or from a metadata source (ScreenScraper…)
+
+## Phase 5: Release
+
+- [ ] macOS: signed + notarized `.dmg` (universal arm64/x86_64)
+- [ ] Windows: signed MSI/NSIS
 - [ ] Linux: AppImage, Flatpak
-- [ ] Auto-update (Tauri updater) qua GitHub Releases
-- [ ] Rà license từng core trước khi bundle
+- [ ] Auto-update (Tauri updater) via GitHub Releases
+- [ ] Review each core's license before bundling
 
-## Quyết định đã chốt
+## Decisions made
 
-| Hạng mục | Chọn | Ghi chú |
+| Item | Choice | Notes |
 |---|---|---|
-| Ngôn ngữ | Rust | Không GC, FFI C gọn, cross-platform |
-| UI | Tauri v2 | Dựng lại thiết kế bằng HTML/CSS, bundle nhỏ |
-| Chạy game | Process riêng `vuretro-runner` | Core crash không kéo sập UI |
-| Window/video (Phase 1) | `minifb` | Pure Rust, không cần SDL; thay bằng `wgpu` ở Phase 3 |
+| Language | Rust | No GC, clean C FFI, cross-platform |
+| UI | Tauri v2 | Rebuild the design in HTML/CSS, small bundle |
+| Game execution | Separate `vuretro-runner` process | A core crash does not take down the UI |
+| Window/video (Phase 1) | `minifb` | Pure Rust, no SDL; replaced by `wgpu` in Phase 3 |
 | Audio | `cpal` | CoreAudio / WASAPI / ALSA |
-| Tay cầm | `gilrs` | Dùng SDL GameController DB để map tay cầm |
-| Core Neo Geo | FBNeo | License phi thương mại → app phải miễn phí |
-| Core PS1 | PCSX ReARMed | Nhẹ, chạy tốt arm64; tránh DuckStation (license) |
+| Gamepads | `gilrs` | Uses the SDL GameController DB for mapping |
+| Neo Geo core | FBNeo | Non-commercial license → app must be free |
+| PS1 core | PCSX ReARMed | Light, runs well on arm64; avoids DuckStation (license) |

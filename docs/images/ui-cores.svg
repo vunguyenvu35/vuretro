@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 440" font-family="Inter,Helvetica,Arial,sans-serif" font-size="12">
+<rect width="1000" height="440" fill="#090B10"/>
+<text x="24" y="38" fill="#E8EAF0" font-size="20" font-weight="700" font-family="Space Grotesk,Inter,sans-serif">Cores &amp; BIOS</text>
+<g>
+<rect x="24" y="60" width="300" height="170" rx="10" fill="#0F121A" stroke="#FFB347"/>
+<text x="42" y="88" fill="#FFB347" font-weight="700" font-size="15">Neo Geo</text><text x="306" y="88" text-anchor="end" fill="#9BE36B" font-size="11">● On</text>
+<g fill="#8B93A7"><text x="42" y="114">Core: <tspan fill="#E8EAF0">fbneo</tspan></text><text x="42" y="134">Extensions: <tspan fill="#E8EAF0" font-family="JetBrains Mono,Menlo,monospace">.zip .7z</tspan></text><text x="42" y="154">Games: <tspan fill="#E8EAF0">74</tspan></text><text x="42" y="174">BIOS: <tspan fill="#9BE36B">✓ neogeo.zip</tspan></text></g>
+<rect x="42" y="190" width="264" height="28" rx="6" fill="#131724" stroke="#1C2130"/><text x="174" y="209" text-anchor="middle" fill="#E8EAF0">Disable core</text>
+<rect x="344" y="60" width="300" height="170" rx="10" fill="#0F121A" stroke="#5AD1FF"/>
+<text x="362" y="88" fill="#5AD1FF" font-weight="700" font-size="15">PlayStation</text><text x="626" y="88" text-anchor="end" fill="#FF7A7A" font-size="11">● BIOS missing</text>
+<g fill="#8B93A7"><text x="362" y="114">Core: <tspan fill="#E8EAF0">pcsx_rearmed</tspan></text><text x="362" y="134">Extensions: <tspan fill="#E8EAF0" font-family="JetBrains Mono,Menlo,monospace">.chd .cue .bin</tspan></text><text x="362" y="154">Games: <tspan fill="#E8EAF0">54</tspan></text><text x="362" y="174">BIOS: <tspan fill="#FF7A7A">✕ scph5501.bin</tspan></text></g>
+<rect x="362" y="190" width="264" height="28" rx="6" fill="#131724" stroke="#1C2130"/><text x="494" y="209" text-anchor="middle" fill="#E8EAF0">Disable core</text>
+<rect x="664" y="60" width="300" height="170" rx="10" fill="#0F121A" stroke="#1C2130" stroke-dasharray="5 4"/>
+<text x="682" y="88" fill="#B79CFF" font-weight="700" font-size="15">SNES · GBA · …</text><text x="682" y="114" fill="#8B93A7">Phase 4 — not enabled</text>
+</g>
+<text x="24" y="270" fill="#8B93A7" font-size="10">BIOS</text>
+<rect x="24" y="280" width="470" height="130" rx="10" fill="#0F121A" stroke="#1C2130"/>
+<g font-family="JetBrains Mono,Menlo,monospace" font-size="12"><text x="42" y="308" fill="#9BE36B">✓ neogeo.zip</text><text x="42" y="332" fill="#FF7A7A">✕ scph5501.bin   (US)</text><text x="42" y="356" fill="#FF7A7A">✕ scph5500.bin   (JP)</text><text x="42" y="380" fill="#FF7A7A">✕ scph5502.bin   (EU)</text></g>
+<rect x="520" y="280" width="444" height="130" rx="10" fill="#0F121A" stroke="#FFB347" stroke-dasharray="6 4"/>
+<text x="742" y="338" text-anchor="middle" fill="#FFB347" font-size="14">Drop BIOS files here</text><text x="742" y="360" text-anchor="middle" fill="#8B93A7">Verify MD5 → copy to &lt;data dir&gt;/system/</text>
+</svg>

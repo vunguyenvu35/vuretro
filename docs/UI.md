@@ -1,27 +1,41 @@
-# Thiết kế UI
+# UI design
 
-Bản thiết kế tương tác (canvas): https://claude.ai/artifact/TFnBEM1GyQF9oLw4edGJAn
+> The images below are **design mockups** (SVG in [docs/images/](images/)). The Tauri UI is not built yet (Phase 2 in [PLAN.md](PLAN.md)).
+> Interactive version: https://claude.ai/artifact/TFnBEM1GyQF9oLw4edGJAn
 
-## Phong cách
+## Style
 
-- Nền tối `#090B10`, surface `#0F121A` / `#131724`, viền `#1C2130`
-- Accent amber `#FFB347` (đổi được), màu riêng mỗi hệ máy: Neo Geo amber, PS cyan `#5AD1FF`, SNES tím `#B79CFF`, GBA xanh lá `#9BE36B`
-- Font: Space Grotesk (tiêu đề), Inter (nội dung), JetBrains Mono (tên file, phím), Press Start 2P (điểm nhấn pixel)
-- Hiệu ứng CRT: scanline `repeating-linear-gradient` trên cover và màn preview
+- Dark background `#090B10`, surfaces `#0F121A` / `#131724`, border `#1C2130`
+- Amber accent `#FFB347` (configurable), one color per system: Neo Geo amber, PlayStation cyan `#5AD1FF`, SNES purple `#B79CFF`, GBA green `#9BE36B`
+- Fonts: Space Grotesk (headings), Inter (body), JetBrains Mono (file names, keys), Press Start 2P (pixel accents)
+- CRT effect: `repeating-linear-gradient` scanlines on covers and the preview screen
 
-## Màn hình
+## Screens
 
 ### Library
-Sidebar (Thư viện: Tất cả / Gần đây / Yêu thích; Hệ máy kèm số game; thẻ thư mục ROM) · thanh tìm kiếm · hero "Tiếp tục chơi" (CRT preview, thời gian chơi, slot save) · lưới cover sắp xếp Gần đây / A–Z / Năm · panel chi tiết (save slot, core, file, BIOS, nút Chơi khóa khi thiếu BIOS).
+
+![Library screen](images/ui-library.svg)
+
+Sidebar (Library: All / Recent / Favorites; Systems with game counts; ROM folder chip) · search bar · "Continue playing" hero (CRT preview, play time, save slot) · cover grid sortable by Recent / A–Z / Year · details panel (save slots, core, file, BIOS, Play button locked when BIOS is missing).
 
 ### Cores & BIOS
-Thẻ mỗi hệ máy (core, đuôi file, bật/tắt, trạng thái, số game, BIOS) · danh sách BIOS đã có / thiếu · vùng kéo thả BIOS (kiểm tra MD5 rồi chép vào `system/`).
 
-### Điều khiển
-Thiết bị (bàn phím, tay cầm, gán P1/P2, deadzone, rung) · sơ đồ nút theo hệ máy (tủ arcade Neo Geo, tay PS) bấm để gán lại · bảng gán phím · phím tắt chung.
+![Cores & BIOS screen](images/ui-cores.svg)
 
-## Việc cần chỉnh khi dựng thật (đa nền tảng)
+One card per system (core, file extensions, on/off, status, game count, BIOS) · list of BIOS files present / missing · BIOS drop zone (verify MD5, then copy into `system/`).
 
-- Bỏ chi tiết riêng macOS trong mock: "Renderer: Metal", nhãn "arm64", `⌘K` / `⌘F`
-- Phím tắt hiển thị theo OS: `⌘` trên macOS, `Ctrl` trên Windows/Linux
-- Đường dẫn BIOS lấy từ data dir của từng OS (xem ARCHITECTURE.md)
+### Controls
+
+![Controls screen](images/ui-controls.svg)
+
+Devices (keyboard, gamepads, P1/P2 assignment, deadzone, rumble) · per-system button diagram (Neo Geo arcade cabinet, PlayStation pad) click to rebind · key binding table · global hotkeys.
+
+Default keyboard layout used by the runner today:
+
+![Default keyboard layout](images/controls.svg)
+
+## To adjust when building for real (cross-platform)
+
+- Drop macOS-only details from the mock: "Renderer: Metal", the "arm64" label, `⌘K` / `⌘F`
+- Show hotkeys per OS: `⌘` on macOS, `Ctrl` on Windows/Linux
+- BIOS paths come from each OS's data dir (see [ARCHITECTURE.md](ARCHITECTURE.md#data-directory))

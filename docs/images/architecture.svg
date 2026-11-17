@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" font-family="Inter,Helvetica,Arial,sans-serif" font-size="13">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#FFB347"/></marker></defs>
+<rect width="900" height="520" fill="#090B10"/>
+<text x="24" y="34" fill="#E8EAF0" font-size="18" font-weight="700">vuretro architecture — 2 processes</text>
+<rect x="24" y="52" width="852" height="170" rx="10" fill="#0F121A" stroke="#1C2130"/>
+<text x="42" y="78" fill="#FFB347" font-weight="700">vuretro (Tauri app) — Phase 2</text>
+<g fill="#131724" stroke="#1C2130"><rect x="42" y="94" width="230" height="110" rx="8"/><rect x="335" y="94" width="230" height="110" rx="8"/><rect x="628" y="94" width="230" height="110" rx="8"/></g>
+<g fill="#E8EAF0" text-anchor="middle"><text x="157" y="122" font-weight="700">UI (HTML/CSS/Svelte)</text><text x="157" y="146" fill="#8B93A7">Library</text><text x="157" y="164" fill="#8B93A7">Cores &amp; BIOS</text><text x="157" y="182" fill="#8B93A7">Controls</text>
+<text x="450" y="122" font-weight="700">Tauri commands (Rust)</text><text x="450" y="146" fill="#8B93A7">scan, bios, spawn runner</text><text x="450" y="164" fill="#8B93A7">read/write metadata</text>
+<text x="743" y="122" font-weight="700">vuretro-library</text><text x="743" y="146" fill="#8B93A7">ROM scan, system detection</text><text x="743" y="164" fill="#8B93A7">BIOS check (MD5)</text><text x="743" y="182" fill="#8B93A7">metadata (SQLite)</text></g>
+<g stroke="#FFB347" stroke-width="1.5" marker-end="url(#a)"><path d="M272 149H333"/><path d="M565 149H626"/></g>
+<path d="M450 204V272" stroke="#FFB347" stroke-width="1.5" marker-end="url(#a)" fill="none"/>
+<text x="462" y="244" fill="#FFB347">spawn process + args (--core --rom --system-dir --save-dir)</text>
+<rect x="24" y="278" width="852" height="224" rx="10" fill="#0F121A" stroke="#1C2130"/>
+<text x="42" y="304" fill="#5AD1FF" font-weight="700">vuretro-runner — 1 process / 1 game (runs standalone since Phase 1)</text>
+<rect x="42" y="322" width="250" height="160" rx="8" fill="#131724" stroke="#1C2130"/>
+<text x="167" y="348" fill="#E8EAF0" text-anchor="middle" font-weight="700">Game loop</text>
+<g fill="#8B93A7" text-anchor="middle"><text x="167" y="374">1. read input</text><text x="167" y="394">2. retro_run()</text><text x="167" y="414">3. draw window</text><text x="167" y="434">Tab: run 4× per frame</text><text x="167" y="462" fill="#B79CFF">minifb · gilrs · cpal</text></g>
+<rect x="360" y="322" width="200" height="160" rx="8" fill="#131724" stroke="#1C2130"/>
+<text x="460" y="348" fill="#E8EAF0" text-anchor="middle" font-weight="700">Frontend state</text>
+<g fill="#8B93A7" text-anchor="middle"><text x="460" y="374">OnceLock&lt;Mutex&gt;</text><text x="460" y="394">framebuffer 0RGB</text><text x="460" y="414">audio ring buffer</text><text x="460" y="434">pressed keys/buttons</text><text x="460" y="462" fill="#FF7A7A">never hold the lock when calling the core</text></g>
+<rect x="628" y="322" width="230" height="160" rx="8" fill="#131724" stroke="#FFB347"/>
+<text x="743" y="348" fill="#FFB347" text-anchor="middle" font-weight="700">libretro core (C, third party)</text>
+<g fill="#8B93A7" text-anchor="middle"><text x="743" y="374">fbneo · pcsx_rearmed</text><text x="743" y="394">.dylib / .dll / .so</text><text x="743" y="424" fill="#E8EAF0">video_cb · audio_batch_cb</text><text x="743" y="444" fill="#E8EAF0">input_state_cb · environment_cb</text></g>
+<g stroke="#5AD1FF" stroke-width="1.5" marker-end="url(#a)"><path d="M292 395H358"/><path d="M560 395H626"/></g>
+<text x="325" y="387" fill="#8B93A7" text-anchor="middle" font-size="11">input</text><text x="593" y="387" fill="#8B93A7" text-anchor="middle" font-size="11">callback</text>
+</svg>

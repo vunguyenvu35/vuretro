@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 360" font-family="Inter,Helvetica,Arial,sans-serif" font-size="13">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#FFB347"/></marker></defs>
+<rect width="900" height="360" fill="#090B10"/>
+<text x="24" y="34" fill="#E8EAF0" font-size="18" font-weight="700">How a game runs</text>
+<g fill="#131724" stroke="#1C2130"><rect x="24" y="60" width="150" height="100" rx="8"/><rect x="204" y="60" width="150" height="100" rx="8"/><rect x="384" y="60" width="150" height="100" rx="8"/><rect x="564" y="60" width="150" height="100" rx="8"/><rect x="744" y="60" width="132" height="100" rx="8"/></g>
+<g font-weight="700" fill="#FFB347" text-anchor="middle"><text x="99" y="84">① Core::load</text><text x="279" y="84">② load_game</text><text x="459" y="84">③ av_info</text><text x="639" y="84">④ Each loop</text><text x="810" y="84">⑤ Exit</text></g>
+<g fill="#8B93A7" text-anchor="middle"><text x="99" y="110">dlopen core</text><text x="99" y="128">check api_version</text><text x="99" y="146">retro_init</text>
+<text x="279" y="110">need_fullpath?</text><text x="279" y="128">path / read into RAM</text><text x="279" y="146" fill="#FF7A7A">common failure: missing BIOS</text>
+<text x="459" y="110">frame size</text><text x="459" y="128">fps</text><text x="459" y="146">sample rate</text>
+<text x="639" y="110">input → retro_run</text><text x="639" y="128">video_cb → window</text><text x="639" y="146">audio_cb → ring buffer</text>
+<text x="810" y="110">save SRAM</text><text x="810" y="128">retro_unload</text><text x="810" y="146">retro_deinit</text></g>
+<g stroke="#FFB347" stroke-width="1.5" marker-end="url(#a)" fill="none"><path d="M174 110H202"/><path d="M354 110H382"/><path d="M534 110H562"/><path d="M714 110H742"/></g>
+<rect x="24" y="205" width="852" height="130" rx="10" fill="#0F121A" stroke="#1C2130"/>
+<text x="42" y="232" fill="#5AD1FF" font-weight="700">Audio path (separate thread)</text>
+<g fill="#131724" stroke="#1C2130"><rect x="42" y="250" width="200" height="60" rx="8"/><rect x="330" y="250" width="240" height="60" rx="8"/><rect x="658" y="250" width="200" height="60" rx="8"/></g>
+<g fill="#E8EAF0" text-anchor="middle"><text x="142" y="276">core: 32040 Hz (example)</text><text x="142" y="294" fill="#8B93A7">audio_batch_cb</text><text x="450" y="276">ring buffer ≤ ~250 ms</text><text x="450" y="294" fill="#8B93A7">drops oldest samples on overflow</text><text x="758" y="276">cpal → speakers</text><text x="758" y="294" fill="#8B93A7">linear resampling</text></g>
+<g stroke="#5AD1FF" stroke-width="1.5" marker-end="url(#a)"><path d="M242 280H328"/><path d="M570 280H656"/></g>
+</svg>

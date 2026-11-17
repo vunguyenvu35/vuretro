@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 440" font-family="Inter,Helvetica,Arial,sans-serif" font-size="12">
+<rect width="1000" height="440" fill="#090B10"/>
+<text x="24" y="38" fill="#E8EAF0" font-size="20" font-weight="700" font-family="Space Grotesk,Inter,sans-serif">Controls</text>
+<rect x="24" y="58" width="270" height="360" rx="10" fill="#0F121A" stroke="#1C2130"/>
+<text x="42" y="86" fill="#8B93A7" font-size="10">DEVICES</text>
+<rect x="38" y="98" width="242" height="48" rx="8" fill="#131724" stroke="#FFB347"/><text x="54" y="118" fill="#E8EAF0">⌨ Keyboard</text><text x="54" y="136" fill="#8B93A7" font-size="11">P1</text>
+<rect x="38" y="154" width="242" height="48" rx="8" fill="#131724" stroke="#1C2130"/><text x="54" y="174" fill="#E8EAF0">🎮 Xbox Wireless Controller</text><text x="54" y="192" fill="#8B93A7" font-size="11">P2</text>
+<g fill="#8B93A7"><text x="42" y="246">Deadzone</text><rect x="42" y="256" width="230" height="6" rx="3" fill="#1C2130"/><rect x="42" y="256" width="80" height="6" rx="3" fill="#FFB347"/>
+<text x="42" y="296">Rumble</text><rect x="42" y="306" width="230" height="6" rx="3" fill="#1C2130"/><rect x="42" y="306" width="150" height="6" rx="3" fill="#FFB347"/></g>
+<rect x="314" y="58" width="400" height="360" rx="10" fill="#0F121A" stroke="#1C2130"/>
+<text x="332" y="86" fill="#8B93A7" font-size="10">BUTTON DIAGRAM — Neo Geo (click a button to rebind)</text>
+<rect x="340" y="120" width="348" height="150" rx="12" fill="#131724" stroke="#1C2130"/>
+<circle cx="410" cy="190" r="40" fill="#090B10" stroke="#1C2130"/><circle cx="410" cy="190" r="16" fill="#FF7A7A"/><text x="410" y="250" text-anchor="middle" fill="#8B93A7" font-size="11">Joystick ←↑↓→</text>
+<g text-anchor="middle" font-weight="700" fill="#090B10"><circle cx="500" cy="205" r="18" fill="#FFB347"/><text x="500" y="210">A</text><circle cx="548" cy="190" r="18" fill="#FFB347"/><text x="548" y="195">B</text><circle cx="596" cy="175" r="18" fill="#FFB347"/><text x="596" y="180">C</text><circle cx="644" cy="160" r="18" fill="#FFB347"/><text x="644" y="165">D</text></g>
+<g text-anchor="middle" fill="#8B93A7" font-size="11"><text x="500" y="240">Z</text><text x="548" y="225">X</text><text x="596" y="210">A</text><text x="644" y="195">S</text></g>
+<text x="332" y="310" fill="#8B93A7" font-size="10">OTHER LAYOUT: PlayStation pad (△ ○ ✕ □ L1 R1 L2 R2)</text>
+<rect x="734" y="58" width="242" height="360" rx="10" fill="#0F121A" stroke="#1C2130"/>
+<text x="752" y="86" fill="#8B93A7" font-size="10">GLOBAL HOTKEYS</text>
+<g font-family="JetBrains Mono,Menlo,monospace" font-size="12" fill="#E8EAF0"><text x="752" y="116">Esc    quit</text><text x="752" y="142">F5     save state</text><text x="752" y="168">F7     load state</text><text x="752" y="194">F6     change slot</text><text x="752" y="220">F2     reset</text><text x="752" y="246">Tab    fast-forward</text></g>
+<text x="24" y="434" fill="#4A5166" font-size="10">Design mockup — not built yet (Phase 2)</text>
+</svg>
