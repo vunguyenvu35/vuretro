@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 libretro-sys = { path = "../libretro-sys" }
 vuretro-controls = { path = "../controls" }
+vuretro-core = { path = "../core" }
 vuretro-settings = { path = "../settings" }
 anyhow.workspace = true
 log.workspace = true
@@ -21,7 +22,6 @@ minifb = "0.27"
 cpal = "0.15"
 gilrs = "0.10"
 clap = { version = "4.4", features = ["derive"] }
-directories = "5"
 png = "0.17"
 
 [dev-dependencies]

@@ -1,0 +1,143 @@
+//! The real implementations of the session's ports.
+
+use crate::ports::{Controller, Emulator, Frame, FrameSource, Screen};
+use crate::screen::MiniFbScreen;
+use crate::session::{Config, Parts, Session};
+use crate::window::clamp_scale;
+use crate::{appicon, audio, core, display, frontend, input};
+use anyhow::Result;
+use std::collections::VecDeque;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicU32;
+use std::sync::{Arc, Mutex};
+use vuretro_controls::macros::Macro;
+use vuretro_controls::ControlsConfig;
+use vuretro_settings::GameSettings;
+
+impl Emulator for core::Core {
+    fn run(&self) {
+        core::Core::run(self)
+    }
+    fn reset(&self) {
+        core::Core::reset(self)
+    }
+    fn save_state(&self) -> Option<Vec<u8>> {
+        core::Core::save_state(self)
+    }
+    fn load_state(&self, data: &[u8]) -> bool {
+        core::Core::load_state(self, data)
+    }
+    fn save_sram(&self, path: &Path) -> Result<usize> {
+        core::Core::save_sram(self, path)
+    }
+}
+
+impl Controller for input::Input {
+    fn poll(&mut self, screen: &dyn Screen) {
+        input::Input::poll(self, screen)
+    }
+}
+
+/// Frames the core delivers through the libretro video callback.
+pub struct CoreFrames;
+
+impl FrameSource for CoreFrames {
+    fn take_new(&mut self) -> Option<Frame> {
+        frontend::with(|fe| {
+            fe.frame_dirty.then(|| {
+                fe.frame_dirty = false;
+                (fe.frame.clone(), fe.width, fe.height)
+            })
+        })
+    }
+    fn current(&self) -> Frame {
+        frontend::with(|fe| (fe.frame.clone(), fe.width, fe.height))
+    }
+}
+
+/// Everything `main` has worked out before the window opens.
+pub struct Params {
+    pub core: core::Core,
+    pub av: libretro_sys::retro_system_av_info,
+    pub rom_name: String,
+    pub save_dir: PathBuf,
+    pub sram_path: PathBuf,
+    pub shots_dir: PathBuf,
+    pub settings: GameSettings,
+    pub settings_path: PathBuf,
+    pub controls: ControlsConfig,
+    pub macros: Vec<Macro>,
+    /// Window scale from the command line, overriding the saved setting.
+    pub scale: Option<u8>,
+    /// Where to save a preview image when the window closes.
+    pub cover: Option<PathBuf>,
+    pub audio_buf: Arc<Mutex<VecDeque<i16>>>,
+}
+
+/// Open the window, start the audio and wire up the real core and controls.
+pub fn open(p: Params) -> Result<Session> {
+    let av = p.av;
+    let gain = Arc::new(AtomicU32::new(p.settings.gain_percent()));
+    // Pace video to the screen when its refresh rate is close to the core's. The game
+    // then runs a little faster or slower than the original (up to 5 %); audio is
+    // resampled to follow, so it stays in sync.
+    let core_fps = av.timing.fps.max(1.0);
+    let fps = if p.settings.sync_display {
+        display::refresh_rate()
+            .and_then(|hz| display::match_rate(core_fps, hz))
+            .unwrap_or(core_fps)
+    } else {
+        core_fps
+    };
+    if (fps - core_fps).abs() > 0.01 {
+        log::info!("video paced to the display: {fps:.2} fps (core {core_fps:.2})");
+    }
+    let audio = match audio::start(
+        p.audio_buf,
+        av.timing.sample_rate * fps / core_fps,
+        gain.clone(),
+    ) {
+        Ok(a) => Some(a),
+        Err(e) => {
+            log::warn!("audio disabled: {e}");
+            None
+        }
+    };
+
+    let (base_w, base_h) = (
+        av.geometry.base_width as usize,
+        av.geometry.base_height as usize,
+    );
+    let factor = clamp_scale(p.scale.unwrap_or(p.settings.window_scale));
+    let title = format!("vuretro — {}", p.rom_name);
+    let screen = MiniFbScreen::open(&title, base_w, base_h, factor)?;
+    appicon::apply();
+
+    if !p.macros.is_empty() {
+        log::info!("{} macro button(s) for this game", p.macros.len());
+    }
+    let parts = Parts {
+        screen: Box::new(screen),
+        emulator: Box::new(p.core),
+        controller: Box::new(input::Input::new(p.controls, p.macros, fps)),
+        frames: Box::new(CoreFrames),
+        gain,
+        keep_alive: Box::new(audio),
+    };
+    Ok(Session::new(
+        parts,
+        Config {
+            rom_name: p.rom_name,
+            save_dir: p.save_dir,
+            sram_path: p.sram_path,
+            shots_dir: p.shots_dir,
+            settings: p.settings,
+            settings_path: p.settings_path,
+            cover: p.cover,
+            base_w,
+            base_h,
+            factor,
+            fps,
+        },
+    ))
+}

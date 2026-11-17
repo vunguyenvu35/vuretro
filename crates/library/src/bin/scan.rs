@@ -1,6 +1,7 @@
 //! vuretro-scan <rom_dir> [system_dir]  → prints games and BIOS status as JSON.
 
-use vuretro_library::{bios, registry, scan};
+use vuretro_core::registry;
+use vuretro_library::{bios, scan};
 
 fn main() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);

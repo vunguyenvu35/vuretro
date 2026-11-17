@@ -1,28 +1,9 @@
 //! Check BIOS files in the system directory against the registry.
 
-use crate::registry::System;
-use serde::Serialize;
 use std::path::Path;
-
-#[derive(Debug, Clone, Serialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum BiosState {
-    Ok,
-    Missing,
-    /// Present but MD5 not in the accepted list.
-    BadHash {
-        md5: String,
-    },
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct BiosStatus {
-    pub system: &'static str,
-    pub file: &'static str,
-    pub required: bool,
-    pub note: &'static str,
-    pub state: BiosState,
-}
+use vuretro_core::model::{bios_ready, ImportedBios};
+pub use vuretro_core::model::{BiosState, BiosStatus};
+use vuretro_core::registry::{System, SYSTEMS};
 
 pub fn check(system: &'static System, system_dir: &Path) -> Vec<BiosStatus> {
     system
@@ -55,30 +36,19 @@ pub fn check(system: &'static System, system_dir: &Path) -> Vec<BiosStatus> {
 
 /// True when every required BIOS for the system is OK.
 pub fn ready(system: &'static System, system_dir: &Path) -> bool {
-    check(system, system_dir)
-        .iter()
-        .all(|b| !b.required || b.state == BiosState::Ok)
-}
-
-/// Result of importing a BIOS file into the system directory.
-#[derive(Debug, Clone, Serialize, PartialEq)]
-pub struct ImportResult {
-    pub system: &'static str,
-    pub file: &'static str,
-    /// True when the content matched a known MD5 (or the name matched a presence-only set).
-    pub verified: bool,
+    bios_ready(&check(system, system_dir))
 }
 
 /// Identify `src` as one of the registry's BIOS files and copy it into
 /// `system_dir` under the expected name. Matching is by MD5 first (so a
 /// renamed dump still works), then by file name.
-pub fn import(src: &Path, system_dir: &Path) -> Result<ImportResult, String> {
+pub fn import(src: &Path, system_dir: &Path) -> Result<ImportedBios, String> {
     let data = std::fs::read(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
     let md5 = format!("{:x}", md5::compute(&data));
     let name = src.file_name().and_then(|n| n.to_str()).unwrap_or_default();
 
     let all = || {
-        crate::registry::SYSTEMS
+        SYSTEMS
             .iter()
             .flat_map(|s| s.bios.iter().map(move |b| (s, b)))
     };
@@ -100,7 +70,7 @@ pub fn import(src: &Path, system_dir: &Path) -> Result<ImportResult, String> {
     }
     std::fs::create_dir_all(system_dir).map_err(|e| e.to_string())?;
     std::fs::write(system_dir.join(spec.file), data).map_err(|e| e.to_string())?;
-    Ok(ImportResult {
+    Ok(ImportedBios {
         system: sys.id,
         file: spec.file,
         verified,

@@ -1,7 +1,8 @@
-//! vuretro library: system registry, ROM scanning and BIOS checks.
+//! vuretro library: the adapters that implement the `vuretro-core` ports on the real
+//! machine (disk, processes), plus the file-level helpers they use.
 
+pub mod adapters;
 pub mod bios;
-pub mod registry;
 pub mod roms;
 pub mod scan;
 
@@ -59,7 +60,7 @@ mod tests {
     #[test]
     fn gba_bios_is_optional() {
         let dir = tempfile::tempdir().unwrap();
-        let gba = registry::by_id("gba").unwrap();
+        let gba = vuretro_core::registry::by_id("gba").unwrap();
         assert!(bios::ready(gba, dir.path()));
         assert_eq!(
             bios::check(gba, dir.path())[0].state,
@@ -92,14 +93,14 @@ mod tests {
     #[test]
     fn bios_states() {
         let dir = tempfile::tempdir().unwrap();
-        let psx = registry::by_id("psx").unwrap();
+        let psx = vuretro_core::registry::by_id("psx").unwrap();
         fs::write(dir.path().join("scph5501.bin"), b"not a real bios").unwrap();
         let st = bios::check(psx, dir.path());
         assert!(matches!(st[0].state, bios::BiosState::BadHash { .. }));
         assert_eq!(st[1].state, bios::BiosState::Missing);
         assert!(!bios::ready(psx, dir.path()));
 
-        let neo = registry::by_id("neogeo").unwrap();
+        let neo = vuretro_core::registry::by_id("neogeo").unwrap();
         assert!(!bios::ready(neo, dir.path()));
         fs::write(dir.path().join("neogeo.zip"), b"zip").unwrap();
         assert!(bios::ready(neo, dir.path()));

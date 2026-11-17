@@ -4116,7 +4116,6 @@ name = "vuretro-app"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "directories",
  "gilrs",
  "serde",
  "serde_json",
@@ -4124,6 +4123,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "vuretro-controls",
+ "vuretro-core",
  "vuretro-library",
  "vuretro-settings",
 ]
@@ -4137,13 +4137,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "vuretro-core"
+version = "0.1.0"
+dependencies = [
+ "directories",
+ "serde",
+ "vuretro-controls",
+ "vuretro-settings",
+]
+
+[[package]]
 name = "vuretro-library"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "directories",
  "md5",
  "serde",
  "serde_json",
+ "vuretro-controls",
+ "vuretro-core",
+ "vuretro-settings",
  "walkdir",
 ]
 

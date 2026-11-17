@@ -3,13 +3,17 @@ name = "vuretro-library"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "ROM scanning, system detection and BIOS checks for vuretro"
+description = "Adapters for vuretro-core ports: ROM scanning, BIOS files, storage, processes"
 
 [[bin]]
 name = "vuretro-scan"
 path = "src/bin/scan.rs"
 
 [dependencies]
+vuretro-core = { path = "../core" }
+vuretro-controls = { path = "../controls" }
+vuretro-settings = { path = "../settings" }
+directories = "5"
 anyhow.workspace = true
 walkdir = "2"
 md5 = "0.7"

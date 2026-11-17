@@ -1,0 +1,12 @@
+[package]
+name = "vuretro-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "vuretro domain model, use cases and ports (no I/O of its own)"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+directories = "5"
+vuretro-controls = { path = "../controls" }
+vuretro-settings = { path = "../settings" }

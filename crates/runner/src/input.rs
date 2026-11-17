@@ -3,9 +3,10 @@
 //! screen: arrows = D-pad, Z/X/A/S = B/A/Y/X, Enter = Start, RShift = Select.
 
 use crate::frontend::{self, MAX_PORTS};
+use crate::ports::Keyboard;
 use gilrs::{Button, Gilrs};
 use libretro_sys::*;
-use minifb::{Key, Window};
+use minifb::Key;
 use vuretro_controls::macros::{Engine, Macro};
 use vuretro_controls::{assign, ControlsConfig, PadInfo, PortSource, ACTIONS};
 
@@ -245,7 +246,7 @@ impl Input {
     }
 
     /// Sample keyboard + gamepads into the frontend button table.
-    pub fn poll(&mut self, window: &Window) {
+    pub fn poll<K: Keyboard + ?Sized>(&mut self, window: &K) {
         let mut state = [[false; JOYPAD_BUTTON_COUNT]; MAX_PORTS];
         if let Some(g) = self.gilrs.as_mut() {
             while g.next_event().is_some() {} // keep cached state fresh
@@ -260,7 +261,7 @@ impl Input {
             };
             if src.keyboard {
                 for &(key, id) in &b.keys {
-                    if window.is_key_down(key) {
+                    if window.key_down(key) {
                         state[port][id as usize] = true;
                     }
                 }
@@ -291,7 +292,7 @@ impl Input {
                 .iter()
                 .zip(self.engine.macros())
                 .map(|((key, button), m)| {
-                    let key_down = key.is_some_and(|k| window.is_key_down(k));
+                    let key_down = key.is_some_and(|k| window.key_down(k));
                     let pad_down = match (button, sources.get(m.player).and_then(|s| s.pad)) {
                         (Some(b), Some(idx)) => self
                             .gilrs

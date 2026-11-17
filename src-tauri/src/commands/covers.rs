@@ -1,0 +1,42 @@
+use crate::state::Shell;
+use serde::Deserialize;
+use std::collections::HashMap;
+use tauri::{AppHandle, Emitter, State};
+
+/// The preview images that exist, as `data:` URLs the page can show directly.
+#[tauri::command]
+pub fn get_covers(shell: State<'_, Shell>, paths: Vec<String>) -> HashMap<String, String> {
+    use base64::Engine;
+    shell
+        .app
+        .covers(paths)
+        .into_iter()
+        .map(|(path, bytes)| {
+            let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+            (path, format!("data:image/png;base64,{b64}"))
+        })
+        .collect()
+}
+
+#[derive(Deserialize)]
+pub struct CoverRequest {
+    path: String,
+    system: String,
+}
+
+/// Make preview images in the background. Emits `covers-updated` after every image and
+/// `covers-done` at the end.
+#[tauri::command]
+pub fn generate_covers(app: AppHandle, shell: State<'_, Shell>, games: Vec<CoverRequest>) {
+    let games = games.into_iter().map(|g| (g.path, g.system)).collect();
+    let Some(jobs) = shell.app.start_covers(games) else {
+        return;
+    };
+    let core = shell.app.clone();
+    std::thread::spawn(move || {
+        core.run_covers(jobs, |key| {
+            let _ = app.emit("covers-updated", key);
+        });
+        let _ = app.emit("covers-done", ());
+    });
+}

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/libretro-sys", "crates/runner", "crates/library", "crates/test-core", "crates/controls", "crates/settings"]
+members = ["crates/libretro-sys", "crates/core", "crates/runner", "crates/library", "crates/test-core", "crates/controls", "crates/settings"]
 
 [workspace.package]
 version = "0.1.0"

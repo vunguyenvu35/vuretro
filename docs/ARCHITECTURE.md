@@ -8,19 +8,39 @@ The runner is a **separate process**: cores are third-party C code, so if one cr
 
 Try the runner now: `make dev` (see [DEVELOPMENT.md](DEVELOPMENT.md)).
 
+## Layers
+
+Dependencies point inward only; `crates/core/tests/architecture.rs` fails the build if that breaks.
+
+```
+src-tauri (Tauri shell: commands, menu, gamepad)      vuretro-runner (window, audio, core)
+        │                                                   │
+        ▼                                                   ▼
+vuretro-library (adapters: disk, processes)   ──►  vuretro-core (domain, use cases, ports)
+                                                   vuretro-controls / vuretro-settings (shared config files)
+```
+
+- **`vuretro-core`**: systems registry, ROM detection by path, `Settings`/`GameMeta`, the "why is this game blocked" rule, and `service::App` with every use case (overview, import, remove, favorites, launch, covers). It reaches the outside only through the traits in `ports.rs` (`Store`, `Catalog`, `Locator`, `Launcher`), so `crates/core/tests/service.rs` tests the use cases with in-memory fakes.
+- **`vuretro-library::adapters`**: the real implementations of those ports (`JsonStore`, `FsCatalog`, `FsLocator`, `ProcessLauncher`).
+- **`src-tauri`**: `main.rs` only wires adapters into `App`. `commands/` are thin Tauri commands, plus `menu.rs`, `gamepad.rs`, `platform.rs`.
+- **`vuretro-runner`**: `main.rs` loads the core. `session.rs` runs the game loop (`Session`) against the traits in `ports.rs` (`Screen`, `Emulator`, `Controller`, `FrameSource`), so its tests use fakes. `screen.rs` (minifb window) and `real.rs` (core, gamepad, frames, `open()`) are the real implementations. `window.rs` holds the pure rules (actions, title, pacing, pause picture), `headless.rs` the windowless mode.
+- **UI (`ui/src`)**: `lib/api.js` is the only door to the backend (`lib/mock.js` answers in a browser). `lib/library.js` holds the pure rules of the library screen (filter, sort, summaries; tested with `npm test`). `lib/store.svelte.js` is app state and actions, `lib/ui.svelte.js` the dialog, menu and toasts. Components only render and call these.
+
 ## The app
 
-`src-tauri/` (crate `vuretro-app`, binary `vuretro`) exposes commands to the Svelte UI: `get_overview` (scan + system and BIOS status), `set_rom_dir`, `set_system_enabled`, `toggle_favorite`, `import_bios`, `launch_game`, `launch_demo`, `get_controls`, `set_controls`, `default_controls`. A watcher thread (gilrs) keeps the connected-pad list and emits `pads-changed` and `pad-button` events for the Controls screen. It reuses `vuretro-library` directly and starts games as `vuretro-runner` child processes: it waits 1.5 s to catch immediate failures (missing BIOS, bad file) and shows the tail of `logs/runner.log`, then tracks play time until the process exits. It lives in its own Cargo workspace so the core workspace builds without system webview libraries.
+`src-tauri/` (crate `vuretro-app`, binary `vuretro`) exposes commands to the Svelte UI. A watcher thread (gilrs) keeps the connected-pad list and emits `pads-changed` and `pad-button` events for the Controls screen. Games start as `vuretro-runner` child processes: the app waits 1.5 s to catch immediate failures (missing BIOS, bad file) and shows the tail of `logs/runner.log`, then tracks play time until the process exits. It lives in its own Cargo workspace so the core workspace builds without system webview libraries.
 
 ## Crates
 
 | Crate | Role |
 |---|---|
 | `libretro-sys` | FFI types from `libretro.h`, only what is used. Add constants as cores need them. |
-| `vuretro-runner` | Binary that runs one game. `core.rs` loads symbols, `frontend.rs` holds the C callbacks, plus `audio.rs` and `input.rs`, `options.rs` (core options). |
-| `vuretro-controls` | Controls config shared by runner and app: devices per player, key and button bindings, and the logic that assigns pads to players. |
-| `vuretro-library` | `registry.rs` (system → core, file extensions, BIOS + MD5), `scan.rs`, `bios.rs`. The `vuretro-scan` binary prints JSON. |
-| `vuretro-app` (`src-tauri/`) | Tauri shell: commands for the UI, launches the runner. Separate workspace. |
+| `vuretro-core` | Domain, use cases and ports. No I/O. |
+| `vuretro-library` | Adapters for the ports, plus `scan` (walk a folder), `bios` (check and import), `roms` (import and remove). The `vuretro-scan` binary prints JSON. |
+| `vuretro-controls` | Controls and macros config shared by runner and app, and the logic that assigns pads to players. |
+| `vuretro-settings` | Game settings file shared by runner and app. |
+| `vuretro-runner` | Binary that runs one game: `core.rs` loads symbols, `frontend.rs` holds the C callbacks, plus `audio.rs`, `input.rs`, `options.rs`, `session.rs`, `window.rs`. |
+| `vuretro-app` (`src-tauri/`) | Tauri shell. Separate workspace. |
 | `vuretro-test-core` | Fake core (cdylib) for tests and CI, with fake save RAM and one core option. `make dev` and `make smoke` use it. |
 
 ## How a game runs

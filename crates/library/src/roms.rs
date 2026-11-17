@@ -1,21 +1,11 @@
 //! Importing ROMs into the app's own library folder (`<library>/<system folder>/file`)
 //! and removing them again. Importing copies; the original files are never touched.
 
-use crate::registry::{System, SYSTEMS};
 use crate::scan;
 use std::path::{Path, PathBuf};
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Imported {
-    pub system: &'static str,
-    pub dest: PathBuf,
-    /// The same file (same size) was already in the library; nothing was copied.
-    pub already_there: bool,
-}
-
-fn system_by_id(id: &str) -> Option<&'static System> {
-    SYSTEMS.iter().find(|s| s.id == id)
-}
+use vuretro_core::detect::{detect_system, is_bios_file};
+pub use vuretro_core::model::ImportedRom as Imported;
+use vuretro_core::registry::by_id as system_by_id;
 
 /// Files a multi-file image needs next to it: the `FILE "x.bin"` entries of a `.cue`,
 /// the lines of an `.m3u`.
@@ -74,7 +64,7 @@ pub fn import_file(src: &Path, library: &Path, hint: Option<&str>) -> Result<Imp
     if !src.is_file() {
         return Err("not a file".into());
     }
-    if scan::is_bios_file(name) {
+    if is_bios_file(name) {
         return Err("this is a BIOS file, add it in Cores & BIOS".into());
     }
     let ext = src
@@ -85,7 +75,7 @@ pub fn import_file(src: &Path, library: &Path, hint: Option<&str>) -> Result<Imp
     let sys = match hint.and_then(system_by_id) {
         Some(s) if s.extensions.contains(&ext.as_str()) => s,
         Some(s) => return Err(format!("not a {} file (.{ext})", s.name)),
-        None => scan::detect_system(src.parent().unwrap_or(Path::new("")), src).ok_or(
+        None => detect_system(src.parent().unwrap_or(Path::new("")), src).ok_or(
             "cannot tell which system it is for: select the system in the sidebar, then import again",
         )?,
     };
