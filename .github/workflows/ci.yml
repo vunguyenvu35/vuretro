@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Linux system deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libx11-dev libxkbcommon-dev
+
+      - run: cargo fmt --all --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test --all
+
+      - name: Smoke test runner with test core
+        shell: bash
+        run: |
+          cargo build -p vuretro-test-core
+          case "$RUNNER_OS" in
+            macOS)   CORE=target/debug/libvuretro_test_core.dylib ;;
+            Windows) CORE=target/debug/vuretro_test_core.dll ;;
+            *)       CORE=target/debug/libvuretro_test_core.so ;;
+          esac
+          echo test > game.test
+          cargo run -p vuretro-runner -- --core "$CORE" --rom game.test \
+            --headless-frames 120 --screenshot shot.ppm \
+            --system-dir ./tmp/system --save-dir ./tmp/saves
+          test -s shot.ppm

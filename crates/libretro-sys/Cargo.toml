@@ -1,0 +1,6 @@
+[package]
+name = "libretro-sys"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Minimal hand-written FFI types for the libretro API"

@@ -1,0 +1,22 @@
+[package]
+name = "vuretro-runner"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "vuretro game runner: loads a libretro core and plays one game"
+
+[[bin]]
+name = "vuretro-runner"
+path = "src/main.rs"
+
+[dependencies]
+libretro-sys = { path = "../libretro-sys" }
+anyhow.workspace = true
+log.workspace = true
+env_logger.workspace = true
+libloading = "0.8"
+minifb = "0.27"
+cpal = "0.15"
+gilrs = "0.10"
+clap = { version = "4.4", features = ["derive"] }
+directories = "5"
