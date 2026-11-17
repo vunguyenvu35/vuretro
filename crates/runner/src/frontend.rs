@@ -7,7 +7,7 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_uint, c_void};
 use std::sync::{Arc, Mutex, OnceLock};
 
-pub const MAX_PORTS: usize = 2;
+pub const MAX_PORTS: usize = vuretro_controls::PLAYERS;
 
 pub struct Frontend {
     pub pixel_format: c_uint,

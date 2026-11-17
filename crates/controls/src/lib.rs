@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 /// Number of players the frontend supports.
-pub const PLAYERS: usize = 2;
+pub const PLAYERS: usize = 4;
 
 /// All RetroPad actions, in display order.
 pub const ACTIONS: [&str; 16] = [
@@ -23,7 +23,7 @@ pub const ACTIONS: [&str; 16] = [
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Device {
-    /// Player 1: keyboard plus the first free gamepad. Player 2: the next free gamepad.
+    /// Player 1: keyboard plus the first free gamepad. Other players: the next free gamepad.
     Auto,
     Keyboard,
     /// A specific gamepad, by [`PadInfo::id`].
@@ -113,7 +113,7 @@ pub fn default_keyboard(player: usize) -> BTreeMap<String, Vec<String>> {
             ("select", &["RightShift", "Key5"]),
             ("start", &["Enter", "Key1"]),
         ])
-    } else {
+    } else if player == 1 {
         map(&[
             ("up", &["I"]),
             ("down", &["K"]),
@@ -126,6 +126,23 @@ pub fn default_keyboard(player: usize) -> BTreeMap<String, Vec<String>> {
             ("select", &["Key6"]),
             ("start", &["Key2"]),
         ])
+    } else if player == 2 {
+        // Numeric keypad
+        map(&[
+            ("up", &["NumPad8"]),
+            ("down", &["NumPad5"]),
+            ("left", &["NumPad4"]),
+            ("right", &["NumPad6"]),
+            ("b", &["NumPad1"]),
+            ("a", &["NumPad2"]),
+            ("y", &["NumPad0"]),
+            ("x", &["NumPad3"]),
+            ("select", &["NumPad7"]),
+            ("start", &["NumPad9"]),
+        ])
+    } else {
+        // Player 4 is meant for a gamepad; bind keys yourself if you need them.
+        BTreeMap::new()
     }
 }
 
@@ -169,12 +186,12 @@ impl ControlsConfig {
         self
     }
 
-    /// Swap what player 1 and player 2 use (device and bindings stay with the player's
-    /// slot, only the device changes hands).
-    pub fn swap_devices(&mut self) {
-        if self.players.len() >= 2 {
-            let (a, b) = self.players.split_at_mut(1);
-            std::mem::swap(&mut a[0].device, &mut b[0].device);
+    /// Swap the devices of players `a` and `b` (bindings stay with the player's slot,
+    /// only the device changes hands).
+    pub fn swap_devices(&mut self, a: usize, b: usize) {
+        if a != b && a < self.players.len() && b < self.players.len() {
+            let da = self.players[a].device.clone();
+            self.players[a].device = std::mem::replace(&mut self.players[b].device, da);
         }
     }
 }
@@ -271,12 +288,27 @@ mod tests {
     #[test]
     fn switching_devices() {
         let mut c = with(Device::Keyboard, Device::Gamepad { id: "a".into() });
-        c.swap_devices();
+        c.swap_devices(0, 1);
         assert_eq!(c.players[0].device, Device::Gamepad { id: "a".into() });
         assert_eq!(c.players[1].device, Device::Keyboard);
         let s = assign(&c, &[pad("a")]);
         assert_eq!((s[0].pad, s[0].keyboard), (Some(0), false));
         assert!(s[1].keyboard);
+    }
+
+    #[test]
+    fn four_players_take_pads_in_order() {
+        let c = ControlsConfig::default();
+        assert_eq!(c.players.len(), 4);
+        let s = assign(&c, &[pad("a"), pad("b"), pad("c"), pad("d")]);
+        let got: Vec<_> = s.iter().map(|x| x.pad).collect();
+        assert_eq!(got, [Some(0), Some(1), Some(2), Some(3)]);
+        // only player 1 gets the keyboard when Auto
+        assert_eq!(s.iter().filter(|x| x.keyboard).count(), 1);
+        // an old 2-player config file is padded up to 4 players
+        let mut old = ControlsConfig::default();
+        old.players.truncate(2);
+        assert_eq!(old.sanitized().players.len(), 4);
     }
 
     #[test]

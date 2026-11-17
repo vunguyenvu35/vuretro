@@ -157,8 +157,9 @@ impl Core {
         self._rom_path = Some(path_c);
         self.game_loaded = true;
         unsafe {
-            (self.retro_set_controller_port_device)(0, RETRO_DEVICE_JOYPAD);
-            (self.retro_set_controller_port_device)(1, RETRO_DEVICE_JOYPAD);
+            for port in 0..crate::frontend::MAX_PORTS as u32 {
+                (self.retro_set_controller_port_device)(port, RETRO_DEVICE_JOYPAD);
+            }
         }
         let mut av = retro_system_av_info::default();
         unsafe { (self.retro_get_system_av_info)(&mut av) };
