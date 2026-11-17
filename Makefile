@@ -41,13 +41,18 @@ setup: ## Install prerequisites on a fresh machine (Rust, checks Node/Xcode CLT)
 toolchain:
 	@command -v cargo >/dev/null || ./scripts/setup.sh
 
+# Recipes below go through the shell (`export PATH` + `;`): make 3.81 execs simple
+# commands directly using the *parent* PATH, so a cargo installed during this very
+# run would not be found.
 dev: toolchain node_modules ## Open the vuretro app (Library UI); builds the runner and fake core first
-	cargo build -p vuretro-runner -p vuretro-test-core
-	npx tauri dev
+	@export PATH="$$HOME/.cargo/bin:$$PATH"; set -e; \
+	  cargo build -p vuretro-runner -p vuretro-test-core; \
+	  npx tauri dev
 
 app-build: toolchain node_modules ## Build the installable app bundle (release)
-	cargo build --release -p vuretro-runner
-	npx tauri build
+	@export PATH="$$HOME/.cargo/bin:$$PATH"; set -e; \
+	  cargo build --release -p vuretro-runner; \
+	  npx tauri build
 
 node_modules: package.json
 	npm install
