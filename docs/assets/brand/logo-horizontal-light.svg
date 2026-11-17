@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 420" width="1400" height="420" role="img" aria-label="vuretro">
+  <title>vuretro</title>
+  <defs><linearGradient id="mbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1B1530"/><stop offset="1" stop-color="#0B0916"/></linearGradient></defs>
+  <svg x="30" y="30" width="360" height="360" viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="228" fill="url(#mbg)"/><g transform="translate(60 0)"><defs><clipPath id="t"><rect x="0" y="0" width="1024" height="512"/></clipPath><clipPath id="b"><rect x="0" y="512" width="1024" height="512"/></clipPath></defs><g fill="none" stroke-width="92" stroke-linecap="round" stroke-linejoin="round"><polyline points="292,252 602,512 292,772" stroke="#FF4F8B" clip-path="url(#t)"/><polyline points="292,252 602,512 292,772" stroke="#FFB93B" clip-path="url(#b)"/></g><rect x="282" y="466" width="150" height="92" rx="20" fill="#F4F1FF"/></g></svg>
+  <text x="440" y="250" font-family="'JetBrains Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="150" font-weight="800" letter-spacing="-4">
+    <tspan fill="#E0316F">Vu</tspan><tspan fill="#150F26">retro</tspan>
+  </text>
+  <text x="444" y="320" font-family="Inter,'SF Pro Text',Helvetica,Arial,sans-serif" font-size="34" letter-spacing="9" fill="#665F80">PLAY · SAVE · RESUME</text>
+</svg>
