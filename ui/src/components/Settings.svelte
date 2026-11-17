@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { api } from '../lib/api.js';
-  import { toast } from '../lib/store.svelte.js';
+  import { toast } from '../lib/ui.svelte.js';
   import { HOTKEYS, APP_SHORTCUTS } from '../lib/controls.js';
 
   let s = $state(null);

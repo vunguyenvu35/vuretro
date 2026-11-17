@@ -1,5 +1,7 @@
 <script>
-  import { app, play, refresh, importRoms, removeRom, removeMany, covers, setLayout, openMenu, confirmDialog, pickRomFiles, pickRomFolder } from '../lib/store.svelte.js';
+  import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, covers, setLayout, pickRomFiles, pickRomFolder } from '../lib/store.svelte.js';
+  import { openMenu, confirmDialog } from '../lib/ui.svelte.js';
+  import { visibleGames, lastPlayed, headingFor, pickRange, formatSize } from '../lib/library.js';
   import Welcome from "./Welcome.svelte";
   import Icon from './Icon.svelte';
   import { api } from '../lib/api.js';
@@ -11,29 +13,11 @@
   const ov = $derived(app.overview);
   const sysName = (id) => ov?.systems.find((s) => s.id === id)?.name ?? id;
 
-  const visible = $derived.by(() => {
-    let list = (ov?.games ?? []).filter((g) => ov.systems.find((s) => s.id === g.system)?.enabled !== false);
-    if (app.system) list = list.filter((g) => g.system === app.system);
-    if (app.filter === 'recent') list = list.filter((g) => g.last_played);
-    if (app.filter === 'favorites') list = list.filter((g) => g.favorite);
-    const q = app.query.trim().toLowerCase();
-    if (q) list = list.filter((g) => g.title.toLowerCase().includes(q));
-    const by = {
-      recent: (a, b) => b.last_played - a.last_played || a.title.localeCompare(b.title),
-      az: (a, b) => a.title.localeCompare(b.title),
-      size: (a, b) => b.size - a.size,
-    }[app.sort];
-    return [...list].sort(by);
-  });
-
-  const hero = $derived(
-    [...(ov?.games ?? [])].filter((g) => g.last_played).sort((a, b) => b.last_played - a.last_played)[0],
-  );
+  const visible = $derived(visibleGames(ov, app));
+  const hero = $derived(lastPlayed(ov?.games ?? []));
   const selected = $derived(ov?.games.find((g) => g.path === app.selected) ?? null);
   const sel = $derived(selected ? ov.systems.find((s) => s.id === selected.system) : null);
-  const heading = $derived(
-    app.system ? sysName(app.system) : { all: 'All games', recent: 'Recently played', favorites: 'Favorites' }[app.filter],
-  );
+  const heading = $derived(headingFor(ov, app));
 
   let over = $state(false);
   onMount(() => {
@@ -66,9 +50,7 @@
     if (!app.selecting) autoSelect = true;
     app.selecting = true;
     if (e?.shiftKey && lastPick) {
-      const a = visible.findIndex((x) => x.path === lastPick);
-      const b = visible.findIndex((x) => x.path === g.path);
-      const range = visible.slice(Math.min(a, b), Math.max(a, b) + 1).filter((x) => x.imported).map((x) => x.path);
+      const range = pickRange(visible, lastPick, g.path);
       app.picked = [...new Set([...app.picked, ...range])];
     } else {
       app.picked = app.picked.includes(g.path) ? app.picked.filter((p) => p !== g.path) : [...app.picked, g.path];
@@ -208,11 +190,7 @@
   }
   const toggleAllOn = () => (app.picked = removable.map((g) => g.path));
 
-  async function fav(g) {
-    await api.toggleFavorite(g.path);
-    refresh();
-  }
-  const mb = (n) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1e6))} MB`);
+  const fav = toggleFavorite;
 </script>
 
 <svelte:window onkeydown={onkey} />
@@ -297,7 +275,7 @@
               <span class="thumb cover scan" style="--c:{colorOf(g.system)}">{#if covers[g.path]}<img src={covers[g.path]} alt="" loading="lazy" />{/if}</span>
               <span class="rname"><b>{g.title}</b>{#if g.favorite}<i class="rstar" title="Favorite">★</i>{/if}{#if g.blocked}<i class="rlock" title={g.blocked}>🔒</i>{/if}</span>
               <span class="rsys"><span class="sico" style="color:{colorOf(g.system)}"><Icon name={g.system} size={16} /></span>{sysName(g.system)}</span>
-              <span class="r muted2">{mb(g.size)}</span>
+              <span class="r muted2">{formatSize(g.size)}</span>
               <span class="muted2">{g.last_played ? formatAgo(g.last_played) : '—'}</span>
               <span class="r muted2">{g.play_secs ? formatPlaytime(g.play_secs) : '—'}</span>
               <span class="rplay" class:off={app.selecting || !!g.blocked} role="button" tabindex="-1" aria-label="Play {g.title}" title={g.blocked ? g.blocked : 'Play'} onclick={(e) => { e.stopPropagation(); if (!app.selecting) play(g); }} onkeydown={() => {}}>
@@ -329,7 +307,7 @@
   <aside class="detail">
     <div class="crt scan big" style="--c:{colorOf(selected.system)}">{#if covers[selected.path]}<img src={covers[selected.path]} alt="" />{:else}<span>{selected.title}</span>{/if}</div>
     <h2>{selected.title}</h2>
-    <p class="muted">{sel.name} · {mb(selected.size)}</p>
+    <p class="muted">{sel.name} · {formatSize(selected.size)}</p>
 
     <dl>
       <dt class="label">Played</dt><dd>{formatPlaytime(selected.play_secs)} · {formatAgo(selected.last_played)}</dd>

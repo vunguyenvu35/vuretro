@@ -1,5 +1,5 @@
 <script>
-  import { dlg, answerDialog } from '../lib/store.svelte.js';
+  import { dlg, answerDialog } from '../lib/ui.svelte.js';
 
   let cancelBtn = $state();
   $effect(() => {

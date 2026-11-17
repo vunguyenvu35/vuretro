@@ -1,7 +1,8 @@
 <script>
   import { onMount } from 'svelte';
   import { api } from '../lib/api.js';
-  import { app, toast } from '../lib/store.svelte.js';
+  import { app } from '../lib/store.svelte.js';
+  import { toast } from '../lib/ui.svelte.js';
   import { ACTIONS, RESERVED, keyName, keyLabel, padLabel } from '../lib/controls.js';
   import Select from './Select.svelte';
 

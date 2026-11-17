@@ -1,5 +1,5 @@
 <script>
-  import { ctx, closeMenu } from '../lib/store.svelte.js';
+  import { ctx, closeMenu } from '../lib/ui.svelte.js';
 
   let el = $state();
   let pos = $state({ x: 0, y: 0 });

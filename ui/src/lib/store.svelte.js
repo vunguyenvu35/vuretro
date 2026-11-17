@@ -1,4 +1,6 @@
 import { api } from './api.js';
+import { summarizeBios, summarizeImport, summarizeRemoval } from './library.js';
+import { toast } from './ui.svelte.js';
 
 function readLayout() {
   try {
@@ -16,7 +18,7 @@ export const app = $state({
   system: null, // system id or null
   query: '',
   sort: 'recent', // recent | az | size
-  layout: readLayout(), // grid | list // grid | list // grid | list // grid | list // grid | list // grid | list // grid | list
+  layout: readLayout(), // grid | list
   selected: null, // game path
   busy: false,
   selecting: false, // choosing several games to remove at once
@@ -35,39 +37,6 @@ export function setLayout(layout) {
   } catch {
     /* remembering the choice is a convenience only */
   }
-}
-
-/**
- * Our own confirmation box. The browser's confirm() cannot be used here: inside the app it
- * answers at once instead of waiting (the dialog plugin makes it asynchronous), so a
- * "Remove?" question would run its action before anyone had a chance to say no.
- */
-export const dlg = $state({ open: false, title: '', message: '', note: '', confirmLabel: 'OK', cancelLabel: 'Cancel', danger: false });
-let dlgResolve = null;
-
-/** Ask a yes/no question; resolves to true only when the user confirms. */
-export function confirmDialog(opts) {
-  dlgResolve?.(false);
-  Object.assign(dlg, { note: '', confirmLabel: 'OK', cancelLabel: 'Cancel', danger: false, ...opts, open: true });
-  return new Promise((resolve) => (dlgResolve = resolve));
-}
-export function answerDialog(yes) {
-  dlg.open = false;
-  dlgResolve?.(yes);
-  dlgResolve = null;
-}
-
-/** The right-click menu: where it is, what it says, what each entry does. */
-export const ctx = $state({ open: false, x: 0, y: 0, title: '', items: [] });
-
-/** Open the menu at the pointer. `items` are { label, hint?, danger?, disabled?, action } or { separator: true }. */
-export function openMenu(e, items, title = '') {
-  e.preventDefault();
-  e.stopPropagation();
-  Object.assign(ctx, { open: true, x: e.clientX, y: e.clientY, title, items });
-}
-export function closeMenu() {
-  ctx.open = false;
 }
 
 /** Preview images (data URLs) by game path. */
@@ -96,19 +65,6 @@ export async function reloadLastPlayed() {
   if (last?.last_played) await loadCovers([last.path]);
 }
 
-/** Notifications in the bottom-right corner; the newest is at the bottom. */
-export const toasts = $state([]);
-let toastId = 0;
-
-export function toast(text, kind = 'info') {
-  toasts.push({ id: ++toastId, text, kind, ms: kind === 'error' ? 8000 : 4200 });
-  if (toasts.length > 4) toasts.splice(0, toasts.length - 4);
-}
-export function dismissToast(id) {
-  const i = toasts.findIndex((t) => t.id === id);
-  if (i >= 0) toasts.splice(i, 1);
-}
-
 export async function refresh() {
   try {
     app.overview = await api.overview();
@@ -121,17 +77,8 @@ export async function refresh() {
 }
 
 function report(results) {
-  const ok = results.filter((r) => r.ok);
-  const bad = results.filter((r) => !r.ok);
-  const name = (r) => r.source.split(/[\\/]/).pop();
-  const added = ok.filter((r) => r.message.startsWith('added')).length;
-  const lines = [];
-  if (added) lines.push(`✓ ${added} game${added === 1 ? '' : 's'} added`);
-  const same = ok.length - added;
-  if (same) lines.push(`${same} already in the library`);
-  lines.push(...bad.slice(0, 4).map((r) => `✕ ${name(r)}: ${r.message}`));
-  if (bad.length > 4) lines.push(`… and ${bad.length - 4} more`);
-  toast(lines.join('\n') || 'Nothing to import', bad.length ? 'error' : 'info');
+  const { text, failed } = summarizeImport(results);
+  toast(text, failed ? 'error' : 'info');
 }
 
 /** Copy ROM files (or every ROM in the given folders) into the app's library. */
@@ -184,17 +131,19 @@ export async function removeMany(games) {
   if (!games.length) return;
   try {
     const results = await api.removeRoms(games.map((g) => g.path));
-    const ok = results.filter((r) => r.ok).length;
-    const bad = results.filter((r) => !r.ok);
-    const lines = [`Removed ${ok} game${ok === 1 ? '' : 's'} from the library`];
-    lines.push(...bad.slice(0, 3).map((r) => `✕ ${r.source.split(/[\\/]/).pop()}: ${r.message}`));
-    toast(lines.join('\n'), bad.length ? 'error' : 'info');
+    const { text, failed } = summarizeRemoval(results);
+    toast(text, failed ? 'error' : 'info');
   } catch (e) {
     toast(String(e), 'error');
   }
   app.picked = [];
   app.selecting = false;
   await refresh();
+}
+
+export async function toggleFavorite(game) {
+  await api.toggleFavorite(game.path);
+  refresh();
 }
 
 export async function play(game) {
@@ -220,13 +169,8 @@ export async function runDemo() {
 /** Copy BIOS files into the app's system folder. */
 export async function importBios(paths) {
   if (!paths?.length) return;
-  const results = await api.importBios(paths);
-  const bad = results.filter((r) => !r.ok);
-  const lines = [
-    ...results.filter((r) => r.ok).map((r) => `✓ ${r.message}`),
-    ...bad.map((r) => `✕ ${r.source.split(/[\\/]/).pop()}: ${r.message}`),
-  ];
-  toast(lines.join('\n'), bad.length ? 'error' : 'info');
+  const { text, failed } = summarizeBios(await api.importBios(paths));
+  toast(text, failed ? 'error' : 'info');
   refresh();
 }
 

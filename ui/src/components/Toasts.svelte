@@ -1,5 +1,5 @@
 <script>
-  import { toasts, dismissToast } from '../lib/store.svelte.js';
+  import { toasts, dismissToast } from '../lib/ui.svelte.js';
 
   // "✓ 3 games added" style lines: the symbol becomes a proper icon instead.
   const lines = (text) => text.split('\n');
