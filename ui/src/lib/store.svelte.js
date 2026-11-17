@@ -1,7 +1,7 @@
 import { api } from './api.js';
 
 export const app = $state({
-  view: 'library', // library | cores | controls
+  view: 'library', // library | cores | controls | settings
   overview: null,
   loaded: false,
   filter: 'all', // all | recent | favorites
@@ -14,7 +14,7 @@ export const app = $state({
 });
 
 const hash = typeof location !== "undefined" ? location.hash.slice(1).split(",") : [];
-if (["cores", "controls"].includes(hash[0])) app.view = hash[0];
+if (["cores", "controls", "settings"].includes(hash[0])) app.view = hash[0];
 export const startSelect = hash.includes("select");
 
 let toastTimer;
@@ -34,14 +34,63 @@ export async function refresh() {
   app.loaded = true;
 }
 
-export async function chooseRomFolder() {
-  const dir = await api.pickFolder();
+function report(results) {
+  const ok = results.filter((r) => r.ok);
+  const bad = results.filter((r) => !r.ok);
+  const name = (r) => r.source.split(/[\\/]/).pop();
+  const added = ok.filter((r) => r.message.startsWith('added')).length;
+  const lines = [];
+  if (added) lines.push(`✓ ${added} game${added === 1 ? '' : 's'} added`);
+  const same = ok.length - added;
+  if (same) lines.push(`${same} already in the library`);
+  lines.push(...bad.slice(0, 4).map((r) => `✕ ${name(r)}: ${r.message}`));
+  if (bad.length > 4) lines.push(`… and ${bad.length - 4} more`);
+  toast(lines.join('\n') || 'Nothing to import', bad.length ? 'error' : 'info');
+}
+
+/** Copy ROM files (or every ROM in the given folders) into the app's library. */
+export async function importRoms(paths) {
+  if (!paths?.length) return;
+  app.busy = true;
+  try {
+    report(await api.importRoms(paths, app.system));
+  } catch (e) {
+    toast(String(e), 'error');
+  }
+  await refresh();
+  app.busy = false;
+}
+export async function pickRomFiles() {
+  await importRoms(await api.pickFiles('Choose ROM files to import'));
+}
+export async function pickRomFolder() {
+  const dir = await api.pickFolder('Choose a folder to import ROMs from');
+  if (dir) await importRoms([dir]);
+}
+
+/** Optional: also read ROMs in place from a folder (nothing is copied). */
+export async function linkFolder() {
+  const dir = await api.pickFolder('Choose a folder to read ROMs from');
   if (!dir) return;
   await api.setRomDir(dir);
   app.busy = true;
   await refresh();
   app.busy = false;
-  toast(`Scanned ${dir}`);
+  toast(`Reading ROMs from ${dir}`);
+}
+export async function unlinkFolder() {
+  await api.setRomDir(null);
+  await refresh();
+  toast('Folder unlinked. Imported games stay in the library.');
+}
+export async function removeRom(game) {
+  try {
+    await api.removeRom(game.path);
+    toast(`Removed ${game.title} from the library`);
+  } catch (e) {
+    toast(String(e), 'error');
+  }
+  await refresh();
 }
 
 export async function play(game) {

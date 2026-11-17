@@ -39,6 +39,7 @@
     cfg.players[1].device = a;
     save();
   }
+  const nth = (n) => ['first', 'second', 'third', 'fourth'][n] ?? `#${n + 1}`;
   function setDevice(i, value) {
     cfg.players[i].device = parseDevice(value);
     save();
@@ -87,7 +88,10 @@
     if (d.kind === 'keyboard') return 'Keyboard only';
     if (d.kind === 'gamepad') return pad(d.id) ? pad(d.id).name : 'Gamepad not connected';
     // auto
-    return i === 0 ? `Keyboard${pads[0] ? ' + ' + pads[0].name : ''}` : pads[1] ? pads[1].name : pads[0] && cfg.players[0].device.kind !== 'auto' ? pads[0].name : 'Waiting for a gamepad';
+    if (i === 0) return `Keyboard${pads[0] ? ' + ' + pads[0].name : ''}`;
+    if (pads[i]) return pads[i].name;
+    if (i === 1 && pads[0] && cfg.players[0].device.kind !== 'auto') return pads[0].name;
+    return 'Waiting for a gamepad';
   }
 
   onMount(() => {
@@ -132,7 +136,7 @@
           <label class="field">
             <span class="label">Device</span>
             <select value={deviceValue(p.device)} onchange={(e) => setDevice(i, e.currentTarget.value)}>
-              <option value="auto">Auto {i === 0 ? '(keyboard + first gamepad)' : '(next free gamepad)'}</option>
+              <option value="auto">Auto {i === 0 ? '(keyboard + first gamepad)' : '(' + nth(i) + ' free gamepad)'}</option>
               <option value="keyboard">Keyboard only</option>
               {#each pads as pad (pad.id + pad.name)}
                 <option value={'gamepad:' + pad.id}>{pad.name}</option>
@@ -152,11 +156,9 @@
             Left stick works as the D-pad
           </label>
         </article>
-        {#if i === 0}
-          <button class="swap" onclick={swap} title="Swap the devices of player 1 and player 2" aria-label="Swap players">⇄<span>Swap</span></button>
-        {/if}
       {/each}
     </div>
+    <button class="btn small swapbtn" onclick={swap} title="Swap the devices of player 1 and player 2">⇄ Swap player 1 and 2</button>
 
     <h2 class="sec">Connected gamepads</h2>
     {#if pads.length === 0}
@@ -222,7 +224,7 @@
 
     <h2 class="sec">Hotkeys in a game</h2>
     <div class="keys">
-      {#each [['Esc', 'Quit'], ['F5', 'Save state'], ['F7', 'Load state'], ['F6', 'Next slot'], ['F2', 'Reset'], ['Tab', 'Fast-forward (hold)']] as [k, what] (k)}
+      {#each [['Esc', 'Quit'], ['F5', 'Save state'], ['F7', 'Load state'], ['F6', 'Next slot'], ['F2', 'Reset'], ['F8', 'Sound on/off'], ['Tab', 'Fast-forward (hold)']] as [k, what] (k)}
         <div class="key"><kbd>{k}</kbd><span>{what}</span></div>
       {/each}
     </div>
@@ -242,7 +244,8 @@
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
   .muted { color: var(--muted); }
 
-  .players { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: stretch; }
+  .players { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; align-items: stretch; }
+  .swapbtn { margin-top: 12px; }
   .players .card { display: flex; flex-direction: column; gap: 14px; }
   .players header { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
   .players header .muted { font-size: 12px; text-align: right; }
@@ -302,5 +305,5 @@
   .key { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
   kbd { font: 12px var(--font-mono); background: var(--surface-2); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 2px 8px; }
   .foot { color: var(--faint); margin-top: 12px; }
-  @media (max-width: 980px) { .players { grid-template-columns: 1fr; } .swap { width: 100%; border-radius: 10px; height: 40px; flex-direction: row; gap: 8px; } }
+  @media (max-width: 980px) { .players { grid-template-columns: 1fr; } }
 </style>

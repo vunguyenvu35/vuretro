@@ -6,6 +6,7 @@
   import Library from './components/Library.svelte';
   import Cores from './components/Cores.svelte';
   import Controls from './components/Controls.svelte';
+  import Settings from './components/Settings.svelte';
 
   onMount(() => {
     refresh();
@@ -24,6 +25,8 @@
       <Library />
     {:else if app.view === 'cores'}
       <Cores />
+    {:else if app.view === 'settings'}
+      <Settings />
     {:else}
       <Controls />
     {/if}

@@ -29,7 +29,7 @@ const CODE_TO_KEY = {
   Minus: 'Minus', Equal: 'Equal', Backslash: 'Backslash', Insert: 'Insert', Delete: 'Delete',
   Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown',
 };
-export const RESERVED = ['Escape', 'Tab', 'F2', 'F5', 'F6', 'F7'];
+export const RESERVED = ['Escape', 'Tab', 'F2', 'F5', 'F6', 'F7', 'F8'];
 
 /** KeyboardEvent.code -> runner key name, or null if it cannot be bound. */
 export function keyName(code) {

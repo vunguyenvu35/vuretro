@@ -1,5 +1,5 @@
 <script>
-  import { app, play, refresh } from '../lib/store.svelte.js';
+  import { app, play, refresh, importRoms, removeRom } from '../lib/store.svelte.js';
   import Welcome from "./Welcome.svelte";
   import { api } from '../lib/api.js';
   import { colorOf, formatAgo, formatPlaytime, modKey } from '../lib/systems.js';
@@ -34,7 +34,25 @@
     app.system ? sysName(app.system) : { all: 'All games', recent: 'Recently played', favorites: 'Favorites' }[app.filter],
   );
 
-  onMount(() => document.activeElement?.blur?.());
+  let over = $state(false);
+  onMount(() => {
+    document.activeElement?.blur?.();
+    let off = () => {};
+    api
+      .onDragDrop((p) => {
+        if (p.type === 'over' || p.type === 'enter') over = true;
+        else if (p.type === 'leave') over = false;
+        else if (p.type === 'drop') {
+          over = false;
+          importRoms(p.paths ?? []);
+        }
+      })
+      .then((f) => (off = f));
+    return () => off();
+  });
+  function remove(g) {
+    if (confirm(`Remove "${g.title}" from the library?\nThe copy inside vuretro is deleted; your original file is not touched.`)) removeRom(g);
+  }
 
   function onkey(e) {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -51,9 +69,10 @@
 
 <svelte:window onkeydown={onkey} />
 
-{#if !ov || !ov.rom_dir || ov.games.length === 0}
+{#if !ov || ov.games.length === 0}
   <Welcome />
 {:else}
+{#if over}<div class="dropzone">Drop ROMs to add them to the library</div>{/if}
 <section class="main">
   <div class="top">
     <input bind:this={searchEl} bind:value={app.query} placeholder="Search games…  ({modKey} K)" aria-label="Search games" />
@@ -133,11 +152,16 @@
     {#if selected.blocked}
       <button class="btn wide" onclick={() => (app.view = 'cores')}>Open Cores &amp; BIOS</button>
     {/if}
+    {#if selected.imported}
+      <button class="btn wide danger" onclick={() => remove(selected)}>Remove from library</button>
+    {/if}
   </aside>
 {/if}
 {/if}
 
 <style>
+  .dropzone { position: fixed; inset: 12px; z-index: 20; display: grid; place-items: center; border: 2px dashed var(--accent); border-radius: 16px; background: color-mix(in srgb, var(--bg, #000) 80%, transparent); color: var(--accent); font-size: 18px; pointer-events: none; }
+  .danger { color: var(--bad); }
   .main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 16px 20px 0; gap: 14px; }
   .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
   .summary { color: var(--faint); white-space: nowrap; }
@@ -146,7 +170,7 @@
     border-radius: 20px; padding: 8px 16px; user-select: text;
   }
   .top input::placeholder { color: var(--muted); }
-  .scroll { overflow: auto; flex: 1; min-height: 0; padding: 0 6px 24px 0; }
+  .scroll { overflow: auto; flex: 1; min-height: 0; padding: 6px 8px 24px 6px; margin-left: -6px; }
   .row { display: flex; gap: 10px; flex-wrap: wrap; }
   .muted { color: var(--muted); margin: 4px 0 0; }
   .pad { padding: 24px 0; }
@@ -172,7 +196,7 @@
   .sort button:hover { color: var(--text); }
 
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 16px; }
-  .card { background: none; border: 0; padding: 0; text-align: left; display: flex; flex-direction: column; gap: 6px; }
+  .card { background: none; border: 0; padding: 0; text-align: center; display: flex; flex-direction: column; gap: 6px; }
   .cover {
     aspect-ratio: 3 / 4; border-radius: 6px; position: relative; display: grid; place-items: center; text-align: center;
     background: linear-gradient(170deg, color-mix(in srgb, var(--c) 24%, #0b0e16), #0b0e16 80%);

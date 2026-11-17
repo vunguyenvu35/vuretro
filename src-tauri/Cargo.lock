@@ -4118,6 +4118,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "vuretro-controls",
  "vuretro-library",
+ "vuretro-settings",
 ]
 
 [[package]]
@@ -4137,6 +4138,14 @@ dependencies = [
  "serde",
  "serde_json",
  "walkdir",
+]
+
+[[package]]
+name = "vuretro-settings"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

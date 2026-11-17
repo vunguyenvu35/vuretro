@@ -13,6 +13,7 @@ use tauri::{Emitter, Manager, State};
 use vuretro_controls::{ControlsConfig, PadInfo};
 use vuretro_library::bios::{self, BiosStatus};
 use vuretro_library::registry::{self, SYSTEMS};
+use vuretro_library::roms;
 use vuretro_library::scan;
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -40,6 +41,10 @@ struct AppState {
 impl AppState {
     fn system_dir(&self) -> PathBuf {
         self.data_dir.join("system")
+    }
+    /// ROMs the user imported into the app live here.
+    fn roms_dir(&self) -> PathBuf {
+        self.data_dir.join("roms")
     }
     fn save_settings(&self) {
         write_json(
@@ -194,6 +199,8 @@ struct GameView {
     favorite: bool,
     /// Reason the Play button is locked, if any.
     blocked: Option<String>,
+    /// Imported into the app's library (can be removed from it), not just linked.
+    imported: bool,
 }
 
 #[derive(Serialize)]
@@ -213,15 +220,23 @@ async fn get_overview(state: State<'_, AppState>) -> Result<Overview, String> {
     let meta = state.meta.lock().unwrap().clone();
     let system_dir = state.system_dir();
 
-    let scanned = match &settings.rom_dir {
-        Some(dir) => {
-            let dir = PathBuf::from(dir);
-            tauri::async_runtime::spawn_blocking(move || scan::scan(&dir))
-                .await
-                .map_err(|e| e.to_string())?
+    // The app's own library plus, if the user still links one, that folder read in place.
+    let roms_dir = state.roms_dir();
+    let linked = settings.rom_dir.clone().map(PathBuf::from);
+    let scan_dir = roms_dir.clone();
+    let scanned = tauri::async_runtime::spawn_blocking(move || {
+        let mut games = scan::scan(&scan_dir);
+        if let Some(dir) = linked {
+            for g in scan::scan(&dir) {
+                if !games.iter().any(|x| x.path == g.path) {
+                    games.push(g);
+                }
+            }
         }
-        None => Vec::new(),
-    };
+        games
+    })
+    .await
+    .map_err(|e| e.to_string())?;
 
     let mut systems = Vec::new();
     for s in SYSTEMS.iter().filter(|s| s.enabled) {
@@ -252,6 +267,7 @@ async fn get_overview(state: State<'_, AppState>) -> Result<Overview, String> {
             } else {
                 None
             };
+            let imported = g.path.starts_with(&roms_dir);
             let key = g.path.to_string_lossy().into_owned();
             let m = meta.get(&key).cloned().unwrap_or_default();
             Some(GameView {
@@ -263,6 +279,7 @@ async fn get_overview(state: State<'_, AppState>) -> Result<Overview, String> {
                 play_secs: m.play_secs,
                 favorite: m.favorite,
                 blocked,
+                imported,
             })
         })
         .collect();
@@ -276,6 +293,72 @@ async fn get_overview(state: State<'_, AppState>) -> Result<Overview, String> {
         runner_found: find_runner().is_some(),
         demo_available: find_test_core().is_some(),
     })
+}
+
+// ---------- importing ROMs ----------
+
+/// Copy ROM files, or every ROM found inside the folders given, into the app's library.
+/// `system` is the system chosen in the sidebar; it settles archives (.zip) whose system
+/// cannot be told from the file.
+#[tauri::command]
+async fn import_roms(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+    system: Option<String>,
+) -> Result<Vec<ImportOutcome>, String> {
+    let library = state.roms_dir();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut out = Vec::new();
+        let describe = |r: Result<roms::Imported, String>, source: String| match r {
+            Ok(i) if i.already_there => ImportOutcome {
+                source,
+                ok: true,
+                message: "already in the library".into(),
+            },
+            Ok(i) => ImportOutcome {
+                source,
+                ok: true,
+                message: format!("added to {}", i.system),
+            },
+            Err(message) => ImportOutcome {
+                source,
+                ok: false,
+                message,
+            },
+        };
+        for p in paths {
+            let path = PathBuf::from(&p);
+            if path.is_dir() {
+                let results = roms::import_folder(&path, &library);
+                if results.is_empty() {
+                    out.push(ImportOutcome {
+                        source: p,
+                        ok: false,
+                        message: "no games it recognizes in that folder".into(),
+                    });
+                }
+                for (src, r) in results {
+                    out.push(describe(r, src.to_string_lossy().into_owned()));
+                }
+            } else {
+                out.push(describe(
+                    roms::import_file(&path, &library, system.as_deref()),
+                    p,
+                ));
+            }
+        }
+        out
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn remove_rom(state: State<'_, AppState>, path: String) -> Result<(), String> {
+    roms::remove(&state.roms_dir(), Path::new(&path))?;
+    state.meta.lock().unwrap().remove(&path);
+    state.save_meta();
+    Ok(())
 }
 
 // ---------- settings ----------
@@ -445,6 +528,29 @@ impl AppState {
     }
 }
 
+// ---------- game settings ----------
+
+impl AppState {
+    fn game_settings_path(&self) -> PathBuf {
+        self.data_dir.join("config").join("game.json")
+    }
+}
+
+#[tauri::command]
+fn get_game_settings(state: State<'_, AppState>) -> vuretro_settings::GameSettings {
+    vuretro_settings::load(&state.game_settings_path())
+}
+
+#[tauri::command]
+fn set_game_settings(
+    state: State<'_, AppState>,
+    settings: vuretro_settings::GameSettings,
+) -> Result<vuretro_settings::GameSettings, String> {
+    let settings = settings.sanitized();
+    vuretro_settings::save(&state.game_settings_path(), &settings)?;
+    Ok(settings)
+}
+
 #[derive(Serialize)]
 struct ControlsView {
     config: ControlsConfig,
@@ -555,11 +661,15 @@ fn main() {
             set_system_enabled,
             toggle_favorite,
             import_bios,
+            import_roms,
+            remove_rom,
             launch_game,
             launch_demo,
             get_controls,
             set_controls,
             default_controls,
+            get_game_settings,
+            set_game_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running vuretro");

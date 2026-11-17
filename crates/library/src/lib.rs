@@ -2,6 +2,7 @@
 
 pub mod bios;
 pub mod registry;
+pub mod roms;
 pub mod scan;
 
 #[cfg(test)]

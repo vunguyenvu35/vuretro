@@ -1,27 +1,28 @@
 <script>
-  import { app, chooseRomFolder, runDemo, refresh } from '../lib/store.svelte.js';
+  import { app, pickRomFiles, pickRomFolder, runDemo, refresh } from '../lib/store.svelte.js';
   import logo from '../lib/logo-mark.svg';
 
   const ov = $derived(app.overview);
-  const noFolder = $derived(!ov?.rom_dir);
+  const noFolder = $derived(!ov?.rom_dir && !(ov?.games.length));
+  const linkedEmpty = $derived(!!ov?.rom_dir);
 </script>
 
 <div class="wrap">
   <div class="panel">
     <img src={logo} alt="" width="72" height="72" />
-    <h1>{noFolder ? 'Welcome to vuretro' : 'No games found yet'}</h1>
+    <h1>{noFolder ? 'Welcome to vuretro' : 'No games yet'}</h1>
     <p class="lead">
       {#if noFolder}
-        Play your retro games with one clean library. vuretro reads your ROM folder in place: nothing is copied or uploaded.
+        Play your retro games with one clean library. Import your ROMs and vuretro keeps a copy in its own library; your original files are never changed.
       {:else}
-        vuretro looked in <span class="mono path">{ov.rom_dir}</span> but found no games it recognizes.
+        vuretro found no games it recognizes{#if linkedEmpty} in <span class="mono path">{ov.rom_dir}</span>{/if}. Import some ROMs to get started.
       {/if}
     </p>
 
     <ol class="steps">
       <li class:done={!noFolder}>
         <b>1</b>
-        <div><strong>Pick your ROM folder</strong><span>One subfolder per system: <span class="mono">neogeo</span>, <span class="mono">psx</span>, <span class="mono">snes</span>, <span class="mono">gba</span>.</span></div>
+        <div><strong>Import your ROMs</strong><span>Pick files, or a whole folder. They are sorted by system automatically.</span></div>
       </li>
       <li>
         <b>2</b>
@@ -34,8 +35,9 @@
     </ol>
 
     <div class="row">
-      <button class="btn primary" onclick={chooseRomFolder}>{noFolder ? 'Choose ROM folder…' : 'Choose another folder…'}</button>
-      {#if !noFolder}<button class="btn" onclick={refresh}>Rescan</button>{/if}
+      <button class="btn primary" onclick={pickRomFiles}>Import ROMs…</button>
+      <button class="btn" onclick={pickRomFolder}>Import a folder…</button>
+      {#if linkedEmpty}<button class="btn" onclick={refresh}>Rescan</button>{/if}
       {#if ov?.demo_available}<button class="btn" onclick={runDemo}>Try the demo</button>{/if}
     </div>
 

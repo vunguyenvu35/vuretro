@@ -3,6 +3,7 @@
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// Buffer level the rate controller steers towards, in seconds of core audio.
@@ -22,7 +23,12 @@ pub struct AudioOut {
     _stream: cpal::Stream,
 }
 
-pub fn start(buffer: Arc<Mutex<VecDeque<i16>>>, core_rate: f64) -> Result<AudioOut> {
+/// `gain` is the output level in percent (0 = muted); it can change while playing.
+pub fn start(
+    buffer: Arc<Mutex<VecDeque<i16>>>,
+    core_rate: f64,
+    gain: Arc<AtomicU32>,
+) -> Result<AudioOut> {
     let host = cpal::default_host();
     let device = host
         .default_output_device()
@@ -40,6 +46,7 @@ pub fn start(buffer: Arc<Mutex<VecDeque<i16>>>, core_rate: f64) -> Result<AudioO
     let stream = device.build_output_stream(
         &config,
         move |out: &mut [f32], _| {
+            let level = gain.load(Ordering::Relaxed) as f32 / 100.0;
             let mut q = buffer.lock().unwrap();
             let fill = (q.len() / 2) as f64;
             for frame in out.chunks_mut(channels) {
@@ -57,8 +64,8 @@ pub fn start(buffer: Arc<Mutex<VecDeque<i16>>>, core_rate: f64) -> Result<AudioO
                     prev
                 };
                 let t = pos as f32;
-                let l = prev[0] + (next[0] - prev[0]) * t;
-                let r = prev[1] + (next[1] - prev[1]) * t;
+                let l = (prev[0] + (next[0] - prev[0]) * t) * level;
+                let r = (prev[1] + (next[1] - prev[1]) * t) * level;
                 for (i, s) in frame.iter_mut().enumerate() {
                     *s = if i % 2 == 0 { l } else { r };
                 }

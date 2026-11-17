@@ -1,0 +1,243 @@
+<script>
+  import { onMount } from 'svelte';
+  import { api } from '../lib/api.js';
+  import { toast } from '../lib/store.svelte.js';
+
+  let s = $state(null);
+  let saved = $state(false);
+  let saveTimer;
+
+  const SCALES = [1, 2, 3, 4, 5, 6];
+  const NATIVE = { w: 304, h: 224 }; // Neo Geo
+  const OTHERS = [
+    { name: 'Super Nintendo', w: 256, h: 224 },
+    { name: 'PlayStation', w: 320, h: 240 },
+    { name: 'Game Boy Advance', w: 240, h: 160 },
+  ];
+  const STAGE_MAX = 340; // px width of the preview at 6x
+
+  onMount(async () => {
+    s = await api.gameSettings();
+  });
+
+  async function save() {
+    try {
+      s = await api.setGameSettings($state.snapshot(s));
+      saved = true;
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => (saved = false), 1800);
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  }
+  function setScale(n) {
+    s.window_scale = n;
+    save();
+  }
+  function toggleSound() {
+    s.sound = !s.sound;
+    save();
+  }
+  function toggleSync() {
+    s.sync_display = !s.sync_display;
+    save();
+  }
+  async function reset() {
+    s = await api.setGameSettings(await api.defaultGameSettings());
+    toast('Settings reset to defaults');
+  }
+
+  const idx = $derived(s ? SCALES.indexOf(s.window_scale) : 0);
+  const boxW = $derived(s ? (STAGE_MAX * s.window_scale) / 6 : 0);
+</script>
+
+<section class="page">
+  <div class="col">
+    <header class="head">
+      <div>
+        <h1>Settings</h1>
+        <p class="sub">Choose how games look and sound. Applies the next time you start a game.</p>
+      </div>
+      <span class="saved" class:show={saved} aria-live="polite">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        Saved
+      </span>
+    </header>
+
+    {#if s}
+      <!-- ================= DISPLAY ================= -->
+      <h2 class="group">Display</h2>
+      <div class="panel">
+        <div class="preview">
+          <div class="glow" aria-hidden="true"></div>
+          <div class="monitor" style="width:{boxW + 20}px" aria-hidden="true">
+            <svg class="game" viewBox="0 0 {NATIVE.w} {NATIVE.h}" shape-rendering="crispEdges" preserveAspectRatio="xMidYMid slice">
+              <defs>
+                <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#2a1b5c" /><stop offset=".55" stop-color="#ff4f8b" /><stop offset="1" stop-color="#ffb347" />
+                </linearGradient>
+              </defs>
+              <rect width="304" height="224" fill="url(#sky)" />
+              <circle cx="212" cy="104" r="30" fill="#ffe29a" />
+              <path d="M0 150 L48 108 L84 138 L132 92 L186 144 L238 112 L304 152 V224 H0Z" fill="#26164a" />
+              <path d="M0 176 L60 150 L120 172 L190 146 L304 178 V224 H0Z" fill="#150b2e" />
+              <rect y="196" width="304" height="28" fill="#0c0620" />
+              <rect x="42" y="168" width="14" height="28" fill="#ffb347" /><rect x="46" y="160" width="8" height="8" fill="#ffd9a0" />
+              <text x="152" y="52" text-anchor="middle" font-family="'Press Start 2P', monospace" font-size="13" fill="#fff" letter-spacing="1">INSERT COIN</text>
+            </svg>
+            <div class="scan"></div>
+          </div>
+          <div class="dim mono"><b>{NATIVE.w * s.window_scale}</b> × <b>{NATIVE.h * s.window_scale}</b> px</div>
+        </div>
+
+        <div class="row">
+          <span class="tile amber" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><rect x="3" y="4" width="18" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8" /><path d="M9 20h6M12 16v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+          </span>
+          <div class="txt">
+            <div class="t">Window size</div>
+            <div class="d">A multiple of the game's own resolution. You can still drag the edges to resize while playing.</div>
+          </div>
+          <div class="seg" role="radiogroup" aria-label="Window size" style="--i:{idx}">
+            <span class="thumb" aria-hidden="true"></span>
+            {#each SCALES as n (n)}
+              <button role="radio" aria-checked={s.window_scale === n} class:on={s.window_scale === n} onclick={() => setScale(n)}>{n}×</button>
+            {/each}
+          </div>
+        </div>
+
+        <div class="row">
+          <span class="tile blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M3 12h4l2.5-6 4 12 2.5-6H21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+          </span>
+          <div class="txt">
+            <div class="t">Smooth motion</div>
+            <div class="d">Match your screen's refresh rate. Removes the small periodic stutter on 60 Hz displays; the game may run up to 5% faster than the original.</div>
+          </div>
+          <button class="switch" role="switch" aria-checked={s.sync_display} aria-label="Smooth motion" class:on={s.sync_display} onclick={toggleSync}><span></span></button>
+        </div>
+
+        <div class="row chips">
+          <span class="tile" aria-hidden="true"></span>
+          <div class="sizes">
+            <span class="label">Resulting size</span>
+            <span class="chip"><i style="background:#ffb347"></i>Neo Geo <b class="mono">{NATIVE.w * s.window_scale}×{NATIVE.h * s.window_scale}</b></span>
+            {#each OTHERS as o (o.name)}
+              <span class="chip"><i style="background:{o.name === 'PlayStation' ? '#6cc8ff' : o.name === 'Super Nintendo' ? '#b497ff' : '#9be36b'}"></i>{o.name} <b class="mono">{o.w * s.window_scale}×{o.h * s.window_scale}</b></span>
+            {/each}
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= SOUND ================= -->
+      <h2 class="group">Sound</h2>
+      <div class="panel">
+        <div class="row">
+          <span class="tile pink" class:muted={!s.sound} aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4z" fill="currentColor" />{#if s.sound}<path d="M15.5 9a4 4 0 010 6M18 6.5a7.5 7.5 0 010 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />{:else}<path d="M16 9.5l5 5M21 9.5l-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />{/if}</svg>
+          </span>
+          <div class="txt">
+            <div class="t">Game sound</div>
+            <div class="d">{s.sound ? 'Audio is on.' : 'Audio is muted.'} Press <kbd>F8</kbd> in a game to switch it without leaving.</div>
+          </div>
+          <button class="switch" role="switch" aria-checked={s.sound} aria-label="Game sound" class:on={s.sound} onclick={toggleSound}><span></span></button>
+        </div>
+
+        <div class="row" class:dim={!s.sound}>
+          <span class="tile" aria-hidden="true"></span>
+          <div class="txt">
+            <label class="t" for="vol">Volume</label>
+          </div>
+          <div class="slider">
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4z" fill="currentColor" /></svg>
+            <input id="vol" type="range" min="0" max="100" step="5" bind:value={s.volume} onchange={save} disabled={!s.sound} style="--pct:{s.volume}%" />
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4z" fill="currentColor" /><path d="M15.5 9a4 4 0 010 6M18 6.5a7.5 7.5 0 010 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+            <output class="pill mono">{s.volume}%</output>
+          </div>
+        </div>
+      </div>
+
+      <footer class="foot">
+        <button class="link" onclick={reset}>Reset to defaults</button>
+      </footer>
+    {/if}
+  </div>
+</section>
+
+<style>
+  .page { flex: 1; overflow: auto; padding: 40px 32px 64px; min-width: 0; }
+  .col { max-width: 860px; margin: 0 auto; }
+
+  .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
+  h1 { font-size: 30px; letter-spacing: -.015em; }
+  .sub { color: var(--muted); margin: 8px 0 0; }
+  .saved { display: inline-flex; align-items: center; gap: 6px; color: var(--ok); font-size: 13px; font-weight: 500; opacity: 0; transform: translateY(3px); transition: opacity .25s, transform .25s; padding: 6px 12px; border-radius: 999px; background: color-mix(in srgb, var(--ok) 12%, transparent); margin-top: 4px; }
+  .saved.show { opacity: 1; transform: none; }
+
+  .group { font: 600 12px var(--font-body); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin: 36px 4px 10px; }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 12px 32px rgba(0,0,0,.25); }
+
+  /* ---- preview ---- */
+  .preview { position: relative; height: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; overflow: hidden;
+    background: radial-gradient(70% 90% at 50% 0%, #1c2236 0%, #0d101a 70%); border-bottom: 1px solid var(--border); }
+  .glow { position: absolute; inset: auto 0 -40% 0; height: 70%; background: radial-gradient(50% 60% at 50% 0%, color-mix(in srgb, var(--brand-magenta) 28%, transparent), transparent 70%); pointer-events: none; }
+  .monitor { position: relative; padding: 10px; border-radius: 12px; background: linear-gradient(180deg, #1b2030, #0b0e16); box-shadow: 0 0 0 1px rgba(255,255,255,.07), 0 24px 50px rgba(0,0,0,.55); transition: width .3s cubic-bezier(.3,.8,.2,1); }
+  .game { display: block; width: 100%; height: auto; border-radius: 5px; aspect-ratio: 304 / 224; }
+  .scan { position: absolute; inset: 10px; border-radius: 5px; background: repeating-linear-gradient(0deg, rgba(0,0,0,.2) 0 1px, transparent 1px 3px); pointer-events: none; }
+  .dim { position: relative; font-size: 12px; color: var(--muted); background: rgba(255,255,255,.05); border: 1px solid var(--border); padding: 4px 12px; border-radius: 999px; }
+  .dim b { color: var(--text); font-weight: 600; }
+
+  /* ---- rows ---- */
+  .row { display: flex; align-items: center; gap: 16px; padding: 18px 22px; }
+  .row + .row { border-top: 1px solid var(--border); }
+  .row.dim { opacity: .45; }
+  .tile { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; flex: none; background: transparent; color: var(--muted); }
+  .tile.amber { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .tile.blue { color: #6cc8ff; background: color-mix(in srgb, #6cc8ff 14%, transparent); }
+  .tile.pink { color: var(--brand-magenta); background: color-mix(in srgb, var(--brand-magenta) 14%, transparent); transition: color .2s, background .2s; }
+  .tile.pink.muted { color: var(--faint); background: var(--surface-2); }
+  .txt { flex: 1; min-width: 0; }
+  .t { font-weight: 600; font-size: 14px; }
+  .d { color: var(--muted); font-size: 13px; margin-top: 3px; line-height: 1.45; }
+  .row.chips { padding-top: 14px; padding-bottom: 16px; }
+  .sizes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex: 1; }
+  .label { color: var(--faint); font-size: 12px; margin-right: 4px; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px 4px 9px; }
+  .chip i { width: 7px; height: 7px; border-radius: 50%; }
+  .chip b { color: var(--text); font-weight: 600; }
+
+  /* ---- segmented control with a sliding thumb ---- */
+  .seg { --n: 6; position: relative; display: grid; grid-template-columns: repeat(var(--n), 1fr); background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 3px; flex: none; width: 300px; }
+  .thumb { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / var(--n)); border-radius: 9px; background: var(--accent); box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 40%, transparent); transform: translateX(calc(var(--i) * 100%)); transition: transform .25s cubic-bezier(.3,.8,.2,1); }
+  .seg button { position: relative; z-index: 1; background: none; border: 0; padding: 8px 0; font: 700 13px var(--font-head); color: var(--muted); transition: color .2s; border-radius: 9px; }
+  .seg button:hover { color: var(--text); }
+  .seg button.on { color: #17110a; }
+
+  /* ---- switch ---- */
+  .switch { width: 52px; height: 30px; border-radius: 15px; border: 1px solid var(--border); background: var(--bg); position: relative; flex: none; padding: 0; transition: background .2s, border-color .2s; }
+  .switch span { position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--muted); box-shadow: 0 1px 4px rgba(0,0,0,.5); transition: transform .22s cubic-bezier(.3,.8,.2,1), background .2s; }
+  .switch.on { background: var(--accent); border-color: var(--accent); }
+  .switch.on span { transform: translateX(22px); background: #fff; }
+
+  /* ---- slider ---- */
+  .slider { display: flex; align-items: center; gap: 12px; color: var(--faint); flex: none; width: 360px; }
+  .slider svg:last-of-type { color: var(--muted); }
+  input[type='range'] { -webkit-appearance: none; appearance: none; flex: 1; min-width: 0; height: 6px; border-radius: 3px; outline: none; margin: 0;
+    background: linear-gradient(to right, var(--accent) var(--pct), var(--bg) var(--pct)); box-shadow: 0 0 0 1px var(--border) inset; }
+  input[type='range']::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.55); cursor: pointer; transition: transform .1s; }
+  input[type='range']::-webkit-slider-thumb:active { transform: scale(1.12); }
+  input[type='range']::-moz-range-thumb { width: 20px; height: 20px; border: 0; border-radius: 50%; background: #fff; }
+  input[type='range']:disabled::-webkit-slider-thumb { cursor: default; }
+  .pill { min-width: 52px; text-align: right; font-size: 13px; color: var(--text); }
+
+  kbd { font: 600 11px var(--font-mono); color: var(--text); background: var(--bg); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; }
+
+  .foot { display: flex; justify-content: flex-end; margin-top: 20px; }
+  .link { background: none; border: 0; color: var(--muted); font-size: 13px; padding: 6px 4px; border-bottom: 1px dashed var(--border); }
+  .link:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+  @media (max-width: 820px) {
+    .row { flex-wrap: wrap; }
+    .seg, .slider { width: 100%; }
+  }
+</style>

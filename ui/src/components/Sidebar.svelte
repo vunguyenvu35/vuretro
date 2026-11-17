@@ -1,5 +1,5 @@
 <script>
-  import { app, chooseRomFolder } from '../lib/store.svelte.js';
+  import { app, pickRomFiles, pickRomFolder, linkFolder, unlinkFolder } from '../lib/store.svelte.js';
   import { colorOf } from '../lib/systems.js';
   import logo from '../lib/logo-mark.svg';
 
@@ -41,13 +41,30 @@
     <div class="label gap">App</div>
     <button class:active={app.view === 'cores'} onclick={() => (app.view = 'cores')}>Cores &amp; BIOS</button>
     <button class:active={app.view === 'controls'} onclick={() => (app.view = 'controls')}>Controls</button>
+    <button class:active={app.view === 'settings'} onclick={() => (app.view = 'settings')}>Settings</button>
   </nav>
 
   <div class="folder">
-    <div class="label">ROM folder</div>
-    <button class="path mono" onclick={chooseRomFolder} title="Change ROM folder">
-      {app.overview?.rom_dir ?? 'Choose folder…'}
+    <div class="label">Add games</div>
+    <button class="btn primary add" onclick={pickRomFiles} disabled={app.busy}>
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+      Import ROMs
     </button>
+    <button class="btn add ghost" onclick={pickRomFolder} disabled={app.busy}>Import a folder</button>
+    {#if app.system}<p class="hint">Archives (.zip) go to {app.overview?.systems.find((s) => s.id === app.system)?.name}.</p>{/if}
+    {#if app.overview?.rom_dir}
+      <div class="linked">
+        <div class="lhead">
+          <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M2 4.5A1.5 1.5 0 013.5 3H6l1.5 1.5h5A1.5 1.5 0 0114 6v5.5a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 11.5v-7z" fill="none" stroke="currentColor" stroke-width="1.4" /></svg>
+          <span>Linked folder</span>
+        </div>
+        <div class="path mono" title={app.overview.rom_dir}>{app.overview.rom_dir}</div>
+        <div class="acts">
+          <button onclick={linkFolder}>Change</button>
+          <button onclick={unlinkFolder}>Remove</button>
+        </div>
+      </div>
+    {/if}
   </div>
 </aside>
 
@@ -72,9 +89,14 @@
   i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
   .folder { padding: 10px 8px 0; border-top: 1px solid var(--border); }
   .folder .label { padding: 0; }
-  .path {
-    display: block; width: 100%; text-align: left; background: none; border: 0; padding: 4px 0;
-    color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .path:hover { color: var(--accent); }
+  .add { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; margin-top: 8px; padding: 8px 10px; font-size: 13px; }
+  .add.ghost { background: none; border: 1px solid var(--border); color: var(--muted); }
+  .add.ghost:hover { color: var(--text); border-color: var(--faint); }
+  .hint { color: var(--faint); font-size: 11px; margin: 8px 2px 0; }
+  .linked { margin-top: 14px; padding: 10px 10px 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; }
+  .lhead { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
+  .path { display: block; margin: 6px 0 4px; font-size: 11px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .acts { display: flex; gap: 14px; }
+  .acts button { background: none; border: 0; padding: 2px 0; color: var(--muted); font-size: 12px; }
+  .acts button:hover { color: var(--accent); }
 </style>

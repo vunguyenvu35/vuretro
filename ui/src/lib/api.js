@@ -49,15 +49,17 @@ export const api = {
   setSystemEnabled: (id, enabled) => call('set_system_enabled', { id, enabled }),
   toggleFavorite: (path) => call('toggle_favorite', { path }),
   importBios: (paths) => call('import_bios', { paths }),
+  importRoms: (paths, system = null) => call('import_roms', { paths, system }),
+  removeRom: (path) => call('remove_rom', { path }),
   launchGame: (path) => call('launch_game', { path }),
   launchDemo: () => call('launch_demo'),
-  async pickFolder() {
+  async pickFolder(title = 'Choose a folder') {
     if (!inTauri) return '~/Games/roms';
-    return open({ directory: true, multiple: false, title: 'Choose your ROM folder' });
+    return open({ directory: true, multiple: false, title });
   },
-  async pickFiles() {
+  async pickFiles(title = 'Choose BIOS files') {
     if (!inTauri) return [];
-    const r = await open({ multiple: true, title: 'Choose BIOS files' });
+    const r = await open({ multiple: true, title });
     return r ? [].concat(r) : [];
   },
   onGameExited: (fn) => (inTauri ? listen('game-exited', fn) : Promise.resolve(() => {})),
@@ -74,6 +76,11 @@ const mockControls = () => ({
       { device: { kind: 'auto' }, deadzone: 0.35, stick_as_dpad: true,
         keyboard: { up: ['I'], down: ['K'], left: ['J'], right: ['L'], b: ['N'], a: ['M'], y: ['H'], x: ['G'], select: ['Key6'], start: ['Key2'] },
         gamepad: { up: ['DPadUp'], down: ['DPadDown'], left: ['DPadLeft'], right: ['DPadRight'], b: ['South'], a: ['East'], y: ['West'], x: ['North'], l: ['LeftTrigger'], r: ['RightTrigger'], l2: ['LeftTrigger2'], r2: ['RightTrigger2'], l3: ['LeftThumb'], r3: ['RightThumb'], select: ['Select'], start: ['Start'] } },
+      { device: { kind: 'auto' }, deadzone: 0.35, stick_as_dpad: true,
+        keyboard: { up: ['NumPad8'], down: ['NumPad5'], left: ['NumPad4'], right: ['NumPad6'], b: ['NumPad1'], a: ['NumPad2'], y: ['NumPad0'], x: ['NumPad3'], select: ['NumPad7'], start: ['NumPad9'] },
+        gamepad: { up: ['DPadUp'], down: ['DPadDown'], left: ['DPadLeft'], right: ['DPadRight'], b: ['South'], a: ['East'], y: ['West'], x: ['North'], l: ['LeftTrigger'], r: ['RightTrigger'], l2: ['LeftTrigger2'], r2: ['RightTrigger2'], l3: ['LeftThumb'], r3: ['RightThumb'], select: ['Select'], start: ['Start'] } },
+      { device: { kind: 'auto' }, deadzone: 0.35, stick_as_dpad: true, keyboard: {},
+        gamepad: { up: ['DPadUp'], down: ['DPadDown'], left: ['DPadLeft'], right: ['DPadRight'], b: ['South'], a: ['East'], y: ['West'], x: ['North'], l: ['LeftTrigger'], r: ['RightTrigger'], l2: ['LeftTrigger2'], r2: ['RightTrigger2'], l3: ['LeftThumb'], r3: ['RightThumb'], select: ['Select'], start: ['Start'] } },
     ],
   },
   pads: [{ id: 'mock-xbox', name: 'Xbox Wireless Controller' }, { id: 'mock-dual', name: 'DualSense Wireless Controller' }],
@@ -87,3 +94,13 @@ api.defaultControls = () => call('default_controls');
 api.setControls = (config) => call('set_controls', { config });
 api.onPadsChanged = (fn) => (inTauri ? listen('pads-changed', (e) => fn(e.payload)) : Promise.resolve(() => {}));
 api.onPadButton = (fn) => (inTauri ? listen('pad-button', (e) => fn(e.payload)) : Promise.resolve(() => {}));
+
+// ---- game settings ----
+let mockGame = { window_scale: 2, sound: true, volume: 100, sync_display: true };
+mock.import_roms = async () => [];
+mock.remove_rom = async () => {};
+mock.get_game_settings = async () => ({ ...mockGame });
+mock.set_game_settings = async ({ settings }) => ((mockGame = { ...settings }), { ...mockGame });
+api.gameSettings = () => call('get_game_settings');
+api.setGameSettings = (settings) => call('set_game_settings', { settings });
+api.defaultGameSettings = async () => ({ window_scale: 2, sound: true, volume: 100, sync_display: true });

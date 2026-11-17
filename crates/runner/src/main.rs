@@ -3,10 +3,11 @@
 //!   vuretro-runner --core cores/bin/fbneo_libretro.dylib --rom ~/roms/neogeo/mslug.zip
 //!
 //! Hotkeys: Esc quit · F5 save state · F7 load state · F6 next slot
-//!          Tab (hold) fast-forward · F2 reset
+//!          Tab (hold) fast-forward · F2 reset · F8 sound on/off
 
 mod audio;
 mod core;
+mod display;
 mod frontend;
 mod input;
 mod options;
@@ -17,6 +18,7 @@ use directories::ProjectDirs;
 use minifb::{Key, KeyRepeat, Scale, Window, WindowOptions};
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 #[derive(Parser)]
@@ -38,9 +40,12 @@ struct Args {
     /// Save directory for SRAM and save states (default: <data dir>/saves)
     #[arg(long)]
     save_dir: Option<PathBuf>,
-    /// Integer window scale: 1, 2, 4
-    #[arg(long, default_value_t = 2)]
-    scale: u8,
+    /// Window scale 1..=8 (default: from the app's game settings)
+    #[arg(long)]
+    scale: Option<u8>,
+    /// Game settings file (default: <data dir>/config/game.json)
+    #[arg(long, value_name = "FILE")]
+    settings: Option<PathBuf>,
     /// Run N frames without a window or audio, then exit (for CI and debugging)
     #[arg(long, value_name = "N")]
     headless_frames: Option<u32>,
@@ -88,7 +93,7 @@ fn main() -> Result<()> {
             .join("config")
             .join(format!("{core_stem}.cfg"))
     });
-    let user_options = std::fs::read_to_string(&options_path)
+    let mut user_options = std::fs::read_to_string(&options_path)
         .map(|t| options::parse_config(&t))
         .unwrap_or_default();
     if !user_options.is_empty() {
@@ -97,6 +102,15 @@ fn main() -> Result<()> {
             user_options.len(),
             options_path.display()
         );
+    }
+
+    // FBNeo's default Neo Geo mode boots the MVS BIOS, which shows several seconds of
+    // garbled green memory-test screens (and needs coins). AES boots straight to the
+    // logo and starts with Start; still overridable in the core's .cfg.
+    if core_stem.starts_with("fbneo") {
+        user_options
+            .entry("fbneo-neogeo-mode".to_string())
+            .or_insert_with(|| "AES_EUR".to_string());
     }
 
     let audio_buf = Arc::new(Mutex::new(VecDeque::<i16>::new()));
@@ -143,7 +157,31 @@ fn main() -> Result<()> {
         return run_headless(&core, n, args.screenshot.as_deref(), &sram_path);
     }
 
-    let _audio = match audio::start(audio_buf, av.timing.sample_rate) {
+    let settings_path = args
+        .settings
+        .clone()
+        .unwrap_or_else(|| dirs.data_dir().join("config").join("game.json"));
+    let settings = vuretro_settings::load(&settings_path);
+    let gain = Arc::new(AtomicU32::new(settings.gain_percent()));
+    // Pace video to the screen when its refresh rate is close to the core's. The game
+    // then runs a little faster or slower than the original (up to 5 %); audio is
+    // resampled to follow, so it stays in sync.
+    let core_fps = av.timing.fps.max(1.0);
+    let fps = if settings.sync_display {
+        display::refresh_rate()
+            .and_then(|hz| display::match_rate(core_fps, hz))
+            .unwrap_or(core_fps)
+    } else {
+        core_fps
+    };
+    if (fps - core_fps).abs() > 0.01 {
+        log::info!("video paced to the display: {fps:.2} fps (core {core_fps:.2})");
+    }
+    let _audio = match audio::start(
+        audio_buf,
+        av.timing.sample_rate * fps / core_fps,
+        gain.clone(),
+    ) {
         Ok(a) => Some(a),
         Err(e) => {
             log::warn!("audio disabled: {e}");
@@ -151,22 +189,34 @@ fn main() -> Result<()> {
         }
     };
 
-    let scale = match args.scale {
-        1 => Scale::X1,
-        4 => Scale::X4,
-        _ => Scale::X2,
+    // minifb's own scaling only does 1, 2, 4, 8 and 16; for other sizes the window is
+    // made that many times bigger and the frame is stretched to fit it.
+    let factor = args
+        .scale
+        .unwrap_or(settings.window_scale)
+        .clamp(vuretro_settings::MIN_SCALE, vuretro_settings::MAX_SCALE) as usize;
+    let (scale, stretch) = match factor {
+        1 => (Scale::X1, 1),
+        2 => (Scale::X2, 1),
+        4 => (Scale::X4, 1),
+        8 => (Scale::X8, 1),
+        n => (Scale::X1, n),
     };
     let mut window = Window::new(
         &format!("vuretro — {rom_name}"),
-        av.geometry.base_width as usize,
-        av.geometry.base_height as usize,
+        av.geometry.base_width as usize * stretch,
+        av.geometry.base_height as usize * stretch,
         WindowOptions {
             resize: true,
             scale,
             ..WindowOptions::default()
         },
     )?;
-    window.set_target_fps(av.timing.fps.round().max(1.0) as usize);
+    // Frame pacing is done below against absolute deadlines: minifb's own limiter
+    // sleeps a fixed amount per frame, so it drifts (57 fps instead of 59.18) and
+    // the audio then underruns.
+    let frame_time = std::time::Duration::from_secs_f64(1.0 / fps);
+    let mut deadline = std::time::Instant::now();
 
     let controls_path = args
         .controls
@@ -176,6 +226,7 @@ fn main() -> Result<()> {
     let mut slot: u8 = 1;
     let state_path = |slot: u8| save_dir.join(format!("{rom_name}.state{slot}"));
     let mut last_sram_save = std::time::Instant::now();
+    let mut sound_on = settings.sound;
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         if window.is_key_pressed(Key::F5, KeyRepeat::No) {
@@ -197,6 +248,12 @@ fn main() -> Result<()> {
         if window.is_key_pressed(Key::F6, KeyRepeat::No) {
             slot = slot % SLOTS + 1;
             log::info!("slot {slot}");
+        }
+        if window.is_key_pressed(Key::F8, KeyRepeat::No) {
+            sound_on = !sound_on;
+            let level = if sound_on { settings.volume as u32 } else { 0 };
+            gain.store(level, Ordering::Relaxed);
+            log::info!("sound {}", if sound_on { "on" } else { "off" });
         }
         if window.is_key_pressed(Key::F2, KeyRepeat::No) {
             core.reset();
@@ -229,6 +286,7 @@ fn main() -> Result<()> {
             Some((buf, w, h)) if w > 0 && h > 0 => window.update_with_buffer(&buf, w, h)?,
             _ => window.update(),
         }
+        pace(&mut deadline, frame_time);
     }
     match core.save_sram(&sram_path) {
         Ok(0) => {}
@@ -236,6 +294,26 @@ fn main() -> Result<()> {
         Err(e) => log::error!("cannot save save RAM: {e}"),
     }
     Ok(())
+}
+
+/// Sleep until the next frame deadline (sleep most of it, spin the rest for accuracy).
+/// If we fell far behind (window dragged, machine suspended) resync instead of
+/// racing to catch up.
+fn pace(deadline: &mut std::time::Instant, frame_time: std::time::Duration) {
+    use std::time::{Duration, Instant};
+    *deadline += frame_time;
+    let now = Instant::now();
+    if *deadline > now {
+        let wait = *deadline - now;
+        if wait > Duration::from_millis(2) {
+            std::thread::sleep(wait - Duration::from_millis(1));
+        }
+        while Instant::now() < *deadline {
+            std::hint::spin_loop();
+        }
+    } else if now - *deadline > frame_time * 4 {
+        *deadline = now;
+    }
 }
 
 fn run_headless(

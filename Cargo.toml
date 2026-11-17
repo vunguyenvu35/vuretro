@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/libretro-sys", "crates/runner", "crates/library", "crates/test-core", "crates/controls"]
+members = ["crates/libretro-sys", "crates/runner", "crates/library", "crates/test-core", "crates/controls", "crates/settings"]
 
 [workspace.package]
 version = "0.1.0"
@@ -11,3 +11,6 @@ license = "GPL-3.0-or-later"
 anyhow = "1"
 log = "0.4"
 env_logger = "0.11"
+
+[patch.crates-io]
+minifb = { path = "vendor/minifb" }

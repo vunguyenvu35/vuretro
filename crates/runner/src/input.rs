@@ -186,6 +186,7 @@ pub struct Input {
     gilrs: Option<Gilrs>,
     bindings: Vec<Bindings>,
     cfg: ControlsConfig,
+    last: [[bool; JOYPAD_BUTTON_COUNT]; MAX_PORTS],
 }
 
 impl Input {
@@ -207,6 +208,7 @@ impl Input {
             gilrs,
             bindings,
             cfg,
+            last: [[false; JOYPAD_BUTTON_COUNT]; MAX_PORTS],
         }
     }
 
@@ -267,6 +269,14 @@ impl Input {
                     p[RETRO_DEVICE_ID_JOYPAD_DOWN as usize] |= y < -b.deadzone;
                 }
             }
+        }
+        if state != self.last {
+            // Visible with RUST_LOG=debug: shows what the runner actually sees.
+            for (port, p) in state.iter().enumerate() {
+                let down: Vec<usize> = (0..JOYPAD_BUTTON_COUNT).filter(|&i| p[i]).collect();
+                log::debug!("input: port {port} buttons down {down:?}");
+            }
+            self.last = state;
         }
         frontend::with(|fe| fe.buttons = state);
     }
