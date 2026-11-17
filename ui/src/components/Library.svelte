@@ -54,10 +54,49 @@
     if (confirm(`Remove "${g.title}" from the library?\nThe copy inside vuretro is deleted; your original file is not touched.`)) removeRom(g);
   }
 
+  /** Move the selection through the grid (dx: left/right, dy: up/down). */
+  function move(dx, dy) {
+    const cards = [...document.querySelectorAll('.grid .card')];
+    if (!cards.length) return;
+    const cols = Math.max(1, cards.filter((c) => c.offsetTop === cards[0].offsetTop).length);
+    let i = visible.findIndex((g) => g.path === app.selected);
+    i = i < 0 ? 0 : Math.min(visible.length - 1, Math.max(0, i + dx + dy * cols));
+    app.selected = visible[i].path;
+    cards[i]?.scrollIntoView({ block: 'nearest' });
+  }
+
   function onkey(e) {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    if (app.capturing) return;
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && e.key.toLowerCase() === 'k') {
       e.preventDefault();
       searchEl?.focus();
+      return;
+    }
+    if (e.key === 'Escape') {
+      app.query = '';
+      searchEl?.blur();
+      return;
+    }
+    if (mod || e.altKey) return;
+    const tag = e.target instanceof HTMLElement ? e.target.tagName : '';
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) {
+      // from the search box, Down goes to the results
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        searchEl?.blur();
+        move(0, 0);
+      }
+      return;
+    }
+    const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    if (arrows[e.key]) {
+      e.preventDefault();
+      move(...arrows[e.key]);
+    } else if (e.key === 'Enter' && tag !== 'BUTTON' && selected) {
+      play(selected);
+    } else if (e.key.toLowerCase() === 'f' && selected) {
+      fav(selected);
     }
   }
   async function fav(g) {
@@ -75,7 +114,7 @@
 {#if over}<div class="dropzone">Drop ROMs to add them to the library</div>{/if}
 <section class="main">
   <div class="top">
-    <input bind:this={searchEl} bind:value={app.query} placeholder="Search games…  ({modKey} K)" aria-label="Search games" />
+    <input id="search" bind:this={searchEl} bind:value={app.query} placeholder="Search games…  ({modKey} K)" aria-label="Search games" />
     <span class="summary">{ov.games.length} games · {ov.systems.filter((s) => s.game_count).length} systems</span>
   </div>
 

@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { api } from '../lib/api.js';
   import { toast } from '../lib/store.svelte.js';
+  import { HOTKEYS, APP_SHORTCUTS } from '../lib/controls.js';
 
   let s = $state(null);
   let saved = $state(false);
@@ -9,15 +10,18 @@
 
   const SCALES = [1, 2, 3, 4, 5, 6];
   const NATIVE = { w: 304, h: 224 }; // Neo Geo
-  const OTHERS = [
-    { name: 'Super Nintendo', w: 256, h: 224 },
-    { name: 'PlayStation', w: 320, h: 240 },
-    { name: 'Game Boy Advance', w: 240, h: 160 },
+  const SYSTEMS = [
+    { name: 'Neo Geo', w: 304, h: 224, color: '#ffb347' },
+    { name: 'Super Nintendo', w: 256, h: 224, color: '#b497ff' },
+    { name: 'PlayStation', w: 320, h: 240, color: '#6cc8ff' },
+    { name: 'Game Boy Advance', w: 240, h: 160, color: '#9be36b' },
   ];
-  const STAGE_MAX = 340; // px width of the preview at 6x
+  // Width of the preview monitor's screen at 6x. Its height (x 224/304) plus the bezel, the
+  // gap and the size label must fit the stage below, or the biggest sizes get clipped.
+  const STAGE_MAX = 290;
 
   // Whatever the backend sends, fill in anything missing so a switch never gets stuck.
-  const DEFAULTS = { window_scale: 2, sound: true, volume: 100, sync_display: true };
+  const DEFAULTS = { window_scale: 2, sound: true, volume: 100, sync_display: true, pause_on_blur: false };
   const withDefaults = (v) => ({ ...DEFAULTS, ...v });
 
   onMount(async () => {
@@ -44,6 +48,10 @@
   }
   function toggleSync() {
     s.sync_display = !s.sync_display;
+    save();
+  }
+  function togglePause() {
+    s.pause_on_blur = !s.pause_on_blur;
     save();
   }
   async function reset() {
@@ -100,7 +108,7 @@
           </span>
           <div class="txt">
             <div class="t">Window size</div>
-            <div class="d">A multiple of the game's own resolution. You can still drag the edges to resize while playing.</div>
+            <div class="d">A multiple of the game's own resolution. In a game, press <kbd>F9</kbd> / <kbd>F10</kbd> to make it smaller or bigger.</div>
           </div>
           <div class="seg" role="radiogroup" aria-label="Window size" style="--i:{idx}">
             <span class="thumb" aria-hidden="true"></span>
@@ -121,15 +129,31 @@
           <button class="switch" role="switch" aria-checked={s.sync_display} aria-label="Smooth motion" class:on={s.sync_display} onclick={toggleSync}><span></span></button>
         </div>
 
-        <div class="row chips">
-          <span class="tile" aria-hidden="true"></span>
-          <div class="sizes">
-            <span class="label">Resulting size</span>
-            <span class="chip"><i style="background:#ffb347"></i>Neo Geo <b class="mono">{NATIVE.w * s.window_scale}×{NATIVE.h * s.window_scale}</b></span>
-            {#each OTHERS as o (o.name)}
-              <span class="chip"><i style="background:{o.name === 'PlayStation' ? '#6cc8ff' : o.name === 'Super Nintendo' ? '#b497ff' : '#9be36b'}"></i>{o.name} <b class="mono">{o.w * s.window_scale}×{o.h * s.window_scale}</b></span>
+        <div class="sizes">
+          <div class="shead">Resulting window size</div>
+          <ul>
+            {#each SYSTEMS as sys (sys.name)}
+              <li>
+                <span class="sname"><i style="background:{sys.color}"></i>{sys.name}</span>
+                <span class="sval mono">{sys.w * s.window_scale} × {sys.h * s.window_scale}</span>
+              </li>
             {/each}
+          </ul>
+        </div>
+      </div>
+
+      <!-- ================= GAMEPLAY ================= -->
+      <h2 class="group">Gameplay</h2>
+      <div class="panel">
+        <div class="row">
+          <span class="tile green" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><rect x="6" y="5" width="4" height="14" rx="1.2" fill="currentColor" /><rect x="14" y="5" width="4" height="14" rx="1.2" fill="currentColor" /></svg>
+          </span>
+          <div class="txt">
+            <div class="t">Pause when the window loses focus</div>
+            <div class="d">The game stops and goes quiet while you are in another app, and carries on when you come back. Press <kbd>P</kbd> in a game to pause it yourself, and again to resume.</div>
           </div>
+          <button class="switch" role="switch" aria-checked={s.pause_on_blur} aria-label="Pause when the window loses focus" class:on={s.pause_on_blur} onclick={togglePause}><span></span></button>
         </div>
       </div>
 
@@ -161,6 +185,25 @@
         </div>
       </div>
 
+      <!-- ================= SHORTCUTS ================= -->
+      {#each [['Shortcuts in the app', APP_SHORTCUTS, 'Press these anywhere in the app window.'], ['Shortcuts in a game', HOTKEYS, 'Button keys for each player are set on the Controls screen. These keys are fixed and cannot be used as buttons.']] as [title, list, foot] (title)}
+        <h2 class="group">{title}</h2>
+        <div class="panel">
+          <ul class="keys">
+            {#each list as h (h.what)}
+              <li>
+                <span class="kk">
+                  {#each h.keys as k (k)}<kbd>{k}</kbd>{/each}
+                  {#if h.also}<span class="or">or</span>{#each h.also as k (k)}<kbd>{k}</kbd>{/each}{/if}
+                </span>
+                <span class="w">{h.what}{#if h.note}<small>{h.note}</small>{/if}</span>
+              </li>
+            {/each}
+          </ul>
+          <p class="kfoot">{foot}</p>
+        </div>
+      {/each}
+
       <footer class="foot">
         <button class="link" onclick={reset}>Reset to defaults</button>
       </footer>
@@ -182,7 +225,7 @@
   .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 12px 32px rgba(0,0,0,.25); }
 
   /* ---- preview ---- */
-  .preview { position: relative; height: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; overflow: hidden;
+  .preview { position: relative; height: 320px; padding: 16px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; overflow: hidden;
     background: radial-gradient(70% 90% at 50% 0%, #1c2236 0%, #0d101a 70%); border-bottom: 1px solid var(--border); }
   .glow { position: absolute; inset: auto 0 -40% 0; height: 70%; background: radial-gradient(50% 60% at 50% 0%, color-mix(in srgb, var(--brand-magenta) 28%, transparent), transparent 70%); pointer-events: none; }
   .monitor { position: relative; padding: 10px; border-radius: 12px; background: linear-gradient(180deg, #1b2030, #0b0e16); box-shadow: 0 0 0 1px rgba(255,255,255,.07), 0 24px 50px rgba(0,0,0,.55); transition: width .3s cubic-bezier(.3,.8,.2,1); }
@@ -198,17 +241,19 @@
   .tile { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; flex: none; background: transparent; color: var(--muted); }
   .tile.amber { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
   .tile.blue { color: #6cc8ff; background: color-mix(in srgb, #6cc8ff 14%, transparent); }
+  .tile.green { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
   .tile.pink { color: var(--brand-magenta); background: color-mix(in srgb, var(--brand-magenta) 14%, transparent); transition: color .2s, background .2s; }
   .tile.pink.muted { color: var(--faint); background: var(--surface-2); }
   .txt { flex: 1; min-width: 0; }
   .t { font-weight: 600; font-size: 14px; }
   .d { color: var(--muted); font-size: 13px; margin-top: 3px; line-height: 1.45; }
-  .row.chips { padding-top: 14px; padding-bottom: 16px; }
-  .sizes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex: 1; }
-  .label { color: var(--faint); font-size: 12px; margin-right: 4px; }
-  .chip { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px 4px 9px; }
-  .chip i { width: 7px; height: 7px; border-radius: 50%; }
-  .chip b { color: var(--text); font-weight: 600; }
+  .sizes { padding: 16px 22px 20px; border-top: 1px solid var(--border); }
+  .shead { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 12px; }
+  .sizes ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+  .sizes li { display: flex; flex-direction: column; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+  .sname { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+  .sname i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .sval { font-size: 16px; font-weight: 600; color: var(--text); letter-spacing: .01em; }
 
   /* ---- segmented control with a sliding thumb ---- */
   .seg { --n: 6; position: relative; display: grid; grid-template-columns: repeat(var(--n), 1fr); background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 3px; flex: none; width: 300px; }
@@ -236,6 +281,15 @@
 
   kbd { font: 600 11px var(--font-mono); color: var(--text); background: var(--bg); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; }
 
+  .keys { list-style: none; margin: 0; padding: 8px 10px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 12px; }
+  .keys li { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border-radius: 10px; }
+  .keys li:hover { background: var(--surface-2); }
+  .kk { display: inline-flex; align-items: center; gap: 5px; min-width: 150px; flex-wrap: wrap; }
+  .kk .or { color: var(--faint); font-size: 11px; margin: 0 2px; }
+  .w { font-size: 13px; color: var(--text); display: flex; flex-direction: column; }
+  .w small { color: var(--faint); font-size: 11px; margin-top: 1px; }
+  .kfoot { margin: 0; padding: 12px 22px 16px; border-top: 1px solid var(--border); color: var(--faint); font-size: 12px; }
+  @media (max-width: 820px) { .keys { grid-template-columns: 1fr; } }
   .foot { display: flex; justify-content: flex-end; margin-top: 20px; }
   .link { background: none; border: 0; color: var(--muted); font-size: 13px; padding: 6px 4px; border-bottom: 1px dashed var(--border); }
   .link:hover { color: var(--accent); border-bottom-color: var(--accent); }

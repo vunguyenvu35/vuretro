@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { app, refresh, covers, loadCovers, syncCovers, reloadLastPlayed } from './lib/store.svelte.js';
+  import { app, refresh, covers, loadCovers, syncCovers, reloadLastPlayed, handleMenu } from './lib/store.svelte.js';
   import { api } from './lib/api.js';
   import Sidebar from './components/Sidebar.svelte';
   import Library from './components/Library.svelte';
@@ -16,6 +16,7 @@
       reloadLastPlayed();
     }).then((f) => off.push(f));
     api.onCoversUpdated((path) => loadCovers([path])).then((f) => off.push(f));
+    api.onMenu(handleMenu).then((f) => off.push(f));
     api.onCoversDone(() => syncCovers()).then((f) => off.push(f));
     return () => off.forEach((f) => f());
   });

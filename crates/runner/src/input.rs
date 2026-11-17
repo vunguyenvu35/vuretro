@@ -30,7 +30,7 @@ fn action_id(name: &str) -> Option<u32> {
     })
 }
 
-/// Keys that can be bound. Esc, Tab and F2/F5/F6/F7 are reserved for runner hotkeys.
+/// Keys that can be bound. Esc, Tab, P and the F-keys are reserved for runner hotkeys.
 const KEYS: &[(&str, Key)] = &[
     ("Key0", Key::Key0),
     ("Key1", Key::Key1),
@@ -57,7 +57,6 @@ const KEYS: &[(&str, Key)] = &[
     ("M", Key::M),
     ("N", Key::N),
     ("O", Key::O),
-    ("P", Key::P),
     ("Q", Key::Q),
     ("R", Key::R),
     ("S", Key::S),
@@ -307,7 +306,7 @@ mod tests {
 
     #[test]
     fn reserved_keys_are_not_bindable() {
-        for reserved in ["Escape", "Tab", "F2", "F5", "F6", "F7"] {
+        for reserved in ["Escape", "Tab", "P", "F2", "F3", "F5", "F6", "F7"] {
             assert!(parse_key(reserved).is_none(), "{reserved}");
         }
     }

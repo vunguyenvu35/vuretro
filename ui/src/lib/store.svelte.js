@@ -11,6 +11,7 @@ export const app = $state({
   selected: null, // game path
   toast: null, // { text, kind }
   busy: false,
+  capturing: false, // a key or button is being recorded on the Controls screen
 });
 
 const hash = typeof location !== "undefined" ? location.hash.slice(1).split(",") : [];
@@ -137,5 +138,46 @@ export async function runDemo() {
     toast('Demo started: arrow keys move the square, Esc quits');
   } catch (e) {
     toast(String(e), 'error');
+  }
+}
+
+/** Copy BIOS files into the app's system folder. */
+export async function importBios(paths) {
+  if (!paths?.length) return;
+  const results = await api.importBios(paths);
+  const bad = results.filter((r) => !r.ok);
+  const lines = [
+    ...results.filter((r) => r.ok).map((r) => `✓ ${r.message}`),
+    ...bad.map((r) => `✕ ${r.source.split(/[\\/]/).pop()}: ${r.message}`),
+  ];
+  toast(lines.join('\n'), bad.length ? 'error' : 'info');
+  refresh();
+}
+
+/** Actions from the native menu bar (see build_menu in src-tauri). */
+export async function handleMenu(id) {
+  const library = (filter) => {
+    app.view = 'library';
+    app.filter = filter;
+    app.system = null;
+  };
+  switch (id) {
+    case 'import-roms': return pickRomFiles();
+    case 'import-folder': return pickRomFolder();
+    case 'import-bios': return importBios(await api.pickFiles('Choose BIOS files'));
+    case 'link-folder': return linkFolder();
+    case 'unlink-folder': return unlinkFolder();
+    case 'run-demo': return runDemo();
+    case 'view-library': return library('all');
+    case 'view-recent': return library('recent');
+    case 'view-favorites': return library('favorites');
+    case 'view-cores': return (app.view = 'cores');
+    case 'view-controls': return (app.view = 'controls');
+    case 'view-settings': return (app.view = 'settings');
+    case 'refresh': return refresh();
+    case 'find':
+      app.view = 'library';
+      await new Promise((r) => setTimeout(r, 50));
+      document.querySelector('input[aria-label="Search games"]')?.focus();
   }
 }

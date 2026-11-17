@@ -19,6 +19,8 @@ pub struct GameSettings {
     /// Run video at the display's refresh rate when it is close to the game's own
     /// (smoother motion; the game may run up to 5 % faster or slower than the original).
     pub sync_display: bool,
+    /// Pause the game while its window is not the active one.
+    pub pause_on_blur: bool,
 }
 
 impl Default for GameSettings {
@@ -28,6 +30,7 @@ impl Default for GameSettings {
             sound: true,
             volume: 100,
             sync_display: true,
+            pause_on_blur: false,
         }
     }
 }
@@ -79,6 +82,7 @@ mod tests {
             sound: true,
             volume: 250,
             sync_display: true,
+            pause_on_blur: false,
         }
         .sanitized();
         assert_eq!((s.window_scale, s.volume), (MAX_SCALE, 100));
@@ -114,6 +118,7 @@ mod tests {
             sound: false,
             volume: 70,
             sync_display: false,
+            pause_on_blur: true,
         };
         save(&path, &s).unwrap();
         assert_eq!(load(&path), s);
@@ -121,7 +126,7 @@ mod tests {
         std::fs::write(&path, r#"{ "window_scale": 4 }"#).unwrap();
         let p = load(&path);
         assert_eq!((p.window_scale, p.sound, p.volume), (4, true, 100));
-        assert!(p.sync_display);
+        assert!(p.sync_display && !p.pause_on_blur);
         std::fs::write(&path, "{ not json").unwrap();
         assert_eq!(load(&path), GameSettings::default());
     }

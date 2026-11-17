@@ -1,9 +1,9 @@
 <script>
   import { onMount } from 'svelte';
   import { api } from '../lib/api.js';
-  import { toast } from '../lib/store.svelte.js';
+  import { app, toast } from '../lib/store.svelte.js';
   import { modKey } from '../lib/systems.js';
-  import { ACTIONS, RESERVED, keyName, keyLabel, padLabel, deviceValue, parseDevice } from '../lib/controls.js';
+  import { ACTIONS, HOTKEYS, RESERVED, keyName, keyLabel, padLabel, deviceValue, parseDevice } from '../lib/controls.js';
 
   let cfg = $state(null);
   let pads = $state([]);
@@ -12,6 +12,11 @@
   let saved = $state(false);
   let lastPress = $state({}); // pad id -> button, for "identify my pad"
   let timers = {};
+
+  $effect(() => {
+    app.capturing = !!capture;
+    return () => (app.capturing = false);
+  });
 
   const shortId = (id) => id.slice(0, 8);
 
@@ -224,8 +229,8 @@
 
     <h2 class="sec">Hotkeys in a game</h2>
     <div class="keys">
-      {#each [['Esc', 'Quit'], ['F5', 'Save state'], ['F7', 'Load state'], ['F6', 'Next slot'], ['F2', 'Reset'], ['F8', 'Sound on/off'], ['Tab', 'Fast-forward (hold)']] as [k, what] (k)}
-        <div class="key"><kbd>{k}</kbd><span>{what}</span></div>
+      {#each HOTKEYS as h (h.what)}
+        <div class="key"><kbd>{h.keys[0]}</kbd>{#if h.also}<kbd>{h.also[0]}</kbd>{/if}<span>{h.what}</span></div>
       {/each}
     </div>
     <p class="foot">These keys are fixed and cannot be used as buttons. Library search: <kbd>{modKey}</kbd> <kbd>K</kbd>.</p>

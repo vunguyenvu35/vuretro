@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { app, refresh, toast } from '../lib/store.svelte.js';
+  import { app, refresh, importBios } from '../lib/store.svelte.js';
   import { api } from '../lib/api.js';
   import { colorOf } from '../lib/systems.js';
 
@@ -15,15 +15,7 @@
     refresh();
   }
 
-  async function importFiles(paths) {
-    if (!paths.length) return;
-    const results = await api.importBios(paths);
-    const ok = results.filter((r) => r.ok);
-    const bad = results.filter((r) => !r.ok);
-    const lines = [...ok.map((r) => `✓ ${r.message}`), ...bad.map((r) => `✕ ${r.source.split(/[\\/]/).pop()}: ${r.message}`)];
-    toast(lines.join('\n'), bad.length ? 'error' : 'info');
-    refresh();
-  }
+  const importFiles = importBios;
 
   async function browse() {
     importFiles(await api.pickFiles());

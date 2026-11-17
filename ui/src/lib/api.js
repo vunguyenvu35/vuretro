@@ -96,14 +96,14 @@ api.onPadsChanged = (fn) => (inTauri ? listen('pads-changed', (e) => fn(e.payloa
 api.onPadButton = (fn) => (inTauri ? listen('pad-button', (e) => fn(e.payload)) : Promise.resolve(() => {}));
 
 // ---- game settings ----
-let mockGame = { window_scale: 2, sound: true, volume: 100, sync_display: true };
+let mockGame = { window_scale: 2, sound: true, volume: 100, sync_display: true, pause_on_blur: false };
 mock.import_roms = async () => [];
 mock.remove_rom = async () => {};
 mock.get_game_settings = async () => ({ ...mockGame });
 mock.set_game_settings = async ({ settings }) => ((mockGame = { ...settings }), { ...mockGame });
 api.gameSettings = () => call('get_game_settings');
 api.setGameSettings = (settings) => call('set_game_settings', { settings });
-api.defaultGameSettings = async () => ({ window_scale: 2, sound: true, volume: 100, sync_display: true });
+api.defaultGameSettings = async () => ({ window_scale: 2, sound: true, volume: 100, sync_display: true, pause_on_blur: false });
 
 // ---- preview images ----
 mock.get_covers = async () => ({});
@@ -112,3 +112,6 @@ api.covers = (paths) => call('get_covers', { paths });
 api.generateCovers = (games) => call('generate_covers', { games });
 api.onCoversUpdated = (fn) => (inTauri ? listen('covers-updated', (e) => fn(e.payload)) : Promise.resolve(() => {}));
 api.onCoversDone = (fn) => (inTauri ? listen('covers-done', () => fn()) : Promise.resolve(() => {}));
+
+// ---- native menu bar ----
+api.onMenu = (fn) => (inTauri ? listen('menu', (e) => fn(e.payload)) : Promise.resolve(() => {}));

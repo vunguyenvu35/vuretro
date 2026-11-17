@@ -29,7 +29,41 @@ const CODE_TO_KEY = {
   Minus: 'Minus', Equal: 'Equal', Backslash: 'Backslash', Insert: 'Insert', Delete: 'Delete',
   Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown',
 };
-export const RESERVED = ['Escape', 'Tab', 'F2', 'F5', 'F6', 'F7', 'F8'];
+import { modKey } from './systems.js';
+
+/** Keyboard shortcuts of the app window. */
+export const APP_SHORTCUTS = [
+  { keys: [modKey, 'F'], what: 'Find a game', also: [modKey, 'K'] },
+  { keys: [modKey, 'O'], what: 'Import games' },
+  { keys: [modKey, '⇧', 'O'], what: 'Import a folder' },
+  { keys: [modKey, 'B'], what: 'Import BIOS files' },
+  { keys: [modKey, 'R'], what: 'Refresh the library' },
+  { keys: [modKey, '1'], what: 'Library' },
+  { keys: [modKey, '2'], what: 'Recently played' },
+  { keys: [modKey, '3'], what: 'Favorites' },
+  { keys: [modKey, '4'], what: 'Cores & BIOS' },
+  { keys: [modKey, '5'], what: 'Controls' },
+  { keys: [modKey, ','], what: 'Settings' },
+  { keys: ['←', '↑', '↓', '→'], what: 'Move between games' },
+  { keys: ['Enter'], what: 'Play the selected game' },
+  { keys: ['F'], what: 'Add or remove favorite' },
+  { keys: ['Esc'], what: 'Clear the search' },
+];
+
+/** Keys the game window uses itself (shown on the Controls and Settings screens). */
+export const HOTKEYS = [
+  { keys: ['F10'], also: ['F9'], what: 'Bigger / smaller window', note: 'Remembered for next time' },
+  { keys: ['P'], also: ['F3'], what: 'Pause / resume', note: 'Dims the picture and mutes the sound' },
+  { keys: ['F8'], what: 'Sound on / off' },
+  { keys: ['F5'], what: 'Save state' },
+  { keys: ['F7'], what: 'Load state' },
+  { keys: ['F6'], what: 'Next save slot' },
+  { keys: ['F2'], what: 'Reset game' },
+  { keys: ['Tab'], what: 'Fast-forward', note: 'Hold' },
+  { keys: ['Esc'], what: 'Quit game' },
+];
+
+export const RESERVED = ['Escape', 'Tab', 'KeyP', 'F2', 'F3', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10'];
 
 /** KeyboardEvent.code -> runner key name, or null if it cannot be bound. */
 export function keyName(code) {
