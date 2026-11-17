@@ -6,6 +6,8 @@
 //! of `gilrs::Button` (`"South"`, `"DPadUp"`, `"LeftTrigger"`). Positional gamepad
 //! names mean "South" is the bottom face button on any pad.
 
+pub mod macros;
+
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::Path;

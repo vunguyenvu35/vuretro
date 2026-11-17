@@ -375,12 +375,43 @@ async fn import_roms(
     .map_err(|e| e.to_string())
 }
 
+impl AppState {
+    /// Delete an imported ROM together with its save data bookkeeping and preview.
+    fn remove_one(&self, path: &str) -> Result<(), String> {
+        roms::remove(&self.roms_dir(), Path::new(path))?;
+        self.meta.lock().unwrap().remove(path);
+        let _ = std::fs::remove_file(self.cover_file(Path::new(path)));
+        Ok(())
+    }
+}
+
 #[tauri::command]
 fn remove_rom(state: State<'_, AppState>, path: String) -> Result<(), String> {
-    roms::remove(&state.roms_dir(), Path::new(&path))?;
-    state.meta.lock().unwrap().remove(&path);
+    state.remove_one(&path)?;
     state.save_meta();
     Ok(())
+}
+
+/// Remove several imported ROMs at once; one result per game.
+#[tauri::command]
+fn remove_roms(state: State<'_, AppState>, paths: Vec<String>) -> Vec<ImportOutcome> {
+    let out = paths
+        .into_iter()
+        .map(|p| match state.remove_one(&p) {
+            Ok(()) => ImportOutcome {
+                source: p,
+                ok: true,
+                message: "removed".into(),
+            },
+            Err(message) => ImportOutcome {
+                source: p,
+                ok: false,
+                message,
+            },
+        })
+        .collect();
+    state.save_meta();
+    out
 }
 
 // ---------- settings ----------
@@ -639,6 +670,29 @@ impl AppState {
     }
 }
 
+// ---------- macros ----------
+
+impl AppState {
+    fn macros_path(&self) -> PathBuf {
+        self.data_dir.join("config").join("macros.json")
+    }
+}
+
+#[tauri::command]
+fn get_macros(state: State<'_, AppState>) -> vuretro_controls::macros::MacroConfig {
+    vuretro_controls::macros::load(&state.macros_path())
+}
+
+#[tauri::command]
+fn set_macros(
+    state: State<'_, AppState>,
+    config: vuretro_controls::macros::MacroConfig,
+) -> Result<vuretro_controls::macros::MacroConfig, String> {
+    let config = config.sanitized();
+    vuretro_controls::macros::save(&state.macros_path(), &config)?;
+    Ok(config)
+}
+
 // ---------- game settings ----------
 
 impl AppState {
@@ -759,6 +813,21 @@ fn open_external(target: &str) {
         "xdg-open"
     };
     let _ = Command::new(program).arg(target).spawn();
+}
+
+/// Show a file in Finder / Explorer / the file manager, selected where the system can.
+#[tauri::command]
+fn reveal_path(path: String) {
+    let p = Path::new(&path);
+    if cfg!(target_os = "macos") {
+        let _ = Command::new("open").arg("-R").arg(p).spawn();
+    } else if cfg!(windows) {
+        let _ = Command::new("explorer")
+            .arg(format!("/select,{path}"))
+            .spawn();
+    } else {
+        open_external(&p.parent().unwrap_or(p).to_string_lossy());
+    }
 }
 
 fn build_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
@@ -909,12 +978,16 @@ fn main() {
             import_bios,
             import_roms,
             remove_rom,
+            reveal_path,
+            remove_roms,
             launch_game,
             launch_demo,
             get_controls,
             set_controls,
             default_controls,
             get_game_settings,
+            get_macros,
+            set_macros,
             get_covers,
             generate_covers,
             set_game_settings,

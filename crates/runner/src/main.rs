@@ -222,7 +222,13 @@ fn main() -> Result<()> {
         .controls
         .clone()
         .unwrap_or_else(|| dirs.data_dir().join("config").join("controls.json"));
-    let mut input = input::Input::new(vuretro_controls::load(&controls_path));
+    let macros_path = dirs.data_dir().join("config").join("macros.json");
+    let game_macros = vuretro_controls::macros::load(&macros_path)
+        .for_game(&vuretro_controls::macros::game_key(&rom_name));
+    if !game_macros.is_empty() {
+        log::info!("{} macro button(s) for this game", game_macros.len());
+    }
+    let mut input = input::Input::new(vuretro_controls::load(&controls_path), game_macros, fps);
     let shots_dir = dirs.data_dir().join("screenshots");
     let mut slot: u8 = 1;
     let state_path = |slot: u8| save_dir.join(format!("{rom_name}.state{slot}"));

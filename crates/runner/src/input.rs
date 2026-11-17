@@ -6,6 +6,7 @@ use crate::frontend::{self, MAX_PORTS};
 use gilrs::{Button, Gilrs};
 use libretro_sys::*;
 use minifb::{Key, Window};
+use vuretro_controls::macros::{Engine, Macro};
 use vuretro_controls::{assign, ControlsConfig, PadInfo, PortSource, ACTIONS};
 
 fn action_id(name: &str) -> Option<u32> {
@@ -185,11 +186,14 @@ pub struct Input {
     gilrs: Option<Gilrs>,
     bindings: Vec<Bindings>,
     cfg: ControlsConfig,
+    /// Macro buttons for this game and the triggers they listen to.
+    engine: Engine,
+    triggers: Vec<(Option<Key>, Option<Button>)>,
     last: [[bool; JOYPAD_BUTTON_COUNT]; MAX_PORTS],
 }
 
 impl Input {
-    pub fn new(cfg: ControlsConfig) -> Self {
+    pub fn new(cfg: ControlsConfig, macros: Vec<Macro>, fps: f64) -> Self {
         let gilrs = match Gilrs::new() {
             Ok(g) => {
                 for (_, pad) in g.gamepads() {
@@ -207,6 +211,16 @@ impl Input {
             gilrs,
             bindings,
             cfg,
+            triggers: macros
+                .iter()
+                .map(|m| {
+                    (
+                        m.key.as_deref().and_then(parse_key),
+                        m.pad.as_deref().and_then(parse_button),
+                    )
+                })
+                .collect(),
+            engine: Engine::new(macros, fps),
             last: [[false; JOYPAD_BUTTON_COUNT]; MAX_PORTS],
         }
     }
@@ -269,6 +283,32 @@ impl Input {
                 }
             }
         }
+        // Macro buttons: their triggers are checked here, the buttons they press are
+        // added to the normal ones.
+        if !self.engine.is_empty() {
+            let down: Vec<bool> = self
+                .triggers
+                .iter()
+                .zip(self.engine.macros())
+                .map(|((key, button), m)| {
+                    let key_down = key.is_some_and(|k| window.is_key_down(k));
+                    let pad_down = match (button, sources.get(m.player).and_then(|s| s.pad)) {
+                        (Some(b), Some(idx)) => self
+                            .gilrs
+                            .as_ref()
+                            .is_some_and(|g| g.gamepad(pads[idx].0).is_pressed(*b)),
+                        _ => false,
+                    };
+                    key_down || pad_down
+                })
+                .collect();
+            for (player, action) in self.engine.step(&down) {
+                if let (Some(id), Some(port)) = (action_id(&action), state.get_mut(player)) {
+                    port[id as usize] = true;
+                }
+            }
+        }
+
         if state != self.last {
             // Visible with RUST_LOG=debug: shows what the runner actually sees.
             for (port, p) in state.iter().enumerate() {
