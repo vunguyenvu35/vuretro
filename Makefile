@@ -29,16 +29,23 @@ SCALE ?= 2
 ROMS  ?= $(HOME)/Games/roms
 
 .DEFAULT_GOAL := help
-.PHONY: help dev demo app-build run play options build release test fmt lint check ci cores scan screenshot smoke clean
+.PHONY: help setup toolchain dev demo app-build run play options build release test fmt lint check ci cores scan screenshot smoke clean
 
 help: ## List available commands
 	@awk 'BEGIN{FS=":.*## "} /^[a-z-]+:.*## /{printf "  \033[33mmake %-12s\033[0m %s\n",$$1,$$2}' $(MAKEFILE_LIST)
 
-dev: node_modules ## Open the vuretro app (Library UI); builds the runner and fake core first
+setup: ## Install prerequisites on a fresh machine (Rust, checks Node/Xcode CLT)
+	./scripts/setup.sh
+
+# Auto-runs setup the first time cargo is missing
+toolchain:
+	@command -v cargo >/dev/null || ./scripts/setup.sh
+
+dev: toolchain node_modules ## Open the vuretro app (Library UI); builds the runner and fake core first
 	cargo build -p vuretro-runner -p vuretro-test-core
 	npx tauri dev
 
-app-build: node_modules ## Build the installable app bundle (release)
+app-build: toolchain node_modules ## Build the installable app bundle (release)
 	cargo build --release -p vuretro-runner
 	npx tauri build
 
