@@ -10,7 +10,7 @@ Try the runner now: `make dev` (see [DEVELOPMENT.md](DEVELOPMENT.md)).
 
 ## The app
 
-`src-tauri/` (crate `vuretro-app`, binary `vuretro`) exposes commands to the Svelte UI: `get_overview` (scan + system and BIOS status), `set_rom_dir`, `set_system_enabled`, `toggle_favorite`, `import_bios`, `launch_game`, `launch_demo`. It reuses `vuretro-library` directly and starts games as `vuretro-runner` child processes: it waits 1.5 s to catch immediate failures (missing BIOS, bad file) and shows the tail of `logs/runner.log`, then tracks play time until the process exits. It lives in its own Cargo workspace so the core workspace builds without system webview libraries.
+`src-tauri/` (crate `vuretro-app`, binary `vuretro`) exposes commands to the Svelte UI: `get_overview` (scan + system and BIOS status), `set_rom_dir`, `set_system_enabled`, `toggle_favorite`, `import_bios`, `launch_game`, `launch_demo`, `get_controls`, `set_controls`, `default_controls`. A watcher thread (gilrs) keeps the connected-pad list and emits `pads-changed` and `pad-button` events for the Controls screen. It reuses `vuretro-library` directly and starts games as `vuretro-runner` child processes: it waits 1.5 s to catch immediate failures (missing BIOS, bad file) and shows the tail of `logs/runner.log`, then tracks play time until the process exits. It lives in its own Cargo workspace so the core workspace builds without system webview libraries.
 
 ## Crates
 
@@ -18,6 +18,7 @@ Try the runner now: `make dev` (see [DEVELOPMENT.md](DEVELOPMENT.md)).
 |---|---|
 | `libretro-sys` | FFI types from `libretro.h`, only what is used. Add constants as cores need them. |
 | `vuretro-runner` | Binary that runs one game. `core.rs` loads symbols, `frontend.rs` holds the C callbacks, plus `audio.rs` and `input.rs`, `options.rs` (core options). |
+| `vuretro-controls` | Controls config shared by runner and app: devices per player, key and button bindings, and the logic that assigns pads to players. |
 | `vuretro-library` | `registry.rs` (system → core, file extensions, BIOS + MD5), `scan.rs`, `bios.rs`. The `vuretro-scan` binary prints JSON. |
 | `vuretro-app` (`src-tauri/`) | Tauri shell: commands for the UI, launches the runner. Separate workspace. |
 | `vuretro-test-core` | Fake core (cdylib) for tests and CI, with fake save RAM and one core option. `make dev` and `make smoke` use it. |

@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 libretro-sys = { path = "../libretro-sys" }
+vuretro-controls = { path = "../controls" }
 anyhow.workspace = true
 log.workspace = true
 env_logger.workspace = true

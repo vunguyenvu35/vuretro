@@ -98,6 +98,8 @@ Delete a line to use the core default. Override the file with `--options <FILE>`
 
 ## Where the app keeps things
 
+`config/controls.json` holds the controls (edited in the Controls screen; the runner reads it at start, or pass `--controls <FILE>`).
+
 `<data dir>/settings.json` (ROM folder, switched-off systems), `library.json` (last played, play time, favorites), `logs/runner.log` (output of the last game, shown when a game fails to start), plus `system/`, `saves/`, `config/` as above.
 
 ## Debugging

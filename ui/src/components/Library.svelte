@@ -1,8 +1,10 @@
 <script>
-  import { app, chooseRomFolder, play, runDemo, refresh } from '../lib/store.svelte.js';
+  import { app, play, refresh } from '../lib/store.svelte.js';
+  import Welcome from "./Welcome.svelte";
   import { api } from '../lib/api.js';
   import { colorOf, formatAgo, formatPlaytime, modKey } from '../lib/systems.js';
 
+  import { onMount } from "svelte";
   let searchEl = $state();
 
   const ov = $derived(app.overview);
@@ -32,6 +34,8 @@
     app.system ? sysName(app.system) : { all: 'All games', recent: 'Recently played', favorites: 'Favorites' }[app.filter],
   );
 
+  onMount(() => document.activeElement?.blur?.());
+
   function onkey(e) {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
@@ -47,42 +51,16 @@
 
 <svelte:window onkeydown={onkey} />
 
+{#if !ov || !ov.rom_dir || ov.games.length === 0}
+  <Welcome />
+{:else}
 <section class="main">
   <div class="top">
     <input bind:this={searchEl} bind:value={app.query} placeholder="Search games…  ({modKey} K)" aria-label="Search games" />
+    <span class="summary">{ov.games.length} games · {ov.systems.filter((s) => s.game_count).length} systems</span>
   </div>
 
-  {#if !ov?.rom_dir}
-    <div class="empty">
-      <h2>Welcome to vuretro</h2>
-      <p>Point vuretro at the folder that holds your ROMs. It never copies or uploads them.</p>
-      <div class="row">
-        <button class="btn primary" onclick={chooseRomFolder}>Choose ROM folder…</button>
-        {#if ov?.demo_available}
-          <button class="btn" onclick={runDemo}>Try the demo (no ROM needed)</button>
-        {/if}
-      </div>
-      {#if !ov?.runner_found}
-        <p class="warn">Game runner not found. Run <code>make build</code> once, then restart the app.</p>
-      {/if}
-    </div>
-  {:else if ov.games.length === 0}
-    <div class="empty">
-      <h2>No games found</h2>
-      <p>Scanned <span class="mono">{ov.rom_dir}</span>. Put each system in its own folder:</p>
-      <pre class="mono">{ov.rom_dir}/
-├─ neogeo/   mslug.zip
-├─ psx/      game.chd
-├─ snes/     game.sfc
-└─ gba/      game.gba</pre>
-      <div class="row">
-        <button class="btn" onclick={chooseRomFolder}>Choose another folder…</button>
-        <button class="btn" onclick={refresh}>Rescan</button>
-        {#if ov.demo_available}<button class="btn" onclick={runDemo}>Try the demo</button>{/if}
-      </div>
-    </div>
-  {:else}
-    <div class="scroll">
+  <div class="scroll">
       {#if hero && !app.query}
         <div class="hero">
           <div class="crt scan" style="--c:{colorOf(hero.system)}"><span>{hero.title}</span></div>
@@ -125,8 +103,7 @@
           {/each}
         </div>
       {/if}
-    </div>
-  {/if}
+  </div>
 </section>
 
 {#if selected && sel}
@@ -158,11 +135,14 @@
     {/if}
   </aside>
 {/if}
+{/if}
 
 <style>
   .main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 16px 20px 0; gap: 14px; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .summary { color: var(--faint); white-space: nowrap; }
   .top input {
-    width: 100%; max-width: 520px; background: var(--surface-2); border: 1px solid var(--border);
+    flex: 1; max-width: 460px; background: var(--surface-2); border: 1px solid var(--border);
     border-radius: 20px; padding: 8px 16px; user-select: text;
   }
   .top input::placeholder { color: var(--muted); }
@@ -170,12 +150,6 @@
   .row { display: flex; gap: 10px; flex-wrap: wrap; }
   .muted { color: var(--muted); margin: 4px 0 0; }
   .pad { padding: 24px 0; }
-  .empty { margin: 8vh auto; max-width: 520px; display: flex; flex-direction: column; gap: 14px; }
-  .empty h2 { font-size: 26px; }
-  .empty p { color: var(--muted); margin: 0; }
-  .empty pre { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin: 0; user-select: text; }
-  .warn { color: var(--bad) !important; }
-  code { font-family: var(--font-mono); background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
 
   .hero { display: flex; gap: 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
   .hero-body { display: flex; flex-direction: column; gap: 4px; justify-content: center; }

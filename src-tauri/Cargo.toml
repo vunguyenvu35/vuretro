@@ -24,3 +24,5 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 directories = "5"
 vuretro-library = { path = "../crates/library" }
+vuretro-controls = { path = "../crates/controls" }
+gilrs = "0.10"

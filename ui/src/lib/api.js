@@ -8,7 +8,9 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 const mockBios = (system, file, required, note, state = 'missing') => ({ system, file, required, note, state });
-const mockOverview = () => ({
+const emptyMock = typeof location !== "undefined" && location.hash.includes("empty");
+const mockOverview = () => (emptyMock ? { ...fullMock(), rom_dir: null, games: [], systems: fullMock().systems.map((s) => ({ ...s, game_count: 0 })) } : fullMock());
+const fullMock = () => ({
   data_dir: '~/Library/Application Support/dev.vuvn.vuretro',
   system_dir: '~/Library/Application Support/dev.vuvn.vuretro/system',
   rom_dir: '~/Games/roms',
@@ -61,3 +63,27 @@ export const api = {
   onGameExited: (fn) => (inTauri ? listen('game-exited', fn) : Promise.resolve(() => {})),
   onDragDrop: (fn) => (inTauri ? getCurrentWebview().onDragDropEvent((e) => fn(e.payload)) : Promise.resolve(() => {})),
 };
+
+// ---- controls ----
+const mockControls = () => ({
+  config: {
+    players: [
+      { device: { kind: 'auto' }, deadzone: 0.35, stick_as_dpad: true,
+        keyboard: { up: ['Up'], down: ['Down'], left: ['Left'], right: ['Right'], b: ['Z'], a: ['X'], y: ['A'], x: ['S'], l: ['Q'], r: ['E'], l2: ['W'], r2: ['R'], select: ['RightShift', 'Key5'], start: ['Enter', 'Key1'] },
+        gamepad: { up: ['DPadUp'], down: ['DPadDown'], left: ['DPadLeft'], right: ['DPadRight'], b: ['South'], a: ['East'], y: ['West'], x: ['North'], l: ['LeftTrigger'], r: ['RightTrigger'], l2: ['LeftTrigger2'], r2: ['RightTrigger2'], l3: ['LeftThumb'], r3: ['RightThumb'], select: ['Select'], start: ['Start'] } },
+      { device: { kind: 'auto' }, deadzone: 0.35, stick_as_dpad: true,
+        keyboard: { up: ['I'], down: ['K'], left: ['J'], right: ['L'], b: ['N'], a: ['M'], y: ['H'], x: ['G'], select: ['Key6'], start: ['Key2'] },
+        gamepad: { up: ['DPadUp'], down: ['DPadDown'], left: ['DPadLeft'], right: ['DPadRight'], b: ['South'], a: ['East'], y: ['West'], x: ['North'], l: ['LeftTrigger'], r: ['RightTrigger'], l2: ['LeftTrigger2'], r2: ['RightTrigger2'], l3: ['LeftThumb'], r3: ['RightThumb'], select: ['Select'], start: ['Start'] } },
+    ],
+  },
+  pads: [{ id: 'mock-xbox', name: 'Xbox Wireless Controller' }, { id: 'mock-dual', name: 'DualSense Wireless Controller' }],
+});
+mock.get_controls = async () => mockControls();
+mock.default_controls = async () => mockControls().config;
+mock.set_controls = async ({ config }) => config;
+
+api.controls = () => call('get_controls');
+api.defaultControls = () => call('default_controls');
+api.setControls = (config) => call('set_controls', { config });
+api.onPadsChanged = (fn) => (inTauri ? listen('pads-changed', (e) => fn(e.payload)) : Promise.resolve(() => {}));
+api.onPadButton = (fn) => (inTauri ? listen('pad-button', (e) => fn(e.payload)) : Promise.resolve(() => {}));

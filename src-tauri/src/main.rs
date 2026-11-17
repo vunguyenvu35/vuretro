@@ -7,9 +7,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager, State};
+use vuretro_controls::{ControlsConfig, PadInfo};
 use vuretro_library::bios::{self, BiosStatus};
 use vuretro_library::registry::{self, SYSTEMS};
 use vuretro_library::scan;
@@ -31,6 +32,7 @@ struct GameMeta {
 
 struct AppState {
     data_dir: PathBuf,
+    pads: Arc<Mutex<Vec<PadInfo>>>,
     settings: Mutex<Settings>,
     meta: Mutex<HashMap<String, GameMeta>>,
 }
@@ -435,6 +437,99 @@ async fn launch_demo(app: tauri::AppHandle, state: State<'_, AppState>) -> Resul
     spawn_runner(&app, &state, &core, &rom, None)
 }
 
+// ---------- controls ----------
+
+impl AppState {
+    fn controls_path(&self) -> PathBuf {
+        self.data_dir.join("config").join("controls.json")
+    }
+}
+
+#[derive(Serialize)]
+struct ControlsView {
+    config: ControlsConfig,
+    pads: Vec<PadInfo>,
+}
+
+#[tauri::command]
+fn get_controls(state: State<'_, AppState>) -> ControlsView {
+    ControlsView {
+        config: vuretro_controls::load(&state.controls_path()),
+        pads: state.pads.lock().unwrap().clone(),
+    }
+}
+
+#[tauri::command]
+fn set_controls(
+    state: State<'_, AppState>,
+    config: ControlsConfig,
+) -> Result<ControlsConfig, String> {
+    let config = config.sanitized();
+    vuretro_controls::save(&state.controls_path(), &config)?;
+    Ok(config)
+}
+
+#[tauri::command]
+fn default_controls() -> ControlsConfig {
+    ControlsConfig::default()
+}
+
+#[derive(Serialize, Clone)]
+struct PadButton {
+    id: String,
+    name: String,
+    button: String,
+}
+
+fn uuid_hex(u: [u8; 16]) -> String {
+    u.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Watches gamepads on its own thread (gilrs must live where it was created), keeps the
+/// shared pad list current and tells the UI about connects and button presses so it can
+/// identify pads and capture bindings.
+fn spawn_gamepad_watcher(app: tauri::AppHandle, pads: Arc<Mutex<Vec<PadInfo>>>) {
+    std::thread::spawn(move || {
+        let Ok(mut g) = gilrs::Gilrs::new() else {
+            return;
+        };
+        let snapshot = |g: &gilrs::Gilrs| -> Vec<PadInfo> {
+            g.gamepads()
+                .filter(|(_, p)| p.is_connected())
+                .map(|(_, p)| PadInfo {
+                    id: uuid_hex(p.uuid()),
+                    name: p.name().to_string(),
+                })
+                .collect()
+        };
+        *pads.lock().unwrap() = snapshot(&g);
+        loop {
+            while let Some(ev) = g.next_event() {
+                match ev.event {
+                    gilrs::EventType::Connected | gilrs::EventType::Disconnected => {
+                        let list = snapshot(&g);
+                        *pads.lock().unwrap() = list.clone();
+                        let _ = app.emit("pads-changed", list);
+                    }
+                    gilrs::EventType::ButtonPressed(btn, _) => {
+                        let pad = g.gamepad(ev.id);
+                        let _ = app.emit(
+                            "pad-button",
+                            PadButton {
+                                id: uuid_hex(pad.uuid()),
+                                name: pad.name().to_string(),
+                                button: format!("{btn:?}"),
+                            },
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            std::thread::sleep(Duration::from_millis(8));
+        }
+    });
+}
+
 fn main() {
     let data_dir = ProjectDirs::from("dev", "vuvn", "vuretro")
         .map(|d| d.data_dir().to_path_buf())
@@ -443,11 +538,17 @@ fn main() {
         settings: Mutex::new(read_json(&data_dir.join("settings.json"))),
         meta: Mutex::new(read_json(&data_dir.join("library.json"))),
         data_dir,
+        pads: Arc::new(Mutex::new(Vec::new())),
     };
+    let pads = state.pads.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
+        .setup(move |app| {
+            spawn_gamepad_watcher(app.handle().clone(), pads.clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_overview,
             set_rom_dir,
@@ -456,6 +557,9 @@ fn main() {
             import_bios,
             launch_game,
             launch_demo,
+            get_controls,
+            set_controls,
+            default_controls,
         ])
         .run(tauri::generate_context!())
         .expect("error while running vuretro");

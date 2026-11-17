@@ -20,6 +20,8 @@ The app is built with Tauri v2 and Svelte (`ui/` for the frontend, `src-tauri/` 
 
 Sidebar (Library: All / Recent / Favorites; Systems with game counts; ROM folder) · search (`⌘K` on macOS, `Ctrl+K` elsewhere) · "Continue playing" hero · cover grid sorted by Recent / A–Z / Size · details panel with core, file, BIOS state, play time and favorite. **Play** is locked with a reason when the BIOS or core is missing. Double-click a cover to play.
 
+![Welcome screen](images/app-welcome.png)
+
 First launch, before any ROM folder is chosen, shows a welcome screen with **Choose ROM folder** and, when the runner is built, **Try the demo** (the fake test core, no ROM needed).
 
 ### Cores & BIOS
@@ -32,7 +34,13 @@ One card per system (core, extensions, game count, BIOS) with a status (Ready / 
 
 ![Controls screen](images/app-controls.png)
 
-Shows the keyboard layout, in-game hotkeys and gamepad behavior. Rebinding keys from the app is planned with the in-game menu (Phase 3).
+Everything about input in one place, saved instantly to `<data dir>/config/controls.json` and applied the next time a game starts:
+
+- **Players**: pick the device for Player 1 and Player 2 (Auto, keyboard only, a specific gamepad by name, or disabled) and **Swap** them with one click. Auto means keyboard + first gamepad for P1 and the next free gamepad for P2. A pad chosen by name keeps its player even if the connection order changes.
+- **Connected gamepads**: live list; press a button on a pad and its row lights up, so you know which one is which.
+- **Button mapping**: per player, every RetroPad button can have several keys and several gamepad buttons. Click **+ Set** / **+ Add**, then press the key or pad button. A key or button belongs to one action per player. Esc cancels. Reset restores the defaults.
+- **Stick**: dead zone slider and a switch for using the left stick as the D-pad.
+- Reserved keys (Esc, Tab, F2, F5, F6, F7) are runner hotkeys and cannot be bound.
 
 ## Notes for development
 

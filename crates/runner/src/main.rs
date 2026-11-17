@@ -50,6 +50,9 @@ struct Args {
     /// Core options file, `key = value` per line (default: <data dir>/config/<core>.cfg)
     #[arg(long, value_name = "FILE")]
     options: Option<PathBuf>,
+    /// Controls file (default: <data dir>/config/controls.json)
+    #[arg(long, value_name = "FILE")]
+    controls: Option<PathBuf>,
     /// Print the core's options as a config template and exit
     #[arg(long)]
     list_options: bool,
@@ -165,7 +168,11 @@ fn main() -> Result<()> {
     )?;
     window.set_target_fps(av.timing.fps.round().max(1.0) as usize);
 
-    let mut input = input::Input::new();
+    let controls_path = args
+        .controls
+        .clone()
+        .unwrap_or_else(|| dirs.data_dir().join("config").join("controls.json"));
+    let mut input = input::Input::new(vuretro_controls::load(&controls_path));
     let mut slot: u8 = 1;
     let state_path = |slot: u8| save_dir.join(format!("{rom_name}.state{slot}"));
     let mut last_sram_save = std::time::Instant::now();

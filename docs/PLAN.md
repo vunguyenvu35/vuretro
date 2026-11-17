@@ -43,7 +43,8 @@ Try the current state: `make dev` (see [DEVELOPMENT.md](DEVELOPMENT.md)). Archit
 - [x] **Library** screen: system sidebar, "Continue playing" hero, cover grid, details panel, search, sort, favorites, welcome screen with demo
 - [x] **Cores & BIOS** screen: switch systems on/off, BIOS status, drag-and-drop or browse BIOS files (MD5 check, renamed dumps accepted)
 - [x] **Controls** screen: keyboard layout, hotkeys, gamepad notes (read-only)
-- [ ] Controls: device picker, button diagram, rebinding (needs the Phase 3 remap file)
+- [x] Controls: device per player + swap, live gamepad list, per-player key and button rebinding, dead zone, stick-as-D-pad (`config/controls.json`, shared crate `vuretro-controls`)
+- [ ] Controls: per-system and per-game overrides, button diagram, analog trigger and right-stick options
 - [x] Tauri commands calling `vuretro-library` (scan, BIOS check/import) and spawning `vuretro-runner`, reporting early failures from `runner.log`
 - [x] Metadata (play time, last played, favorites) in `library.json`; SQLite deferred until the library is big enough to need it
 - [ ] Save-slot thumbnails and slot picker in the details panel (needs runner stdout JSON)
@@ -54,7 +55,7 @@ Try the current state: `make dev` (see [DEVELOPMENT.md](DEVELOPMENT.md)). Archit
 - [ ] `wgpu` renderer replacing `minifb`: keep aspect ratio, integer scale, fullscreen
 - [ ] CRT shader (scanlines, curvature), toggleable
 - [ ] In-game menu (Esc): save/load, change slot, back to Library
-- [ ] Key remaps stored as JSON by `system → device → action`, per-game overrides
+- [ ] Per-game and per-system overrides on top of the global `controls.json`
 - [ ] Thumbnails for save states
 
 ## Phase 4: More systems
