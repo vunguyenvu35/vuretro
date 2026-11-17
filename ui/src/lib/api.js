@@ -104,3 +104,11 @@ mock.set_game_settings = async ({ settings }) => ((mockGame = { ...settings }), 
 api.gameSettings = () => call('get_game_settings');
 api.setGameSettings = (settings) => call('set_game_settings', { settings });
 api.defaultGameSettings = async () => ({ window_scale: 2, sound: true, volume: 100, sync_display: true });
+
+// ---- preview images ----
+mock.get_covers = async () => ({});
+mock.generate_covers = async () => {};
+api.covers = (paths) => call('get_covers', { paths });
+api.generateCovers = (games) => call('generate_covers', { games });
+api.onCoversUpdated = (fn) => (inTauri ? listen('covers-updated', (e) => fn(e.payload)) : Promise.resolve(() => {}));
+api.onCoversDone = (fn) => (inTauri ? listen('covers-done', () => fn()) : Promise.resolve(() => {}));

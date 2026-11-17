@@ -16,13 +16,17 @@
   ];
   const STAGE_MAX = 340; // px width of the preview at 6x
 
+  // Whatever the backend sends, fill in anything missing so a switch never gets stuck.
+  const DEFAULTS = { window_scale: 2, sound: true, volume: 100, sync_display: true };
+  const withDefaults = (v) => ({ ...DEFAULTS, ...v });
+
   onMount(async () => {
-    s = await api.gameSettings();
+    s = withDefaults(await api.gameSettings());
   });
 
   async function save() {
     try {
-      s = await api.setGameSettings($state.snapshot(s));
+      s = withDefaults(await api.setGameSettings($state.snapshot(s)));
       saved = true;
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => (saved = false), 1800);
@@ -43,7 +47,7 @@
     save();
   }
   async function reset() {
-    s = await api.setGameSettings(await api.defaultGameSettings());
+    s = withDefaults(await api.setGameSettings(await api.defaultGameSettings()));
     toast('Settings reset to defaults');
   }
 

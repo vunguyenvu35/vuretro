@@ -4,9 +4,10 @@
 
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager, State};
@@ -36,9 +37,30 @@ struct AppState {
     pads: Arc<Mutex<Vec<PadInfo>>>,
     settings: Mutex<Settings>,
     meta: Mutex<HashMap<String, GameMeta>>,
+    /// A background run that makes preview images is going.
+    covering: AtomicBool,
+    /// Games a preview could not be made for (not retried until the app restarts).
+    cover_failed: Mutex<HashSet<String>>,
 }
 
 impl AppState {
+    /// Preview image of a game (a screenshot taken from the game itself).
+    fn cover_file(&self, rom: &Path) -> PathBuf {
+        let name: String = rom
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || ".-_".contains(c) {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        self.data_dir.join("covers").join(format!("{name}.png"))
+    }
     fn system_dir(&self) -> PathBuf {
         self.data_dir.join("system")
     }
@@ -420,6 +442,93 @@ fn import_bios(state: State<'_, AppState>, paths: Vec<String>) -> Vec<ImportOutc
         .collect()
 }
 
+// ---------- preview images ----------
+
+/// The preview images that exist, as `data:` URLs the page can show directly.
+#[tauri::command]
+fn get_covers(state: State<'_, AppState>, paths: Vec<String>) -> HashMap<String, String> {
+    use base64::Engine;
+    paths
+        .into_iter()
+        .filter_map(|p| {
+            let bytes = std::fs::read(state.cover_file(Path::new(&p))).ok()?;
+            let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+            Some((p, format!("data:image/png;base64,{b64}")))
+        })
+        .collect()
+}
+
+#[derive(Deserialize)]
+struct CoverRequest {
+    path: String,
+    system: String,
+}
+
+/// Make preview images in the background: each game is run for a while without a window
+/// and the most colourful frame is kept. Emits `covers-updated` after every image and
+/// `covers-done` at the end.
+#[tauri::command]
+fn generate_covers(app: tauri::AppHandle, state: State<'_, AppState>, games: Vec<CoverRequest>) {
+    if state.covering.swap(true, Ordering::SeqCst) {
+        return; // already running; the page asks again when it finishes
+    }
+    let Some(runner) = find_runner() else {
+        state.covering.store(false, Ordering::SeqCst);
+        return;
+    };
+    let mut jobs = Vec::new();
+    for g in games {
+        let rom = PathBuf::from(&g.path);
+        let out = state.cover_file(&rom);
+        let failed = state.cover_failed.lock().unwrap().contains(&g.path);
+        let core = SYSTEMS
+            .iter()
+            .find(|s| s.id == g.system)
+            .and_then(|s| find_core(&state, s.core));
+        if let (false, false, Some(core)) = (failed, out.exists(), core) {
+            jobs.push((g.path, rom, core, out));
+        }
+    }
+    if jobs.is_empty() {
+        state.covering.store(false, Ordering::SeqCst);
+        return; // nothing to do, and no event: the page would only ask again
+    }
+    let system_dir = state.system_dir();
+    let scratch = state.data_dir.join("cover-scratch");
+    std::thread::spawn(move || {
+        for (key, rom, core, out) in jobs {
+            let status = Command::new(&runner)
+                .arg("--core")
+                .arg(&core)
+                .arg("--rom")
+                .arg(&rom)
+                .arg("--system-dir")
+                .arg(&system_dir)
+                .arg("--save-dir")
+                .arg(&scratch)
+                .arg("--headless-frames")
+                .arg("1500")
+                .arg("--cover")
+                .arg(&out)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+            let app_state = app.state::<AppState>();
+            if matches!(status, Ok(s) if s.success()) && out.exists() {
+                let _ = app.emit("covers-updated", key);
+            } else {
+                app_state.cover_failed.lock().unwrap().insert(key);
+            }
+        }
+        let _ = std::fs::remove_dir_all(&scratch);
+        app.state::<AppState>()
+            .covering
+            .store(false, Ordering::SeqCst);
+        let _ = app.emit("covers-done", ());
+    });
+}
+
 // ---------- launching ----------
 
 fn spawn_runner(
@@ -441,6 +550,8 @@ fn spawn_runner(
         .arg(rom)
         .arg("--system-dir")
         .arg(state.system_dir())
+        .arg("--cover")
+        .arg(state.cover_file(rom))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(log)
@@ -645,6 +756,8 @@ fn main() {
         meta: Mutex::new(read_json(&data_dir.join("library.json"))),
         data_dir,
         pads: Arc::new(Mutex::new(Vec::new())),
+        covering: AtomicBool::new(false),
+        cover_failed: Mutex::new(HashSet::new()),
     };
     let pads = state.pads.clone();
 
@@ -669,6 +782,8 @@ fn main() {
             set_controls,
             default_controls,
             get_game_settings,
+            get_covers,
+            generate_covers,
             set_game_settings,
         ])
         .run(tauri::generate_context!())

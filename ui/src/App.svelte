@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { app, refresh } from './lib/store.svelte.js';
+  import { app, refresh, covers, loadCovers, syncCovers, reloadLastPlayed } from './lib/store.svelte.js';
   import { api } from './lib/api.js';
   import Sidebar from './components/Sidebar.svelte';
   import Library from './components/Library.svelte';
@@ -11,7 +11,12 @@
   onMount(() => {
     refresh();
     let off = [];
-    api.onGameExited(() => refresh()).then((f) => off.push(f));
+    api.onGameExited(async () => {
+      await refresh();
+      reloadLastPlayed();
+    }).then((f) => off.push(f));
+    api.onCoversUpdated((path) => loadCovers([path])).then((f) => off.push(f));
+    api.onCoversDone(() => syncCovers()).then((f) => off.push(f));
     return () => off.forEach((f) => f());
   });
 </script>

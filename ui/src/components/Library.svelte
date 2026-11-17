@@ -1,5 +1,5 @@
 <script>
-  import { app, play, refresh, importRoms, removeRom } from '../lib/store.svelte.js';
+  import { app, play, refresh, importRoms, removeRom, covers } from '../lib/store.svelte.js';
   import Welcome from "./Welcome.svelte";
   import { api } from '../lib/api.js';
   import { colorOf, formatAgo, formatPlaytime, modKey } from '../lib/systems.js';
@@ -82,7 +82,7 @@
   <div class="scroll">
       {#if hero && !app.query}
         <div class="hero">
-          <div class="crt scan" style="--c:{colorOf(hero.system)}"><span>{hero.title}</span></div>
+          <div class="crt scan" style="--c:{colorOf(hero.system)}">{#if covers[hero.path]}<img src={covers[hero.path]} alt="" />{:else}<span>{hero.title}</span>{/if}</div>
           <div class="hero-body">
             <div class="label">Continue playing</div>
             <h2>{hero.title}</h2>
@@ -112,7 +112,7 @@
           {#each visible as g (g.path)}
             <button class="card" class:sel={app.selected === g.path} onclick={() => (app.selected = g.path)} ondblclick={() => play(g)}>
               <div class="cover scan" style="--c:{colorOf(g.system)}">
-                <span>{g.title.slice(0, 22)}</span>
+                {#if covers[g.path]}<img src={covers[g.path]} alt="" loading="lazy" />{:else}<span>{g.title.slice(0, 22)}</span>{/if}
                 {#if g.favorite}<b class="star">★</b>{/if}
                 {#if g.blocked}<b class="lock" title={g.blocked}>🔒</b>{/if}
               </div>
@@ -127,7 +127,7 @@
 
 {#if selected && sel}
   <aside class="detail">
-    <div class="crt scan big" style="--c:{colorOf(selected.system)}"><span>{selected.title}</span></div>
+    <div class="crt scan big" style="--c:{colorOf(selected.system)}">{#if covers[selected.path]}<img src={covers[selected.path]} alt="" />{:else}<span>{selected.title}</span>{/if}</div>
     <h2>{selected.title}</h2>
     <p class="muted">{sel.name} · {mb(selected.size)}</p>
 
@@ -180,6 +180,7 @@
   .hero-body h2 { font-size: 22px; }
   .hero-body .row { margin-top: 10px; }
   .crt {
+    position: relative; overflow: hidden;
     width: 200px; height: 124px; border-radius: 6px; flex: none; display: grid; place-items: center; text-align: center;
     background: linear-gradient(160deg, color-mix(in srgb, var(--c) 28%, #0b0e16), #0b0e16 75%);
     border: 1px solid color-mix(in srgb, var(--c) 30%, var(--border));
@@ -195,13 +196,16 @@
   .sort button.on { color: var(--accent); }
   .sort button:hover { color: var(--text); }
 
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 18px 16px; }
   .card { background: none; border: 0; padding: 0; text-align: center; display: flex; flex-direction: column; gap: 6px; }
   .cover {
-    aspect-ratio: 3 / 4; border-radius: 6px; position: relative; display: grid; place-items: center; text-align: center;
+    aspect-ratio: 4 / 3; border-radius: 8px; position: relative; overflow: hidden; display: grid; place-items: center; text-align: center;
     background: linear-gradient(170deg, color-mix(in srgb, var(--c) 24%, #0b0e16), #0b0e16 80%);
     border: 1px solid color-mix(in srgb, var(--c) 22%, var(--border)); transition: transform .12s, border-color .12s;
   }
+  .crt img, .cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; image-rendering: pixelated; }
+  .cover img { transition: transform .25s; }
+  .card:hover .cover img { transform: scale(1.04); }
   .card:hover .cover { transform: translateY(-2px); border-color: var(--c); }
   .card.sel .cover { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
   .star { position: absolute; top: 6px; right: 8px; color: var(--accent); font-size: 14px; }

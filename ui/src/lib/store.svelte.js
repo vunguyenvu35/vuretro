@@ -17,6 +17,32 @@ const hash = typeof location !== "undefined" ? location.hash.slice(1).split(",")
 if (["cores", "controls", "settings"].includes(hash[0])) app.view = hash[0];
 export const startSelect = hash.includes("select");
 
+/** Preview images (data URLs) by game path. */
+export const covers = $state({});
+
+export async function loadCovers(paths) {
+  if (!paths.length) return;
+  try {
+    Object.assign(covers, await api.covers(paths));
+  } catch {
+    /* previews are optional */
+  }
+}
+
+/** Show the previews that exist and make the ones that are missing, in the background. */
+export async function syncCovers() {
+  const games = app.overview?.games ?? [];
+  await loadCovers(games.filter((g) => !(g.path in covers)).map((g) => g.path));
+  const todo = games.filter((g) => !covers[g.path] && !g.blocked);
+  if (todo.length) api.generateCovers(todo.map((g) => ({ path: g.path, system: g.system }))).catch(() => {});
+}
+
+/** A game just closed: its last frame replaced the preview. */
+export async function reloadLastPlayed() {
+  const last = [...(app.overview?.games ?? [])].sort((a, b) => b.last_played - a.last_played)[0];
+  if (last?.last_played) await loadCovers([last.path]);
+}
+
 let toastTimer;
 export function toast(text, kind = 'info') {
   app.toast = { text, kind };
@@ -32,6 +58,7 @@ export async function refresh() {
     toast(String(e), 'error');
   }
   app.loaded = true;
+  syncCovers();
 }
 
 function report(results) {

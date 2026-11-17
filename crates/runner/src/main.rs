@@ -5,8 +5,10 @@
 //! Hotkeys: Esc quit · F5 save state · F7 load state · F6 next slot
 //!          Tab (hold) fast-forward · F2 reset · F8 sound on/off
 
+mod appicon;
 mod audio;
 mod core;
+mod cover;
 mod display;
 mod frontend;
 mod input;
@@ -52,6 +54,10 @@ struct Args {
     /// With --headless-frames: write the last frame to this .ppm file
     #[arg(long, value_name = "FILE")]
     screenshot: Option<PathBuf>,
+    /// Save a preview image (PNG) of the game here: the best frame of a headless run,
+    /// or the last frame when a window is closed
+    #[arg(long, value_name = "FILE")]
+    cover: Option<PathBuf>,
     /// Core options file, `key = value` per line (default: <data dir>/config/<core>.cfg)
     #[arg(long, value_name = "FILE")]
     options: Option<PathBuf>,
@@ -154,7 +160,13 @@ fn main() -> Result<()> {
     );
 
     if let Some(n) = args.headless_frames {
-        return run_headless(&core, n, args.screenshot.as_deref(), &sram_path);
+        return run_headless(
+            &core,
+            n,
+            args.screenshot.as_deref(),
+            args.cover.as_deref(),
+            &sram_path,
+        );
     }
 
     let settings_path = args
@@ -212,6 +224,7 @@ fn main() -> Result<()> {
             ..WindowOptions::default()
         },
     )?;
+    appicon::apply();
     // Frame pacing is done below against absolute deadlines: minifb's own limiter
     // sleeps a fixed amount per frame, so it drifts (57 fps instead of 59.18) and
     // the audio then underruns.
@@ -288,6 +301,13 @@ fn main() -> Result<()> {
         }
         pace(&mut deadline, frame_time);
     }
+    if let Some(path) = &args.cover {
+        let mut best = cover::Best::default();
+        frontend::with(|fe| best.offer(&fe.frame, fe.width, fe.height));
+        if let Err(e) = best.save(path) {
+            log::warn!("cannot save cover: {e}");
+        }
+    }
     match core.save_sram(&sram_path) {
         Ok(0) => {}
         Ok(n) => log::info!("saved {n} bytes of save RAM"),
@@ -320,11 +340,24 @@ fn run_headless(
     core: &core::Core,
     frames: u32,
     screenshot: Option<&std::path::Path>,
+    cover: Option<&std::path::Path>,
     sram_path: &std::path::Path,
 ) -> Result<()> {
     let start = std::time::Instant::now();
-    for _ in 0..frames {
+    let mut best = cover::Best::default();
+    for i in 0..frames {
         core.run();
+        // Boot screens are dull: look for the most colourful frame in the later part.
+        if cover.is_some() && i >= frames / 4 && i % 30 == 0 {
+            frontend::with(|fe| best.offer(&fe.frame, fe.width, fe.height));
+        }
+    }
+    if let Some(path) = cover {
+        if best.save(path)? {
+            log::info!("cover: {}", path.display());
+        } else {
+            log::warn!("cover: no colourful frame found");
+        }
     }
     let elapsed = start.elapsed().as_secs_f64();
     log::info!(
