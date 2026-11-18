@@ -209,11 +209,14 @@ fn main() -> Result<()> {
             game: &rom_name,
         },
     );
-    // a system can have its own key bindings; otherwise the general ones apply
+    // key bindings: the game's own, else its system's, else the general ones
     let controls_path = args.controls.unwrap_or_else(|| {
-        let own = paths.system_controls_file(&system);
-        if !system.is_empty() && own.is_file() {
-            own
+        let game = paths.game_controls_file(&rom);
+        let sys = paths.system_controls_file(&system);
+        if game.is_file() {
+            game
+        } else if !system.is_empty() && sys.is_file() {
+            sys
         } else {
             paths.controls_file()
         }

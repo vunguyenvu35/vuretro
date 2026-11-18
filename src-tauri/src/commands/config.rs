@@ -135,3 +135,29 @@ pub fn set_game_override(
 ) -> Result<vuretro_core::model::ScopedSettings, String> {
     shell.app.set_game_override(&path, overrides)
 }
+
+/// Key bindings of one game (its own, else its system's, else the general ones).
+#[tauri::command]
+pub fn get_controls_for_game(shell: State<'_, Shell>, path: String) -> ScopedControlsView {
+    let v = shell.app.controls_for_game(&path);
+    scoped_view(&shell, v)
+}
+
+#[tauri::command]
+pub fn set_controls_for_game(
+    shell: State<'_, Shell>,
+    path: String,
+    config: ControlsConfig,
+) -> Result<ScopedControlsView, String> {
+    let v = shell.app.set_controls_for_game(&path, config)?;
+    Ok(scoped_view(&shell, v))
+}
+
+#[tauri::command]
+pub fn reset_controls_for_game(
+    shell: State<'_, Shell>,
+    path: String,
+) -> Result<ScopedControlsView, String> {
+    let v = shell.app.reset_controls_for_game(&path)?;
+    Ok(scoped_view(&shell, v))
+}

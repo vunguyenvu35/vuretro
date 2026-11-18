@@ -1,5 +1,6 @@
 <script>
   import { chooseCover, resetCover } from '../lib/store.svelte.js';
+import { gameScope } from '../lib/scope.js';
 import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, covers, setLayout, pickRomFiles, pickRomFolder } from '../lib/store.svelte.js';
   import { openMenu, confirmDialog } from '../lib/ui.svelte.js';
   import { visibleGames, lastPlayed, headingFor, pickRange, formatSize } from '../lib/library.js';
@@ -349,6 +350,8 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
     </div>
 
     <Cheats game={selected} />
+
+    <button class="btn wide" onclick={() => { app.scope = gameScope(selected.path); app.view = 'controls'; }}>Key bindings for this game…</button>
 
     <details class="gset">
       <summary class="label">Settings for this game</summary>

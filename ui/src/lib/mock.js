@@ -125,6 +125,10 @@ mock.set_game_override = async ({ path, overrides }) => {
   else delete mockGameOv[path];
   return mock.get_game_override({ path });
 };
+const mockGameControls = {};
+mock.get_controls_for_game = async ({ path }) => ({ config: mockGameControls[path] ?? (await mock.get_controls()).config, custom: !!mockGameControls[path], pads: [] });
+mock.set_controls_for_game = async ({ path, config }) => ((mockGameControls[path] = config), mock.get_controls_for_game({ path }));
+mock.reset_controls_for_game = async ({ path }) => (delete mockGameControls[path], mock.get_controls_for_game({ path }));
 const controlsView = async (system) => ({ config: mockSystemControls[system] ?? (await mock.get_controls()).config, custom: !!mockSystemControls[system], pads: [] });
 mock.get_controls_for = async ({ system }) => (system ? controlsView(system) : { ...(await mock.get_controls()), custom: false });
 mock.set_controls_for = async ({ system, config }) => ((mockSystemControls[system] = config), controlsView(system));

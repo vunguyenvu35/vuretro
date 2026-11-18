@@ -30,6 +30,10 @@ pub trait Store: Send + Sync {
     /// Key bindings of one system, if it has its own.
     fn load_system_controls(&self, system: &str) -> Option<ControlsConfig>;
     fn save_system_controls(&self, system: &str, controls: &ControlsConfig) -> Result<(), String>;
+    /// Key bindings of one game, if it has its own.
+    fn load_game_controls(&self, rom: &Path) -> Option<ControlsConfig>;
+    fn save_game_controls(&self, rom: &Path, controls: &ControlsConfig) -> Result<(), String>;
+    fn remove_game_controls(&self, rom: &Path) -> Result<(), String>;
     /// Go back to the general key bindings for this system.
     fn remove_system_controls(&self, system: &str) -> Result<(), String>;
     /// Window size, sound and the like, shared with the runner.

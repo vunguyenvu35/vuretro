@@ -1,13 +1,19 @@
 <script>
   import { app } from '../lib/store.svelte.js';
   import Select from './Select.svelte';
+  import { parseScope } from '../lib/scope.js';
 
   /** What the screen below is about: every game, or one system. */
   let { hint = '' } = $props();
 
+  const game = $derived.by(() => {
+    const p = parseScope(app.scope);
+    return p.kind === 'game' ? app.overview?.games.find((g) => g.path === p.id) : null;
+  });
   const options = $derived([
     { value: '', label: 'All games', hint: 'general' },
     ...(app.overview?.systems ?? []).map((s) => ({ value: s.id, label: s.name })),
+    ...(game ? [{ value: app.scope, label: game.title, hint: 'this game' }] : []),
   ]);
 </script>
 

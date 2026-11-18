@@ -496,8 +496,7 @@ impl App {
     }
 
     /// What a game would use if it overrode nothing: general settings plus its system's.
-    fn inherited_for(&self, rom: &Path) -> GameSettings {
-        let base = self.store.load_game_settings();
+    fn system_of(&self, rom: &Path) -> Option<&'static crate::registry::System> {
         let rom_dir = self
             .settings
             .lock()
@@ -505,7 +504,12 @@ impl App {
             .rom_dir
             .clone()
             .unwrap_or_default();
-        match detect::detect_system(Path::new(&rom_dir), rom) {
+        detect::detect_system(Path::new(&rom_dir), rom)
+    }
+
+    fn inherited_for(&self, rom: &Path) -> GameSettings {
+        let base = self.store.load_game_settings();
+        match self.system_of(rom) {
             Some(sys) => {
                 let mut o = self.store.load_overrides();
                 o.games.clear();
@@ -578,6 +582,45 @@ impl App {
                 custom: false,
             },
         })
+    }
+
+    /// Key bindings of one game: its own if it has them, else its system's, else the general
+    /// ones. `custom` says the game has its own.
+    pub fn controls_for_game(&self, path: &str) -> ScopedControls {
+        let rom = Path::new(path);
+        if let Some(config) = self.store.load_game_controls(rom) {
+            return ScopedControls {
+                config,
+                custom: true,
+            };
+        }
+        let inherited = self
+            .system_of(rom)
+            .and_then(|s| self.store.load_system_controls(s.id))
+            .unwrap_or_else(|| self.store.load_controls());
+        ScopedControls {
+            config: inherited,
+            custom: false,
+        }
+    }
+
+    pub fn set_controls_for_game(
+        &self,
+        path: &str,
+        config: ControlsConfig,
+    ) -> Result<ScopedControls, String> {
+        let config = config.sanitized();
+        self.store.save_game_controls(Path::new(path), &config)?;
+        Ok(ScopedControls {
+            config,
+            custom: true,
+        })
+    }
+
+    /// Drop a game's own key bindings: it follows its system again.
+    pub fn reset_controls_for_game(&self, path: &str) -> Result<ScopedControls, String> {
+        self.store.remove_game_controls(Path::new(path))?;
+        Ok(self.controls_for_game(path))
     }
 
     /// Give a system key bindings of its own.

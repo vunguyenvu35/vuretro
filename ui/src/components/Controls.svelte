@@ -6,6 +6,7 @@
   import { modKey } from '../lib/systems.js';
   import Select from './Select.svelte';
   import ScopeBar from './ScopeBar.svelte';
+  import { parseScope } from '../lib/scope.js';
   import { ACTIONS, HOTKEYS, RESERVED, keyName, keyLabel, padLabel, deviceValue, parseDevice } from '../lib/controls.js';
 
   let cfg = $state(null);
@@ -25,8 +26,10 @@
 
   const shortId = (id) => id.slice(0, 8);
 
+  const scope = $derived(parseScope(app.scope));
+
   async function load() {
-    const v = await api.controlsFor(app.scope);
+    const v = scope.kind === 'game' ? await api.controlsForGame(scope.id) : await api.controlsFor(app.scope);
     cfg = v.config;
     pads = v.pads;
     custom = !!v.custom;
@@ -39,18 +42,23 @@
   });
 
   async function useGeneral() {
-    const v = await api.resetControlsFor(app.scope);
+    const v = scope.kind === 'game' ? await api.resetControlsForGame(scope.id) : await api.resetControlsFor(scope.id);
     cfg = v.config;
     custom = false;
-    toast(`${systemName} uses the general key bindings again`);
+    toast(`${scopeName} follows ${scope.kind === 'game' ? "its system's" : "the general"} key bindings again`);
   }
-  const systemName = $derived(app.overview?.systems.find((x) => x.id === app.scope)?.name ?? app.scope);
+  const scopeName = $derived(
+    scope.kind === 'game'
+      ? (app.overview?.games.find((g) => g.path === scope.id)?.title ?? scope.id)
+      : (app.overview?.systems.find((x) => x.id === scope.id)?.name ?? scope.id),
+  );
 
   let saveTimer;
   async function save() {
     try {
-      if (app.scope) {
-        const v = await api.setControlsFor(app.scope, $state.snapshot(cfg));
+      if (scope.kind !== 'all') {
+        const snap = $state.snapshot(cfg);
+        const v = scope.kind === 'game' ? await api.setControlsForGame(scope.id, snap) : await api.setControlsFor(scope.id, snap);
         cfg = v.config;
         custom = true;
       } else {
@@ -155,12 +163,13 @@
   </header>
 
   <ScopeBar hint="Each system can have its own buttons: a NES pad and a PlayStation pad are not alike." />
-  {#if app.scope}
+  {#if scope.kind !== 'all'}
+    { parent = scope.kind === 'game' ? "its system's (or the general)" : 'the general'}
     <p class="scopenote">
       {#if custom}
-        <strong>{systemName}</strong> has its own key bindings. <button class="link" onclick={useGeneral}>Use the general ones</button>
+        <strong>{scopeName}</strong> has its own key bindings. <button class="link" onclick={useGeneral}>Use {parent} ones</button>
       {:else}
-        <strong>{systemName}</strong> uses the general key bindings. Change any button below to give it bindings of its own.
+        <strong>{scopeName}</strong> uses {parent} key bindings. Change any button below to give it bindings of its own.
       {/if}
     </p>
   {/if}

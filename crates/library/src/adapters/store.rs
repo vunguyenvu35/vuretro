@@ -73,6 +73,19 @@ impl Store for JsonStore {
     fn save_system_controls(&self, system: &str, controls: &ControlsConfig) -> Result<(), String> {
         vuretro_controls::save(&self.paths.system_controls_file(system), controls)
     }
+    fn load_game_controls(&self, rom: &Path) -> Option<ControlsConfig> {
+        let path = self.paths.game_controls_file(rom);
+        path.is_file().then(|| vuretro_controls::load(&path))
+    }
+    fn save_game_controls(&self, rom: &Path, controls: &ControlsConfig) -> Result<(), String> {
+        vuretro_controls::save(&self.paths.game_controls_file(rom), controls)
+    }
+    fn remove_game_controls(&self, rom: &Path) -> Result<(), String> {
+        match std::fs::remove_file(self.paths.game_controls_file(rom)) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
+            _ => Ok(()),
+        }
+    }
     fn remove_system_controls(&self, system: &str) -> Result<(), String> {
         match std::fs::remove_file(self.paths.system_controls_file(system)) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),

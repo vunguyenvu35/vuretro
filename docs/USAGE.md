@@ -181,7 +181,8 @@ On **Settings** and **Controls**, the **Applies to** box at the top chooses what
 
 - **Settings per system:** window size, CRT scanlines and rewind can be set for one system (a Game Boy wants a bigger window than a PlayStation). A customised row is tagged **customised** and has a **Use general** link. Anything you do not change follows **All games**, even if you change it there later. Sound and the other settings stay general.
 - **Controls per system:** a system uses the general key bindings until you change a button while that system is selected; from then on it has bindings of its own. **Use the general ones** removes them again.
+- **Controls per game:** select a game and press **Key bindings for this game…** in its details (or pick the game in **Applies to** on Controls). Changing a button gives that game its own bindings. Order of use: the game's own, then its system's, then the general ones; **Use … ones** removes the game's own bindings again.
 - **In a game:** the hotkeys for window size (F9 / F10) and CRT (F4) save to the place that already owns that setting: the system if it customised it, otherwise the general settings.
 - **Settings per game:** select a game and open **Settings for this game** in its details. The same three settings can be set for that one game; it overrides its system, which overrides All games. A game is told apart by its file name, so two copies with the same name share their settings.
 
-The files are `config/overrides.json` and `config/controls/<system>.json` in the data folder.
+The files are `config/overrides.json` and `config/controls/<system>.json` and `config/controls/games/<game>.json` in the data folder.

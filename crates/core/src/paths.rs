@@ -55,6 +55,27 @@ impl Paths {
     pub fn macros_file(&self) -> PathBuf {
         self.config_dir().join("macros.json")
     }
+    /// Key bindings of one game (`config/controls/games/<file name>.json`), the most
+    /// specific layer: used before the system's and the general ones.
+    pub fn game_controls_file(&self, rom: &Path) -> PathBuf {
+        let stem: String = rom
+            .file_stem()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || " .-_()".contains(c) {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        self.config_dir()
+            .join("controls")
+            .join("games")
+            .join(format!("{stem}.json"))
+    }
     /// Per-system and per-game overrides of the game settings.
     pub fn overrides_file(&self) -> PathBuf {
         self.config_dir().join("overrides.json")
@@ -172,6 +193,19 @@ mod tests {
         assert_eq!(
             p.system_controls_file("../../etc"),
             PathBuf::from("/d/config/controls/etc.json")
+        );
+    }
+
+    #[test]
+    fn game_key_bindings_are_named_after_the_game_file_and_made_safe() {
+        let p = Paths::new("/d");
+        assert_eq!(
+            p.game_controls_file(Path::new("/roms/Super Game (U).sfc")),
+            PathBuf::from("/d/config/controls/games/Super Game (U).json")
+        );
+        assert_eq!(
+            p.game_controls_file(Path::new("/roms/a:b/c*d.nes")),
+            PathBuf::from("/d/config/controls/games/c_d.json")
         );
     }
 

@@ -102,3 +102,12 @@ test('a saved sidebar width is read safely', () => {
   assert.equal(parseSidebar('5'), SIDEBAR_MIN);
   for (const bad of [null, undefined, '', 'wide', 'NaN']) assert.equal(parseSidebar(bad), SIDEBAR_DEFAULT, String(bad));
 });
+
+import { parseScope, gameScope } from './scope.js';
+
+test('a scope string tells all games, a system and a game apart', () => {
+  assert.deepEqual(parseScope(''), { kind: 'all', id: '' });
+  assert.deepEqual(parseScope(undefined), { kind: 'all', id: '' });
+  assert.deepEqual(parseScope('snes'), { kind: 'system', id: 'snes' });
+  assert.deepEqual(parseScope(gameScope('/roms/snes/Zelda: Link.sfc')), { kind: 'game', id: '/roms/snes/Zelda: Link.sfc' });
+});

@@ -39,6 +39,7 @@ struct World {
     cheats: HashMap<PathBuf, String>,
     overrides: Overrides,
     system_controls: HashMap<String, ControlsConfig>,
+    game_controls: HashMap<PathBuf, ControlsConfig>,
     art_calls: Vec<(String, String)>,
     dat_entries: usize,
 }
@@ -47,6 +48,21 @@ struct World {
 struct Fake(Arc<Mutex<World>>);
 
 impl Store for Fake {
+    fn load_game_controls(&self, rom: &Path) -> Option<ControlsConfig> {
+        self.0.lock().unwrap().game_controls.get(rom).cloned()
+    }
+    fn save_game_controls(&self, rom: &Path, c: &ControlsConfig) -> Result<(), String> {
+        self.0
+            .lock()
+            .unwrap()
+            .game_controls
+            .insert(rom.to_path_buf(), c.clone());
+        Ok(())
+    }
+    fn remove_game_controls(&self, rom: &Path) -> Result<(), String> {
+        self.0.lock().unwrap().game_controls.remove(rom);
+        Ok(())
+    }
     fn load_overrides(&self) -> Overrides {
         self.0.lock().unwrap().overrides.clone()
     }
@@ -1255,4 +1271,43 @@ fn one_game_can_override_on_top_of_its_system_and_other_games_are_untouched() {
     // clearing everything removes the entry
     a.set_game_override(mario, Override::default()).unwrap();
     assert!(f.0.lock().unwrap().overrides.games.is_empty());
+}
+
+#[test]
+fn key_bindings_resolve_game_then_system_then_general() {
+    let f = ready_world();
+    let a = app(&f);
+    let zelda = "/data/roms/snes/Zelda.sfc";
+    let mario = "/data/roms/snes/Mario.sfc";
+    let with_dz = |v: f32| {
+        let mut c = ControlsConfig::default();
+        c.players[0].deadzone = v;
+        c
+    };
+    let dz = |s: ScopedControls| (s.config.players[0].deadzone, s.custom);
+    let general = ControlsConfig::default().players[0].deadzone;
+
+    // nothing customised: the general bindings, not marked custom
+    assert_eq!(dz(a.controls_for_game(zelda)), (general, false));
+
+    // the SNES has its own: every SNES game follows it, other systems do not
+    a.set_controls_for("snes", with_dz(0.3)).unwrap();
+    assert_eq!(
+        dz(a.controls_for_game(zelda)),
+        (0.3, false),
+        "inherited, not the game's own"
+    );
+    assert_eq!(
+        dz(a.controls_for_game("/data/roms/gba/Metroid.gba")),
+        (general, false)
+    );
+
+    // a game of its own wins over its system, and only for that game
+    let saved = a.set_controls_for_game(zelda, with_dz(0.7)).unwrap();
+    assert!(saved.custom);
+    assert_eq!(dz(a.controls_for_game(zelda)), (0.7, true));
+    assert_eq!(dz(a.controls_for_game(mario)), (0.3, false));
+
+    // dropping the game's bindings falls back to the system's
+    assert_eq!(dz(a.reset_controls_for_game(zelda).unwrap()), (0.3, false));
 }

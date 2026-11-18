@@ -6,6 +6,8 @@
   import { app } from '../lib/store.svelte.js';
   import ScopeBar from './ScopeBar.svelte';
   import ScopedSettingsEditor from './ScopedSettingsEditor.svelte';
+  import { parseScope } from '../lib/scope.js';
+  const scope = $derived(parseScope(app.scope));
 
   let s = $state(null);
   let saved = $state(false);
@@ -89,13 +91,22 @@
 
     <ScopeBar hint="Window size, CRT and rewind can differ per system." />
 
-    {#if app.scope}
+    {#if scope.kind === 'system'}
       {#key app.scope}
         <ScopedSettingsEditor
-          name={app.overview?.systems.find((x) => x.id === app.scope)?.name ?? app.scope}
-          load={() => api.scopedSettings(app.scope)}
-          save={(ov) => api.setSystemOverride(app.scope, ov)}
+          name={app.overview?.systems.find((x) => x.id === scope.id)?.name ?? scope.id}
+          load={() => api.scopedSettings(scope.id)}
+          save={(ov) => api.setSystemOverride(scope.id, ov)}
           follows="the settings for All games"
+        />
+      {/key}
+    {:else if scope.kind === 'game'}
+      {#key app.scope}
+        <ScopedSettingsEditor
+          name={app.overview?.games.find((g) => g.path === scope.id)?.title ?? scope.id}
+          load={() => api.gameOverride(scope.id)}
+          save={(ov) => api.setGameOverride(scope.id, ov)}
+          follows="its system's settings"
         />
       {/key}
     {:else if s}
