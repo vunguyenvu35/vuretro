@@ -31,9 +31,9 @@
 
   <nav>
     <div class="label">Library</div>
-    <button class:active={libActive('all')} onclick={() => go('all')}><Icon name="all" />All <small>{total}</small></button>
-    <button class:active={libActive('recent')} onclick={() => go('recent')}><Icon name="recent" />Recent <small>{recent}</small></button>
-    <button class:active={libActive('favorites')} onclick={() => go('favorites')}><Icon name="favorites" />Favorites <small>{favs}</small></button>
+    <button class:active={libActive('all')} onclick={() => go('all')}><Icon name="all" /><span class="nm">All</span> <small>{total}</small></button>
+    <button class:active={libActive('recent')} onclick={() => go('recent')}><Icon name="recent" /><span class="nm">Recent</span> <small>{recent}</small></button>
+    <button class:active={libActive('favorites')} onclick={() => go('favorites')}><Icon name="favorites" /><span class="nm">Favorites</span> <small>{favs}</small></button>
 
     <div class="label gap">Systems</div>
     {#each app.overview?.systems ?? [] as s (s.id)}
@@ -42,7 +42,7 @@
         class:off={!s.enabled}
         onclick={() => go('all', s.id)}
       >
-        <span class="sysico" style="color:{colorOf(s.id)}"><Icon name={s.id} /></span>{s.name} <small>{s.game_count}</small>
+        <span class="sysico" style="color:{colorOf(s.id)}"><Icon name={s.id} /></span><span class="nm" title={s.name}>{s.name}</span> <small>{s.game_count}</small>
       </button>
     {/each}
 
@@ -50,7 +50,7 @@
       <div class="label gap">Collections</div>
       {#each app.overview.collections as c (c)}
         <button class:active={app.view === 'library' && app.collection === c} onclick={() => goCollection(c)}>
-          <Icon name="favorites" />{c} <small>{app.overview.games.filter((g) => g.tags?.includes(c)).length}</small>
+          <Icon name="favorites" /><span class="nm" title={c}>{c}</span> <small>{app.overview.games.filter((g) => g.tags?.includes(c)).length}</small>
         </button>
       {/each}
     {/if}
@@ -94,7 +94,6 @@
   .brand { display: flex; align-items: center; gap: 10px; padding: 2px 8px 14px; font: 700 18px var(--font-head); }
   .brand b { color: var(--brand-magenta); font-weight: 700; }
   nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; overflow-x: hidden; flex: 1; min-height: 0; scrollbar-gutter: stable; }
-  nav button { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .label { padding: 0 8px; margin: 4px 0; }
   .gap { margin-top: 16px; }
   nav button {
@@ -104,7 +103,9 @@
   nav button:hover { background: var(--surface-2); color: var(--text); }
   nav button.active { color: var(--accent); background: var(--surface-2); border-left-color: var(--accent); }
   nav button.off { opacity: .45; }
-  small { margin-left: auto; color: var(--faint); }
+  /* the name takes the free space and is cut with an ellipsis; the count stays in its own column */
+  .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  small { flex: none; min-width: 2.2ch; text-align: right; color: var(--faint); font-variant-numeric: tabular-nums; }
   nav button :global(svg) { flex: none; opacity: .85; transition: opacity .12s; }
   nav button:hover :global(svg), nav button.active :global(svg) { opacity: 1; }
   .sysico { display: inline-flex; flex: none; }
