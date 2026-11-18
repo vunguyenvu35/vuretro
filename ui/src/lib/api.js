@@ -58,6 +58,8 @@ export const api = {
   resetControlsFor: (system) => call('reset_controls_for', { system }),
   scopedSettings: (system) => call('get_scoped_settings', { system: system || null }),
   setSystemOverride: (system, overrides) => call('set_system_override', { system, overrides }),
+  gameOverride: (path) => call('get_game_override', { path }),
+  setGameOverride: (path, overrides) => call('set_game_override', { path, overrides }),
   macros: () => call('get_macros'),
   setMacros: (config) => call('set_macros', { config }),
 

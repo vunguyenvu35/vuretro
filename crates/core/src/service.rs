@@ -495,6 +495,70 @@ impl App {
         self.scoped_settings(Some(system))
     }
 
+    /// What a game would use if it overrode nothing: general settings plus its system's.
+    fn inherited_for(&self, rom: &Path) -> GameSettings {
+        let base = self.store.load_game_settings();
+        let rom_dir = self
+            .settings
+            .lock()
+            .unwrap()
+            .rom_dir
+            .clone()
+            .unwrap_or_default();
+        match detect::detect_system(Path::new(&rom_dir), rom) {
+            Some(sys) => {
+                let mut o = self.store.load_overrides();
+                o.games.clear();
+                o.resolve(
+                    &base,
+                    vuretro_settings::scoped::Scope {
+                        system: sys.id,
+                        game: "",
+                    },
+                )
+            }
+            None => base,
+        }
+    }
+
+    /// Settings of one game: what applies, what it would inherit from its system, and what
+    /// the game itself overrides. Games are told apart by file name without extension.
+    pub fn game_override(&self, path: &str) -> ScopedSettings {
+        let rom = Path::new(path);
+        let key = Self::game_key(rom);
+        let inherited = self.inherited_for(rom);
+        let ov = self
+            .store
+            .load_overrides()
+            .games
+            .remove(&key)
+            .unwrap_or_default();
+        ScopedSettings {
+            effective: ov.apply(inherited.clone()),
+            inherited,
+            overridden: ov,
+        }
+    }
+
+    /// Replace what one game overrides (`None` fields inherit again).
+    pub fn set_game_override(
+        &self,
+        path: &str,
+        ov: vuretro_settings::scoped::Override,
+    ) -> Result<ScopedSettings, String> {
+        let mut all = self.store.load_overrides();
+        all.set_game(&Self::game_key(Path::new(path)), ov);
+        self.store.save_overrides(&all)?;
+        Ok(self.game_override(path))
+    }
+
+    /// The runner names a game by its file name without extension; so does the override.
+    fn game_key(rom: &Path) -> String {
+        rom.file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    }
+
     /// Key bindings for everything (`None`) or for one system.
     pub fn controls_for(&self, system: Option<&str>) -> Result<ScopedControls, String> {
         let Some(system) = system else {

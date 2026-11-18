@@ -7,6 +7,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   import Icon from './Icon.svelte';
   import SaveSlots from './SaveSlots.svelte';
   import Cheats from './Cheats.svelte';
+  import ScopedSettingsEditor from './ScopedSettingsEditor.svelte';
   let newTag = $state('');
   async function setTags(game, tags) {
     await api.setTags(game.path, tags);
@@ -349,6 +350,18 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
 
     <Cheats game={selected} />
 
+    <details class="gset">
+      <summary class="label">Settings for this game</summary>
+      {#key selected.path}
+        <ScopedSettingsEditor
+          name={selected.title}
+          load={() => api.gameOverride(selected.path)}
+          save={(ov) => api.setGameOverride(selected.path, ov)}
+          follows="its system's settings"
+        />
+      {/key}
+    </details>
+
     <SaveSlots game={selected} version={ov?.games.map((g) => g.last_played).join()} />
 
     <button class="btn primary wide" disabled={!!selected.blocked} onclick={() => play(selected)}>
@@ -368,6 +381,8 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
 {/if}
 
 <style>
+  .gset { margin: 12px 0 8px; }
+  .gset summary { cursor: pointer; margin-bottom: 8px; }
   .dupe { color: var(--warn, #ffb347); font-size: 12px; margin: 8px 0 0; }
   .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
   .tag { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-2); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: 12px; }

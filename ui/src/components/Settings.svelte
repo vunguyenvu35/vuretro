@@ -5,7 +5,7 @@
   import { HOTKEYS, APP_SHORTCUTS } from '../lib/controls.js';
   import { app } from '../lib/store.svelte.js';
   import ScopeBar from './ScopeBar.svelte';
-  import SystemSettings from './SystemSettings.svelte';
+  import ScopedSettingsEditor from './ScopedSettingsEditor.svelte';
 
   let s = $state(null);
   let saved = $state(false);
@@ -90,7 +90,14 @@
     <ScopeBar hint="Window size, CRT and rewind can differ per system." />
 
     {#if app.scope}
-      <SystemSettings system={app.scope} name={app.overview?.systems.find((x) => x.id === app.scope)?.name ?? app.scope} />
+      {#key app.scope}
+        <ScopedSettingsEditor
+          name={app.overview?.systems.find((x) => x.id === app.scope)?.name ?? app.scope}
+          load={() => api.scopedSettings(app.scope)}
+          save={(ov) => api.setSystemOverride(app.scope, ov)}
+          follows="the settings for All games"
+        />
+      {/key}
     {:else if s}
       <!-- ================= DISPLAY ================= -->
       <h2 class="group">Display</h2>

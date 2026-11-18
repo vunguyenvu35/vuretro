@@ -80,6 +80,8 @@ fn main() {
             reset_controls_for,
             get_scoped_settings,
             set_system_override,
+            get_game_override,
+            set_game_override,
             get_slot_thumbnail,
             set_core_options,
             toggle_favorite,

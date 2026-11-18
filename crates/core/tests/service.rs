@@ -1184,3 +1184,75 @@ fn a_system_can_have_its_own_key_bindings_and_go_back_to_the_general_ones() {
     assert!(!back.custom);
     assert!(a.set_controls_for("nope", own).is_err());
 }
+
+#[test]
+fn one_game_can_override_on_top_of_its_system_and_other_games_are_untouched() {
+    let f = ready_world();
+    let a = app(&f);
+    a.set_game_settings(GameSettings {
+        window_scale: 2,
+        ..Default::default()
+    })
+    .unwrap();
+    a.set_system_override(
+        "snes",
+        Override {
+            window_scale: Some(4),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    // a SNES game with no override of its own inherits the system's size
+    let mario = "/data/roms/snes/Super Mario World.sfc";
+    let g = a.game_override(mario);
+    assert_eq!((g.effective.window_scale, g.inherited.window_scale), (4, 4));
+    assert!(g.overridden.is_empty());
+
+    // the game takes its own size and CRT; its system and sibling games keep theirs
+    let g = a
+        .set_game_override(
+            mario,
+            Override {
+                window_scale: Some(6),
+                crt: Some(true),
+                rewind: None,
+            },
+        )
+        .unwrap();
+    assert_eq!((g.effective.window_scale, g.effective.crt), (6, true));
+    assert_eq!(
+        g.inherited.window_scale, 4,
+        "what it falls back to is the system's size"
+    );
+    assert!(f
+        .0
+        .lock()
+        .unwrap()
+        .overrides
+        .games
+        .contains_key("Super Mario World"));
+    let other = a.game_override("/data/roms/snes/Zelda.sfc");
+    assert_eq!(
+        (other.effective.window_scale, other.effective.crt),
+        (4, false)
+    );
+    assert_eq!(
+        a.scoped_settings(Some("snes"))
+            .unwrap()
+            .effective
+            .window_scale,
+        4
+    );
+    // a game of another system inherits the general size
+    assert_eq!(
+        a.game_override("/data/roms/gba/Metroid.gba")
+            .effective
+            .window_scale,
+        2
+    );
+
+    // clearing everything removes the entry
+    a.set_game_override(mario, Override::default()).unwrap();
+    assert!(f.0.lock().unwrap().overrides.games.is_empty());
+}

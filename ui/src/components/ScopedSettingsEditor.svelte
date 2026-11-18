@@ -2,8 +2,12 @@
   import { api } from '../lib/api.js';
   import { toast } from '../lib/ui.svelte.js';
 
-  /** Settings that one system can have its own way: window size, CRT and rewind. */
-  let { system, name } = $props();
+  /**
+   * Window size, CRT and rewind for one system or one game. `load()` and `save(override)` talk
+   * to the backend for that scope (both give { effective, inherited, overridden });
+   * `follows` names what everything not changed here is inherited from.
+   */
+  let { name, load, save, follows = 'the general settings' } = $props();
 
   const SCALES = [1, 2, 3, 4, 5, 6];
   let data = $state(null);
@@ -13,14 +17,14 @@
   $effect(() => {
     data = null;
     let stale = false;
-    api.scopedSettings(system).then((d) => !stale && (data = d));
+    load().then((d) => !stale && (data = d));
     return () => (stale = true);
   });
 
   /** Set one field of this system's override; `null` makes it follow the general setting again. */
   async function set(field, value) {
     try {
-      data = await api.setSystemOverride(system, { ...data.overridden, [field]: value });
+      data = await save({ ...data.overridden, [field]: value });
       saved = true;
       clearTimeout(timer);
       timer = setTimeout(() => (saved = false), 1800);
@@ -32,51 +36,51 @@
   const anyOwn = $derived(data ? ['window_scale', 'crt', 'rewind'].some(own) : false);
 
   async function resetAll() {
-    data = await api.setSystemOverride(system, { window_scale: null, crt: null, rewind: null });
-    toast(`${name} follows the general settings again`);
+    data = await save({ window_scale: null, crt: null, rewind: null });
+    toast(`${name} follows ${follows} again`);
   }
 </script>
 
 {#if data}
   <div class="intro">
     <p>
-      Choices here apply to <strong>{name}</strong> only. Anything you do not change follows the settings for <strong>All games</strong>.
+      Choices here apply to <strong>{name}</strong> only. Anything you do not change follows {follows}.
       Sound and the other habits stay general.
     </p>
     <span class="saved" class:show={saved} aria-live="polite">Saved</span>
-    {#if anyOwn}<button class="btn" onclick={resetAll}>Use the general settings for {name}</button>{/if}
+    {#if anyOwn}<button class="btn" onclick={resetAll}>Follow {follows} again</button>{/if}
   </div>
 
   <div class="panel">
     <div class="row" class:own={own('window_scale')}>
       <div class="txt">
         <div class="t">Window size {#if own('window_scale')}<span class="badge">customised</span>{/if}</div>
-        <div class="d">A multiple of the game's own resolution. General setting: {data.inherited.window_scale}×.</div>
+        <div class="d">A multiple of the game's own resolution. Inherited: {data.inherited.window_scale}×.</div>
       </div>
       <div class="seg" role="radiogroup" aria-label="Window size for {name}">
         {#each SCALES as n (n)}
           <button role="radio" aria-checked={data.effective.window_scale === n} class:on={data.effective.window_scale === n} onclick={() => set('window_scale', n)}>{n}×</button>
         {/each}
       </div>
-      {#if own('window_scale')}<button class="link" onclick={() => set('window_scale', null)}>Use general</button>{/if}
+      {#if own('window_scale')}<button class="link" onclick={() => set('window_scale', null)}>Inherit</button>{/if}
     </div>
 
     <div class="row" class:own={own('crt')}>
       <div class="txt">
         <div class="t">CRT scanlines {#if own('crt')}<span class="badge">customised</span>{/if}</div>
-        <div class="d">Looks best on low-resolution systems. General setting: {data.inherited.crt ? 'on' : 'off'}.</div>
+        <div class="d">Looks best on low-resolution systems. Inherited: {data.inherited.crt ? 'on' : 'off'}.</div>
       </div>
       <button class="switch" role="switch" aria-checked={data.effective.crt} aria-label="CRT scanlines for {name}" class:on={data.effective.crt} onclick={() => set('crt', !data.effective.crt)}><span></span></button>
-      {#if own('crt')}<button class="link" onclick={() => set('crt', null)}>Use general</button>{/if}
+      {#if own('crt')}<button class="link" onclick={() => set('crt', null)}>Inherit</button>{/if}
     </div>
 
     <div class="row" class:own={own('rewind')}>
       <div class="txt">
         <div class="t">Rewind {#if own('rewind')}<span class="badge">customised</span>{/if}</div>
-        <div class="d">Uses memory in proportion to the system's save states, so it suits small systems best. General setting: {data.inherited.rewind ? 'on' : 'off'}.</div>
+        <div class="d">Uses memory in proportion to the system's save states, so it suits small systems best. Inherited: {data.inherited.rewind ? 'on' : 'off'}.</div>
       </div>
       <button class="switch" role="switch" aria-checked={data.effective.rewind} aria-label="Rewind for {name}" class:on={data.effective.rewind} onclick={() => set('rewind', !data.effective.rewind)}><span></span></button>
-      {#if own('rewind')}<button class="link" onclick={() => set('rewind', null)}>Use general</button>{/if}
+      {#if own('rewind')}<button class="link" onclick={() => set('rewind', null)}>Inherit</button>{/if}
     </div>
   </div>
 {:else}
@@ -88,7 +92,7 @@
   .intro p { margin: 0; flex: 1 1 360px; }
   .saved { color: var(--ok); font-size: 12px; opacity: 0; transition: opacity .2s; }
   .saved.show { opacity: 1; }
-  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; } container-type: inline-size; 
   .row { display: flex; align-items: center; gap: 16px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
   .row:last-child { border-bottom: 0; }
   .row.own { background: color-mix(in srgb, var(--accent) 6%, transparent); }
@@ -103,6 +107,12 @@
   .switch span { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--muted); transition: transform .15s, background .15s; }
   .switch.on { background: color-mix(in srgb, var(--accent) 30%, var(--bg)); border-color: var(--accent); }
   .switch.on span { transform: translateX(18px); background: var(--accent); }
+  /* in the narrow details panel the rows stack: text on top, controls below */
+  @container (max-width: 440px) {
+    .row { flex-wrap: wrap; padding: 12px 14px; gap: 10px; }
+    .txt { flex: 1 1 100%; }
+    .seg button { padding: 5px 8px; }
+  }
   .link { background: none; border: 0; color: var(--muted); font-size: 12px; text-decoration: underline; padding: 0; }
   .link:hover { color: var(--text); }
   .muted { color: var(--muted); }

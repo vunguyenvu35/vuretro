@@ -112,6 +112,19 @@ mock.set_system_override = async ({ system, overrides }) => {
   else delete mockOverrides[system];
   return scoped(system);
 };
+const mockGameOv = {};
+mock.get_game_override = async ({ path }) => {
+  const ov = mockGameOv[path] ?? {};
+  const eff = { ...mockGame };
+  for (const k of ['window_scale', 'crt', 'rewind']) if (ov[k] != null) eff[k] = ov[k];
+  return { effective: eff, inherited: { ...mockGame }, overridden: { window_scale: null, crt: null, rewind: null, ...ov } };
+};
+mock.set_game_override = async ({ path, overrides }) => {
+  const clean = Object.fromEntries(Object.entries(overrides).filter(([, v]) => v != null));
+  if (Object.keys(clean).length) mockGameOv[path] = clean;
+  else delete mockGameOv[path];
+  return mock.get_game_override({ path });
+};
 const controlsView = async (system) => ({ config: mockSystemControls[system] ?? (await mock.get_controls()).config, custom: !!mockSystemControls[system], pads: [] });
 mock.get_controls_for = async ({ system }) => (system ? controlsView(system) : { ...(await mock.get_controls()), custom: false });
 mock.set_controls_for = async ({ system, config }) => ((mockSystemControls[system] = config), controlsView(system));

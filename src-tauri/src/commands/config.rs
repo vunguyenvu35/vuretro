@@ -117,3 +117,21 @@ pub fn set_system_override(
 ) -> Result<vuretro_core::model::ScopedSettings, String> {
     shell.app.set_system_override(&system, overrides)
 }
+
+/// Settings of one game, on top of its system's.
+#[tauri::command]
+pub fn get_game_override(
+    shell: State<'_, Shell>,
+    path: String,
+) -> vuretro_core::model::ScopedSettings {
+    shell.app.game_override(&path)
+}
+
+#[tauri::command]
+pub fn set_game_override(
+    shell: State<'_, Shell>,
+    path: String,
+    overrides: vuretro_settings::scoped::Override,
+) -> Result<vuretro_core::model::ScopedSettings, String> {
+    shell.app.set_game_override(&path, overrides)
+}
