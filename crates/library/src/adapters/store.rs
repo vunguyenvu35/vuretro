@@ -66,13 +66,26 @@ impl Store for JsonStore {
         vuretro_settings::save(&self.paths.game_settings_file(), settings)
     }
     fn read_cover(&self, rom: &Path) -> Option<Vec<u8>> {
-        std::fs::read(self.paths.cover_file(rom)).ok()
+        std::fs::read(self.paths.art_file(rom))
+            .or_else(|_| std::fs::read(self.paths.cover_file(rom)))
+            .ok()
     }
     fn cover_exists(&self, rom: &Path) -> bool {
-        self.paths.cover_file(rom).exists()
+        self.paths.art_file(rom).exists() || self.paths.cover_file(rom).exists()
     }
     fn remove_cover(&self, rom: &Path) {
         let _ = std::fs::remove_file(self.paths.cover_file(rom));
+        let _ = std::fs::remove_file(self.paths.art_file(rom));
+    }
+    fn save_art(&self, rom: &Path, png: &[u8]) -> Result<(), String> {
+        let path = self.paths.art_file(rom);
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(&path, png).map_err(|e| format!("cannot write {}: {e}", path.display()))
+    }
+    fn art_exists(&self, rom: &Path) -> bool {
+        self.paths.art_file(rom).exists()
     }
     fn load_core_options(&self, stem: &str) -> BTreeMap<String, String> {
         std::fs::read_to_string(self.paths.core_options_file(stem))
@@ -156,6 +169,7 @@ mod tests {
             rom_dir: Some("/roms".into()),
             disabled: vec!["psx".into()],
             cores: [("nes".to_string(), "mesen_libretro".to_string())].into(),
+            fetch_art: true,
         };
         store.save_settings(&s);
         assert_eq!(store.load_settings(), s);

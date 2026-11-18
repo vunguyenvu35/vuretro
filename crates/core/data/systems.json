@@ -1,12 +1,14 @@
 [
   {
     "id": "neogeo", "name": "Neo Geo", "core": "fbneo_libretro",
+    "thumbnails": "SNK - Neo Geo",
     "extensions": ["zip", "7z"],
     "folders": ["neogeo", "neo-geo", "mvs", "aes"],
     "bios": [{ "file": "neogeo.zip", "required": true, "note": "MVS / AES BIOS set" }]
   },
   {
     "id": "psx", "name": "PlayStation", "core": "pcsx_rearmed_libretro",
+    "thumbnails": "Sony - PlayStation",
     "extensions": ["chd", "cue", "pbp", "m3u", "iso", "img"],
     "folders": ["psx", "ps1", "playstation"],
     "bios": [
@@ -17,17 +19,20 @@
   },
   {
     "id": "snes", "name": "Super Nintendo", "core": "snes9x_libretro",
+    "thumbnails": "Nintendo - Super Nintendo Entertainment System",
     "extensions": ["sfc", "smc", "swc", "fig", "zip"],
     "folders": ["snes", "sfc", "super-nintendo"]
   },
   {
     "id": "gba", "name": "Game Boy Advance", "core": "mgba_libretro",
+    "thumbnails": "Nintendo - Game Boy Advance",
     "extensions": ["gba", "zip", "7z"],
     "folders": ["gba", "game-boy-advance"],
     "bios": [{ "file": "gba_bios.bin", "md5": ["a860e8c0b6d573d191e4ec7db1b1e4f6"], "note": "optional, mGBA has a built-in replacement" }]
   },
   {
     "id": "nes", "name": "NES / Famicom", "core": "fceumm_libretro",
+    "thumbnails": "Nintendo - Nintendo Entertainment System",
     "alt_cores": ["mesen_libretro", "nestopia_libretro"],
     "extensions": ["nes", "fds", "unf", "unif", "zip", "7z"],
     "folders": ["nes", "famicom", "fc", "nintendo-entertainment-system"],
@@ -35,36 +40,42 @@
   },
   {
     "id": "gb", "name": "Game Boy", "core": "gambatte_libretro",
+    "thumbnails": "Nintendo - Game Boy",
     "alt_cores": ["mgba_libretro"],
     "extensions": ["gb", "zip", "7z"],
     "folders": ["gb", "gameboy", "game-boy"]
   },
   {
     "id": "gbc", "name": "Game Boy Color", "core": "gambatte_libretro",
+    "thumbnails": "Nintendo - Game Boy Color",
     "alt_cores": ["mgba_libretro"],
     "extensions": ["gbc", "zip", "7z"],
     "folders": ["gbc", "gameboy-color", "game-boy-color"]
   },
   {
     "id": "genesis", "name": "Genesis / Mega Drive", "core": "genesis_plus_gx_libretro",
+    "thumbnails": "Sega - Mega Drive - Genesis",
     "alt_cores": ["picodrive_libretro"],
     "extensions": ["md", "gen", "smd", "zip", "7z"],
     "folders": ["genesis", "megadrive", "mega-drive", "md", "sega-genesis"]
   },
   {
     "id": "sms", "name": "Master System", "core": "genesis_plus_gx_libretro",
+    "thumbnails": "Sega - Master System - Mark III",
     "alt_cores": ["picodrive_libretro"],
     "extensions": ["sms", "zip", "7z"],
     "folders": ["sms", "mastersystem", "master-system"]
   },
   {
     "id": "gg", "name": "Game Gear", "core": "genesis_plus_gx_libretro",
+    "thumbnails": "Sega - Game Gear",
     "alt_cores": ["picodrive_libretro"],
     "extensions": ["gg", "zip", "7z"],
     "folders": ["gg", "gamegear", "game-gear"]
   },
   {
     "id": "pce", "name": "PC Engine / TurboGrafx-16", "core": "mednafen_pce_fast_libretro",
+    "thumbnails": "NEC - PC Engine - TurboGrafx 16",
     "alt_cores": ["mednafen_pce_libretro"],
     "extensions": ["pce", "sgx", "zip", "7z"],
     "folders": ["pce", "pcengine", "pc-engine", "tg16", "turbografx16", "turbografx-16"],
@@ -72,17 +83,20 @@
   },
   {
     "id": "atari2600", "name": "Atari 2600", "core": "stella_libretro",
+    "thumbnails": "Atari - 2600",
     "extensions": ["a26", "zip", "7z"],
     "folders": ["atari2600", "atari-2600", "a2600"]
   },
   {
     "id": "atari7800", "name": "Atari 7800", "core": "prosystem_libretro",
+    "thumbnails": "Atari - 7800",
     "extensions": ["a78", "zip", "7z"],
     "folders": ["atari7800", "atari-7800", "a7800"],
     "bios": [{ "file": "7800 BIOS (U).rom", "md5": ["0763f1ffb006ddbe32e52d497ee848ae"], "note": "optional" }]
   },
   {
     "id": "lynx", "name": "Atari Lynx", "core": "handy_libretro",
+    "thumbnails": "Atari - Lynx",
     "alt_cores": ["mednafen_lynx_libretro"],
     "extensions": ["lnx", "zip", "7z"],
     "folders": ["lynx", "atari-lynx", "atarilynx"],
@@ -90,26 +104,31 @@
   },
   {
     "id": "ngp", "name": "Neo Geo Pocket", "core": "mednafen_ngp_libretro",
+    "thumbnails": "SNK - Neo Geo Pocket",
     "extensions": ["ngp", "ngc", "zip", "7z"],
     "folders": ["ngp", "ngpc", "neo-geo-pocket", "neogeopocket"]
   },
   {
     "id": "wonderswan", "name": "WonderSwan", "core": "mednafen_wswan_libretro",
+    "thumbnails": "Bandai - WonderSwan",
     "extensions": ["ws", "wsc", "zip", "7z"],
     "folders": ["wonderswan", "wonder-swan", "wswan", "ws"]
   },
   {
     "id": "virtualboy", "name": "Virtual Boy", "core": "mednafen_vb_libretro",
+    "thumbnails": "Nintendo - Virtual Boy",
     "extensions": ["vb", "vboy", "zip", "7z"],
     "folders": ["virtualboy", "virtual-boy", "vb"]
   },
   {
     "id": "sega32x", "name": "Sega 32X", "core": "picodrive_libretro",
+    "thumbnails": "Sega - 32X",
     "extensions": ["32x", "zip", "7z"],
     "folders": ["32x", "sega32x", "sega-32x"]
   },
   {
     "id": "nds", "name": "Nintendo DS", "core": "melonds_libretro",
+    "thumbnails": "Nintendo - Nintendo DS",
     "extensions": ["nds", "zip", "7z"],
     "folders": ["nds", "ds", "nintendo-ds", "nintendods"],
     "bios": [
@@ -120,6 +139,7 @@
   },
   {
     "id": "arcade", "name": "Arcade (MAME)", "core": "mame2003_plus_libretro",
+    "thumbnails": "MAME",
     "extensions": ["zip", "7z"],
     "folders": ["mame", "arcade", "mame2003", "mame2003-plus"]
   }

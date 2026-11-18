@@ -21,6 +21,8 @@ pub struct System {
     pub core: &'static str,
     /// Other cores that can run the system (the user may pick one later).
     pub alt_cores: &'static [&'static str],
+    /// Folder name in the libretro-thumbnails server (empty: no cover art source).
+    pub thumbnails: &'static str,
     pub extensions: &'static [&'static str],
     /// Folder names under the ROM root that force this system.
     pub folders: &'static [&'static str],
@@ -54,6 +56,8 @@ struct RawSystem {
     core: String,
     #[serde(default)]
     alt_cores: Vec<String>,
+    #[serde(default)]
+    thumbnails: String,
     extensions: Vec<String>,
     #[serde(default)]
     folders: Vec<String>,
@@ -107,6 +111,7 @@ pub fn parse_systems(json: &str) -> Result<Vec<System>, String> {
             name: leak(r.name),
             core: leak(r.core),
             alt_cores: leak_all(r.alt_cores),
+            thumbnails: leak(r.thumbnails),
             extensions: leak_all(r.extensions),
             folders: leak_all(r.folders),
             bios: Box::leak(bios.into_boxed_slice()),

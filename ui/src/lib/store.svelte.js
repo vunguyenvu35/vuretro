@@ -62,6 +62,7 @@ async function identifyLater() {
     if ((await api.identifyGames()) > 0) {
       app.overview = await api.overview();
     }
+    if (app.overview?.fetch_art) api.fetchArt().catch(() => {});
   } catch {
     /* names are optional */
   }

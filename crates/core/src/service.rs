@@ -6,7 +6,7 @@ use crate::model::{game_views, GameMeta, Outcome, Overview, Settings, SystemView
 use crate::model::{CoreChoice, CoreOptionView, SlotInfo};
 use crate::paths::Paths;
 use crate::ports::{
-    Catalog, CoreInstaller, CoverJob, GameProcess, LaunchSpec, Launcher, Locator, Store,
+    ArtSource, Catalog, CoreInstaller, CoverJob, GameProcess, LaunchSpec, Launcher, Locator, Store,
 };
 use crate::registry::systems;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -43,6 +43,9 @@ pub struct App {
     locator: Box<dyn Locator>,
     launcher: Box<dyn Launcher>,
     installer: Option<Box<dyn CoreInstaller>>,
+    art: Option<Box<dyn ArtSource>>,
+    /// Games the art server had nothing for (not asked again until restart).
+    art_missing: Mutex<HashSet<String>>,
     /// Cores being downloaded right now.
     installing: Mutex<HashSet<String>>,
     launch_grace: Duration,
@@ -73,6 +76,8 @@ impl App {
             locator,
             launcher,
             installer: None,
+            art: None,
+            art_missing: Mutex::new(HashSet::new()),
             installing: Mutex::new(HashSet::new()),
             launch_grace: LAUNCH_GRACE,
             settings,
@@ -87,6 +92,60 @@ impl App {
     pub fn with_installer(mut self, installer: Box<dyn CoreInstaller>) -> Self {
         self.installer = Some(installer);
         self
+    }
+
+    /// Let the app download cover art.
+    pub fn with_art_source(mut self, art: Box<dyn ArtSource>) -> Self {
+        self.art = Some(art);
+        self
+    }
+
+    pub fn set_fetch_art(&self, enabled: bool) {
+        self.settings.lock().unwrap().fetch_art = enabled;
+        self.save_settings();
+    }
+
+    /// Download box art for games that have an official name. Does nothing unless the user
+    /// switched it on. Slow: run it on a thread. `on_made` gets the key of each game that
+    /// now has art; returns how many.
+    pub fn fetch_art(&self, on_made: impl Fn(&str)) -> usize {
+        let Some(art) = self.art.as_ref() else {
+            return 0;
+        };
+        let settings = self.settings.lock().unwrap().clone();
+        if !settings.fetch_art {
+            return 0;
+        }
+        let mut made = 0;
+        for g in self.scan_all(&settings) {
+            let key = g.path.to_string_lossy().into_owned();
+            let name = self
+                .meta
+                .lock()
+                .unwrap()
+                .get(&key)
+                .and_then(|m| m.name.clone());
+            let folder = crate::registry::by_id(&g.system)
+                .map(|s| s.thumbnails)
+                .unwrap_or("");
+            let (Some(name), false) = (name, folder.is_empty()) else {
+                continue;
+            };
+            if self.store.art_exists(&g.path)
+                || !self.art_missing.lock().unwrap().insert(key.clone())
+            {
+                continue;
+            }
+            match art.boxart(folder, &name) {
+                Ok(Some(png)) if self.store.save_art(&g.path, &png).is_ok() => {
+                    self.art_missing.lock().unwrap().remove(&key);
+                    on_made(&key);
+                    made += 1;
+                }
+                _ => {}
+            }
+        }
+        made
     }
 
     /// Download a core the registry knows. Slow: run it on a thread. `progress` gets 0..=100.
@@ -185,6 +244,7 @@ impl App {
             runner_found: self.locator.runner().is_some(),
             demo_available: self.locator.test_core().is_some(),
             dat_entries: self.catalog.dat_entries(),
+            fetch_art: settings.fetch_art,
             collections,
         }
     }

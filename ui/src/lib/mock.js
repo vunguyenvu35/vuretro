@@ -35,6 +35,8 @@ const mock = {
   import_dats: async (a) => a.paths.map((p) => ({ source: p, ok: true, message: "3 dumps added" })),
   identify_games: async () => 0,
   set_tags: async (a) => a.tags,
+  set_fetch_art: async () => {},
+  fetch_art: async () => {},
   get_slot_thumbnail: async () => null,
   get_core_options: async () => [
     { key: "region", description: "Region", values: ["auto", "pal", "ntsc"], default: "auto", value: "auto" },

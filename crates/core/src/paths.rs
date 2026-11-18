@@ -96,6 +96,13 @@ impl Paths {
         PathBuf::from(p)
     }
 
+    /// Downloaded box art of a game.
+    pub fn art_file(&self, rom: &Path) -> PathBuf {
+        let mut p = self.cover_file(rom).into_os_string();
+        p.push(".art");
+        PathBuf::from(p)
+    }
+
     /// Preview image of a game (a screenshot taken from the game itself).
     pub fn cover_file(&self, rom: &Path) -> PathBuf {
         let name: String = rom

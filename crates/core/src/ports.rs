@@ -30,6 +30,9 @@ pub trait Store: Send + Sync {
     fn list_slots(&self, rom: &Path) -> Vec<SlotInfo>;
     fn read_slot_thumb(&self, rom: &Path, slot: u8) -> Option<Vec<u8>>;
 
+    /// Keep downloaded cover art for a game (it wins over the screenshot preview).
+    fn save_art(&self, rom: &Path, png: &[u8]) -> Result<(), String>;
+    fn art_exists(&self, rom: &Path) -> bool;
     /// Bytes of a game's preview image, if it has one.
     fn read_cover(&self, rom: &Path) -> Option<Vec<u8>>;
     fn cover_exists(&self, rom: &Path) -> bool;
@@ -125,6 +128,12 @@ pub trait Launcher: Send + Sync {
     fn capture_cover(&self, job: &CoverJob) -> bool;
     /// Ask a core which options it offers (loads it without a game).
     fn list_core_options(&self, runner: &Path, core: &Path) -> Result<Vec<CoreOptionDef>, String>;
+}
+
+/// Where cover art comes from (libretro-thumbnails).
+pub trait ArtSource: Send + Sync {
+    /// Box art PNG for `name` on `system_folder`; `Ok(None)` when the server has none.
+    fn boxart(&self, system_folder: &str, name: &str) -> Result<Option<Vec<u8>>, String>;
 }
 
 /// Downloads cores into the app's own cores folder.

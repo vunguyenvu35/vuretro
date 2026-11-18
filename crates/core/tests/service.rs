@@ -34,6 +34,8 @@ struct World {
     slots: Vec<SlotInfo>,
     /// Official names the fake DAT knows, by file path.
     names: HashMap<PathBuf, String>,
+    art: HashSet<PathBuf>,
+    art_calls: Vec<(String, String)>,
     dat_entries: usize,
 }
 
@@ -100,6 +102,13 @@ impl Store for Fake {
     fn save_game_settings(&self, s: &GameSettings) -> Result<(), String> {
         self.0.lock().unwrap().game_settings = Some(s.clone());
         Ok(())
+    }
+    fn save_art(&self, rom: &Path, _png: &[u8]) -> Result<(), String> {
+        self.0.lock().unwrap().art.insert(rom.to_path_buf());
+        Ok(())
+    }
+    fn art_exists(&self, rom: &Path) -> bool {
+        self.0.lock().unwrap().art.contains(rom)
     }
     fn read_cover(&self, rom: &Path) -> Option<Vec<u8>> {
         self.0
@@ -782,4 +791,84 @@ fn collections_are_cleaned_saved_and_listed() {
         .set_tags("/data/roms/snes/a.sfc".into(), vec![])
         .is_empty());
     assert!(a.overview().collections.is_empty());
+}
+
+struct FakeArt {
+    f: Fake,
+    has: bool,
+}
+
+impl ArtSource for FakeArt {
+    fn boxart(&self, folder: &str, name: &str) -> Result<Option<Vec<u8>>, String> {
+        self.f
+            .0
+            .lock()
+            .unwrap()
+            .art_calls
+            .push((folder.to_string(), name.to_string()));
+        Ok(self.has.then(|| b"\x89PNG".to_vec()))
+    }
+}
+
+fn art_world() -> Fake {
+    let f = ready_world();
+    {
+        let mut w = f.0.lock().unwrap();
+        w.scans.insert(
+            "/data/roms".into(),
+            vec![
+                entry("snes", "/data/roms/snes/a.sfc"),
+                entry("snes", "/data/roms/snes/unnamed.sfc"),
+            ],
+        );
+        w.meta.insert(
+            "/data/roms/snes/a.sfc".into(),
+            GameMeta {
+                name: Some("Super A (USA)".into()),
+                ..Default::default()
+            },
+        );
+    }
+    f
+}
+
+#[test]
+fn art_is_only_downloaded_when_switched_on_and_only_for_named_games() {
+    let f = art_world();
+    let a = app(&f).with_art_source(Box::new(FakeArt {
+        f: f.clone(),
+        has: true,
+    }));
+    // off by default: nothing is sent anywhere
+    assert_eq!(a.fetch_art(|_| {}), 0);
+    assert!(f.0.lock().unwrap().art_calls.is_empty());
+
+    a.set_fetch_art(true);
+    assert!(a.overview().fetch_art);
+    let made = Mutex::new(Vec::new());
+    assert_eq!(a.fetch_art(|k| made.lock().unwrap().push(k.to_string())), 1);
+    assert_eq!(*made.lock().unwrap(), vec!["/data/roms/snes/a.sfc"]);
+    assert_eq!(
+        f.0.lock().unwrap().art_calls,
+        vec![(
+            "Nintendo - Super Nintendo Entertainment System".to_string(),
+            "Super A (USA)".to_string()
+        )]
+    );
+    // art exists now: no second request
+    assert_eq!(a.fetch_art(|_| {}), 0);
+    assert_eq!(f.0.lock().unwrap().art_calls.len(), 1);
+}
+
+#[test]
+fn games_the_server_has_no_art_for_are_not_asked_again() {
+    let f = art_world();
+    let a = app(&f).with_art_source(Box::new(FakeArt {
+        f: f.clone(),
+        has: false,
+    }));
+    a.set_fetch_art(true);
+    assert_eq!(a.fetch_art(|_| {}), 0);
+    assert_eq!(a.fetch_art(|_| {}), 0);
+    assert_eq!(f.0.lock().unwrap().art_calls.len(), 1);
 }

@@ -75,9 +75,9 @@ Goal: someone installs vuretro from a package, opens it, gets cores, adds a ROM 
 - [ ] Real-game check on macOS, Windows and Linux (carried over from Phase 1)
 - [ ] Verify the app window on Windows and Linux; CI job `app` green (carried over from Phase 2)
 - [x] **In-app core installer**: `CoreInstaller` port, `BuildbotInstaller` adapter (HTTPS download into `<data dir>/cores`, archive and native-library checks; the buildbot publishes no checksums), `install_core` command with `core-progress` events, Install button with progress on Cores & BIOS. Verified live with `cargo test -p vuretro-library -- --ignored`; the Install button itself is not yet clicked through on a clean machine
-- [ ] macOS: signed + notarized `.dmg` (universal arm64/x86_64)
-- [ ] Windows: signed MSI/NSIS
-- [ ] Linux: AppImage, Flatpak
+- [ ] macOS: signed + notarized universal `.dmg`. Done so far: `make app-build` produces an unsigned arm64 `.dmg` (6 MB) with `vuretro-runner` bundled inside (checked on this Mac); `release.yml` builds universal and signs when the Apple secrets exist (not run yet)
+- [ ] Windows: signed MSI/NSIS (`release.yml` builds it; not run yet, signing needs a certificate)
+- [ ] Linux: AppImage (`release.yml` builds it; not run yet), Flatpak (no manifest yet)
 - [ ] Auto-update (Tauri updater) via GitHub Releases
 - [ ] Review each core's license before bundling; prefer downloading cores at install time over shipping them (FBNeo and snes9x are non-commercial)
 
@@ -134,7 +134,7 @@ Order of work: registry as data first, then systems one by one (each is a data e
 Goal: a large ROM folder gets proper names, cover art and can be browsed from the couch.
 
 - [x] Identify games by hash against DAT files the user adds (`vuretro-library::dat`: XML parser, CRC32 + size, iNES/SMC/Lynx/7800 headers ignored, single-file zips): official titles, duplicate flag. DATs are not bundled (the user adds them on Cores & BIOS). Not yet tried with a real No-Intro DAT
-- [ ] Cover art: user-supplied, or from a metadata source (ScreenScraper, libretro-thumbnails) through a new `MetadataSource` port; cache in `covers/`. Check each service's terms and API key rules
+- [x] Cover art from libretro-thumbnails (`ArtSource` port, `ThumbnailsArt` adapter): opt-in switch on Cores & BIOS because it sends game names to a third party; works for games that have an official name from a DAT; box art wins over the screenshot preview. User-supplied art and ScreenScraper are not done. Tested with fakes; not yet run against the live server
 - [x] Collections: tags per game (details panel), sidebar list and filter. Still open: group multi-disc games, richer filters
 - [ ] Gamepad-driven navigation of the whole UI
 

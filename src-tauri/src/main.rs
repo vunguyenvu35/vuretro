@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 use vuretro_core::paths::Paths;
 use vuretro_core::service::App;
 use vuretro_library::adapters::{
-    BuildbotInstaller, FsCatalog, FsLocator, JsonStore, ProcessLauncher,
+    BuildbotInstaller, FsCatalog, FsLocator, JsonStore, ProcessLauncher, ThumbnailsArt,
 };
 
 fn build_app() -> App {
@@ -31,6 +31,7 @@ fn build_app() -> App {
         Box::new(ProcessLauncher::new(paths.clone())),
     )
     .with_installer(Box::new(BuildbotInstaller::new(paths)))
+    .with_art_source(Box::new(ThumbnailsArt::new()))
 }
 
 fn main() {
@@ -59,6 +60,8 @@ fn main() {
             get_core_options,
             get_save_slots,
             import_dats,
+            set_fetch_art,
+            fetch_art,
             identify_games,
             set_tags,
             get_slot_thumbnail,

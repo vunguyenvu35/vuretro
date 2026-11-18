@@ -13,6 +13,9 @@ pub struct Settings {
     /// System ids the user switched off.
     #[serde(default)]
     pub disabled: Vec<String>,
+    /// Download cover art for named games (sends game names to the libretro-thumbnails server).
+    #[serde(default)]
+    pub fetch_art: bool,
     /// Core the user picked per system id (only values listed by the registry count).
     #[serde(default)]
     pub cores: BTreeMap<String, String>,
@@ -272,6 +275,7 @@ pub struct Overview {
     pub demo_available: bool,
     /// Dumps known from the user's DAT files (0 = none added).
     pub dat_entries: usize,
+    pub fetch_art: bool,
     /// Collection names in use, sorted.
     pub collections: Vec<String>,
 }

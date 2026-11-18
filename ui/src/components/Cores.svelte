@@ -43,6 +43,12 @@
     }
   }
 
+  async function toggleArt() {
+    await api.setFetchArt(!ov.fetch_art);
+    await refresh();
+    if (ov.fetch_art) api.fetchArt().catch(() => {});
+  }
+
   async function browseDats() {
     importDats(await api.pickFiles('Choose DAT files'));
   }
@@ -140,6 +146,11 @@
     {#if ov?.dat_entries}<strong>{ov.dat_entries.toLocaleString()} known dumps</strong>{:else}<span class="muted">No DAT files added yet.</span>{/if}
   </p>
   <button class="btn" onclick={browseDats}>Add DAT files…</button>
+  <label class="art">
+    <input type="checkbox" checked={ov?.fetch_art} onchange={toggleArt} />
+    Download cover art for named games
+    <span class="muted">(sends game names to thumbnails.libretro.com; needs DAT files)</span>
+  </label>
 </section>
 
 {#if optionsFor}
@@ -176,5 +187,6 @@
   .drop strong { color: var(--accent); font-size: 15px; }
   .drop:hover, .drop.over { background: color-mix(in srgb, var(--accent) 8%, transparent); }
   .dat { margin: 0 auto 12px; }
+  .art { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
   .note { color: var(--faint); margin-top: 10px; }
 </style>

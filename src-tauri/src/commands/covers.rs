@@ -40,3 +40,21 @@ pub fn generate_covers(app: AppHandle, shell: State<'_, Shell>, games: Vec<Cover
         let _ = app.emit("covers-done", ());
     });
 }
+
+/// Switch cover-art downloads on or off (they send game names to the libretro-thumbnails
+/// server, so they are off until the user asks).
+#[tauri::command]
+pub fn set_fetch_art(shell: State<'_, Shell>, enabled: bool) {
+    shell.app.set_fetch_art(enabled);
+}
+
+/// Download box art for named games in the background; emits `covers-updated` per game.
+#[tauri::command]
+pub fn fetch_art(app: AppHandle, shell: State<'_, Shell>) {
+    let core = shell.app.clone();
+    std::thread::spawn(move || {
+        core.fetch_art(|key| {
+            let _ = app.emit("covers-updated", key);
+        });
+    });
+}
