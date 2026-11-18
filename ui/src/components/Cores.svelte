@@ -4,8 +4,11 @@
   import { api } from '../lib/api.js';
   import { colorOf } from '../lib/systems.js';
   import Select from './Select.svelte';
+  import { toast } from '../lib/ui.svelte.js';
 
   let over = $state(false);
+  /** core name -> percent while it downloads */
+  let installing = $state({});
   const ov = $derived(app.overview);
 
   const statusOf = (s) =>
@@ -24,6 +27,19 @@
     }
   }
 
+  async function install(core) {
+    installing[core] = 0;
+    try {
+      await api.installCore(core);
+      toast(`Installed ${core.replace(/_libretro$/, '')}`, 'info');
+    } catch (e) {
+      toast(String(e), 'error');
+    } finally {
+      delete installing[core];
+      refresh();
+    }
+  }
+
   const importFiles = importBios;
 
   async function browse() {
@@ -32,6 +48,10 @@
 
   onMount(() => {
     let off = () => {};
+    let offProgress = () => {};
+    api.onCoreProgress((p) => {
+      if (p.core in installing) installing[p.core] = p.percent;
+    }).then((f) => (offProgress = f));
     api
       .onDragDrop((p) => {
         if (p.type === 'over' || p.type === 'enter') over = true;
@@ -42,7 +62,10 @@
         }
       })
       .then((f) => (off = f));
-    return () => off();
+    return () => {
+      off();
+      offProgress();
+    };
   });
 </script>
 
@@ -81,6 +104,12 @@
             {/each}
           </dd>
         </dl>
+        {#if !s.core_installed}
+          { core = s.core}
+          <button class="btn primary" disabled={core in installing} onclick={() => install(core)}>
+            {core in installing ? `Installing… ${installing[core]}%` : `Install ${core.replace(/_libretro$/, '')}`}
+          </button>
+        {/if}
         <button class="btn" onclick={() => toggle(s)}>{s.enabled ? 'Switch off' : 'Switch on'}</button>
       </article>
     {/each}

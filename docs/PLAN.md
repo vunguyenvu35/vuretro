@@ -60,7 +60,7 @@ Compared with RetroArch, OpenEmu, ES-DE/Pegasus and Playnite/LaunchBox, what vur
 
 | Area | Missing | Milestone |
 |---|---|---|
-| Release | Real-game checks on all 3 OSes; CI `app` job not yet green; no installers or updater; cores are fetched with `make cores`, not by the app | M1 |
+| Release | Real-game checks on all 3 OSes; CI `app` job not yet green; no installers or updater | M1 |
 | Play experience | `wgpu` renderer (aspect, integer scale, fullscreen), shaders/CRT, in-game menu, rewind, cheats, save-slot picker with thumbnails, core options UI (only `.cfg` files now) | M2 |
 | Systems | Only 4 (Neo Geo, PS1, SNES, GBA); no NES, GB/GBC, Genesis, SMS, PC Engine (wave 1), no Atari, handhelds, Sega CD, NDS, MAME, DOS (wave 2); no choice of core per system; no PS1 disc swap | M3 |
 | Library | No cover art source or scraper, no hash identification (No-Intro), no collections or tags, no multi-disc grouping | M4 |
@@ -74,7 +74,7 @@ Goal: someone installs vuretro from a package, opens it, gets cores, adds a ROM 
 
 - [ ] Real-game check on macOS, Windows and Linux (carried over from Phase 1)
 - [ ] Verify the app window on Windows and Linux; CI job `app` green (carried over from Phase 2)
-- [ ] **In-app core installer**: download from the libretro buildbot, verify a checksum, store in `<data dir>/cores`. New `CoreInstaller` port in `vuretro-core`, adapter in `vuretro-library`; Cores & BIOS screen gets an Install button and progress
+- [x] **In-app core installer**: `CoreInstaller` port, `BuildbotInstaller` adapter (HTTPS download into `<data dir>/cores`, archive and native-library checks; the buildbot publishes no checksums), `install_core` command with `core-progress` events, Install button with progress on Cores & BIOS. Not yet run against the live buildbot from the app UI
 - [ ] macOS: signed + notarized `.dmg` (universal arm64/x86_64)
 - [ ] Windows: signed MSI/NSIS
 - [ ] Linux: AppImage, Flatpak

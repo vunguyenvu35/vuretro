@@ -16,7 +16,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use vuretro_core::paths::Paths;
 use vuretro_core::service::App;
-use vuretro_library::adapters::{FsCatalog, FsLocator, JsonStore, ProcessLauncher};
+use vuretro_library::adapters::{
+    BuildbotInstaller, FsCatalog, FsLocator, JsonStore, ProcessLauncher,
+};
 
 fn build_app() -> App {
     let paths =
@@ -26,8 +28,9 @@ fn build_app() -> App {
         Box::new(JsonStore::new(paths.clone())),
         Box::new(FsCatalog::new(paths.clone())),
         Box::new(FsLocator::new(paths.clone())),
-        Box::new(ProcessLauncher::new(paths)),
+        Box::new(ProcessLauncher::new(paths.clone())),
     )
+    .with_installer(Box::new(BuildbotInstaller::new(paths)))
 }
 
 fn main() {
@@ -37,7 +40,7 @@ fn main() {
     };
     let pads = shell.pads.clone();
 
-    use commands::{config::*, covers::*, launch::*, library::*};
+    use commands::{config::*, cores::*, covers::*, launch::*, library::*};
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(shell)
@@ -52,6 +55,7 @@ fn main() {
             set_rom_dir,
             set_system_enabled,
             set_system_core,
+            install_core,
             toggle_favorite,
             import_bios,
             import_roms,

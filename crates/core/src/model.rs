@@ -168,7 +168,7 @@ impl SystemView {
             Some(format!("{} is switched off", self.name))
         } else if !self.core_installed {
             Some(format!(
-                "core {} not installed (run: make cores)",
+                "core {} not installed (install it in Cores & BIOS)",
                 self.core
             ))
         } else if !self.bios_ready {

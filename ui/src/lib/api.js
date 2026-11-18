@@ -18,6 +18,7 @@ export const api = {
   setRomDir: (path) => call('set_rom_dir', { path }),
   setSystemEnabled: (id, enabled) => call('set_system_enabled', { id, enabled }),
   setSystemCore: (id, core) => call('set_system_core', { id, core }),
+  installCore: (core) => call('install_core', { core }),
   toggleFavorite: (path) => call('toggle_favorite', { path }),
   importBios: (paths) => call('import_bios', { paths }),
   importRoms: (paths, system = null) => call('import_roms', { paths, system }),
@@ -59,6 +60,7 @@ export const api = {
   // events (each returns a promise of an unsubscribe function)
   onGameExited: (fn) => on('game-exited', fn),
   onPadsChanged: (fn) => on('pads-changed', fn),
+  onCoreProgress: (fn) => on('core-progress', fn),
   onPadButton: (fn) => on('pad-button', fn),
   onCoversUpdated: (fn) => on('covers-updated', fn),
   onCoversDone: (fn) => on('covers-done', fn),

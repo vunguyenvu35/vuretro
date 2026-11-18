@@ -526,3 +526,59 @@ fn a_system_can_be_switched_to_another_listed_core() {
     assert!(a.set_system_core("nes", "snes9x_libretro").is_err());
     assert!(a.set_system_core("nope", "x").is_err());
 }
+
+struct FakeInstaller {
+    fail: bool,
+    calls: Arc<Mutex<Vec<String>>>,
+}
+
+impl CoreInstaller for FakeInstaller {
+    fn install(&self, stem: &str, progress: &dyn Fn(u8)) -> Result<std::path::PathBuf, String> {
+        self.calls.lock().unwrap().push(stem.to_string());
+        progress(50);
+        if self.fail {
+            Err("download failed: offline".into())
+        } else {
+            Ok(format!("/data/cores/{stem}").into())
+        }
+    }
+}
+
+#[test]
+fn cores_install_through_the_port_and_only_known_ones() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let make = |fail| {
+        app(&ready_world()).with_installer(Box::new(FakeInstaller {
+            fail,
+            calls: calls.clone(),
+        }))
+    };
+    let seen = Mutex::new(Vec::new());
+    make(false)
+        .install_core("fceumm_libretro", |p| seen.lock().unwrap().push(p))
+        .unwrap();
+    assert_eq!(*seen.lock().unwrap(), vec![50]);
+    assert_eq!(*calls.lock().unwrap(), vec!["fceumm_libretro"]);
+
+    // a name outside the registry never reaches the installer
+    let err = make(false).install_core("../evil", |_| {}).unwrap_err();
+    assert!(err.contains("not a core"));
+    assert_eq!(calls.lock().unwrap().len(), 1);
+
+    // failures reach the caller, and the core can be tried again afterwards
+    let a = make(true);
+    assert!(a
+        .install_core("fceumm_libretro", |_| {})
+        .unwrap_err()
+        .contains("offline"));
+    assert!(a
+        .install_core("fceumm_libretro", |_| {})
+        .unwrap_err()
+        .contains("offline"));
+
+    // without an installer the app says so
+    assert!(app(&ready_world())
+        .install_core("fceumm_libretro", |_| {})
+        .unwrap_err()
+        .contains("cannot download"));
+}

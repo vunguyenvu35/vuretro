@@ -5,7 +5,9 @@ use crate::detect;
 use crate::model::CoreChoice;
 use crate::model::{game_views, GameMeta, Outcome, Overview, Settings, SystemView};
 use crate::paths::Paths;
-use crate::ports::{Catalog, CoverJob, GameProcess, LaunchSpec, Launcher, Locator, Store};
+use crate::ports::{
+    Catalog, CoreInstaller, CoverJob, GameProcess, LaunchSpec, Launcher, Locator, Store,
+};
 use crate::registry::systems;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -39,6 +41,9 @@ pub struct App {
     catalog: Box<dyn Catalog>,
     locator: Box<dyn Locator>,
     launcher: Box<dyn Launcher>,
+    installer: Option<Box<dyn CoreInstaller>>,
+    /// Cores being downloaded right now.
+    installing: Mutex<HashSet<String>>,
     launch_grace: Duration,
     settings: Mutex<Settings>,
     meta: Mutex<HashMap<String, GameMeta>>,
@@ -64,12 +69,37 @@ impl App {
             catalog,
             locator,
             launcher,
+            installer: None,
+            installing: Mutex::new(HashSet::new()),
             launch_grace: LAUNCH_GRACE,
             settings,
             meta,
             covering: AtomicBool::new(false),
             cover_failed: Mutex::new(HashSet::new()),
         }
+    }
+
+    /// Let the app download cores itself.
+    pub fn with_installer(mut self, installer: Box<dyn CoreInstaller>) -> Self {
+        self.installer = Some(installer);
+        self
+    }
+
+    /// Download a core the registry knows. Slow: run it on a thread. `progress` gets 0..=100.
+    pub fn install_core(&self, stem: &str, progress: impl Fn(u8)) -> Result<(), String> {
+        if !systems().iter().any(|s| s.all_cores().any(|c| c == stem)) {
+            return Err(format!("{stem} is not a core vuretro knows"));
+        }
+        let installer = self
+            .installer
+            .as_ref()
+            .ok_or("this build cannot download cores")?;
+        if !self.installing.lock().unwrap().insert(stem.to_string()) {
+            return Err(format!("{stem} is already being installed"));
+        }
+        let result = installer.install(stem, &progress);
+        self.installing.lock().unwrap().remove(stem);
+        result.map(|_| ())
     }
 
     /// Change how long a new game is watched for an immediate failure (tests).
@@ -387,7 +417,7 @@ impl App {
         let core = self
             .locator
             .core(chosen)
-            .ok_or_else(|| format!("core {chosen} not installed (run: make cores)"))?;
+            .ok_or_else(|| format!("core {chosen} not installed (install it in Cores & BIOS)"))?;
         self.start(&core, &rom, Some(path))
     }
 

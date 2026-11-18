@@ -30,6 +30,7 @@ const mock = {
   set_rom_dir: async () => {},
   set_system_enabled: async () => {},
   set_system_core: async () => {},
+  install_core: async () => {},
   toggle_favorite: async () => true,
   import_bios: async ({ paths }) => paths.map((p) => ({ source: p, ok: false, message: 'Not available in browser preview' })),
   launch_game: async () => {},

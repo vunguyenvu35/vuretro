@@ -146,7 +146,7 @@ Everything lives in one data folder:
 | Message or problem | What to do |
 |---|---|
 | **BIOS missing** | Add the BIOS for that system in **Cores & BIOS** (see the table above). |
-| **Core … not installed (run: make cores)** | Run `make cores`, then restart the app. |
+| **Core … not installed** | Open Cores & BIOS and press **Install** on the system card (or run `make cores`). |
 | **… is switched off** | Turn the system on in **Cores & BIOS**. |
 | Game does not start | The app shows the end of `logs/runner.log`. Most often it is a missing BIOS or a damaged file. |
 | A `.zip` is not added ("cannot tell which system") | Select the system in the sidebar and import again, or put the file in a folder named after the system. |

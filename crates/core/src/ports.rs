@@ -103,3 +103,10 @@ pub trait Launcher: Send + Sync {
     /// Run a game headless and keep its best frame. True when the image exists afterwards.
     fn capture_cover(&self, job: &CoverJob) -> bool;
 }
+
+/// Downloads cores into the app's own cores folder.
+pub trait CoreInstaller: Send + Sync {
+    /// Fetch and unpack core `stem` (e.g. `snes9x_libretro`). `progress` gets 0..=100.
+    /// Returns the path of the installed file.
+    fn install(&self, stem: &str, progress: &dyn Fn(u8)) -> Result<PathBuf, String>;
+}

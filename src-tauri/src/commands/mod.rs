@@ -2,6 +2,7 @@
 //! No rules live here; each command unwraps its arguments, calls `App` and shapes the reply.
 
 pub mod config;
+pub mod cores;
 pub mod covers;
 pub mod launch;
 pub mod library;
