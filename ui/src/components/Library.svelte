@@ -25,6 +25,20 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   import { onMount } from "svelte";
   let searchEl = $state();
 
+  /**
+   * The list header sticks right under the title bar. The bar grows taller when the window is
+   * narrow and its controls wrap, so its real height is measured instead of assumed; with a
+   * fixed offset a strip opened between the two and game rows showed through it, cut in half.
+   */
+  function trackBar(node) {
+    const scroller = node.closest('.scroll');
+    const set = () => scroller?.style.setProperty('--bar-h', `${node.offsetHeight}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(node);
+    return { destroy: () => ro.disconnect() };
+  }
+
   const ov = $derived(app.overview);
   const sysName = (id) => ov?.systems.find((s) => s.id === id)?.name ?? id;
 
@@ -231,7 +245,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
         </div>
       {/if}
 
-      <div class="bar">
+      <div class="bar" use:trackBar>
         <h3>{heading} <small>{visible.length}</small></h3>
         <label class="search">
           <svg class="mag" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.6" /><path d="M10.6 10.6L14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
@@ -472,7 +486,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   .lhead, .lrow { display: grid; grid-template-columns: 76px minmax(0, 2.2fr) minmax(0, 1.1fr) 84px minmax(0, 1fr) minmax(0, .8fr) 34px; align-items: center; gap: 16px; }
   /* in selection mode a checkbox gutter opens to the left of the picture */
   .list.selecting .lhead, .list.selecting .lrow { grid-template-columns: 18px 76px minmax(0, 2.2fr) minmax(0, 1.1fr) 84px minmax(0, 1fr) minmax(0, .8fr) 34px; }
-  .lhead { position: sticky; top: 56px; z-index: 3; height: 34px; padding: 0 14px 0 18px; background: var(--bg); border-bottom: 1px solid var(--border); color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
+  .lhead { position: sticky; top: calc(var(--bar-h, 62px) - 6px); z-index: 3; height: 34px; padding: 0 14px 0 18px; background: var(--bg); border-bottom: 1px solid var(--border); color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
   .lhead .r, .lrow .r { text-align: right; justify-self: end; }
   .lrow { width: 100%; padding: 7px 14px 7px 18px; border-radius: 10px; border: 1px solid transparent; background: none; color: var(--text); text-align: left; transition: background .12s; }
   .lrow:hover { background: var(--surface); }
