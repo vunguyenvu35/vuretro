@@ -55,6 +55,21 @@ impl Paths {
     pub fn macros_file(&self) -> PathBuf {
         self.config_dir().join("macros.json")
     }
+    /// Per-system and per-game overrides of the game settings.
+    pub fn overrides_file(&self) -> PathBuf {
+        self.config_dir().join("overrides.json")
+    }
+    /// Key bindings of one system (`config/controls/<system>.json`); used instead of the
+    /// general ones when it exists. The id is reduced to safe characters.
+    pub fn system_controls_file(&self, system: &str) -> PathBuf {
+        let safe: String = system
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        self.config_dir()
+            .join("controls")
+            .join(format!("{safe}.json"))
+    }
     pub fn game_settings_file(&self) -> PathBuf {
         self.config_dir().join("game.json")
     }
@@ -140,6 +155,23 @@ mod tests {
         assert_eq!(
             p.cover_file(Path::new("/x/Metal Slug (U).zip")),
             PathBuf::from("/d/covers/Metal_Slug__U_.zip.png")
+        );
+    }
+
+    #[test]
+    fn override_files_live_under_config_and_system_ids_are_made_safe() {
+        let p = Paths::new("/d");
+        assert_eq!(
+            p.overrides_file(),
+            PathBuf::from("/d/config/overrides.json")
+        );
+        assert_eq!(
+            p.system_controls_file("snes"),
+            PathBuf::from("/d/config/controls/snes.json")
+        );
+        assert_eq!(
+            p.system_controls_file("../../etc"),
+            PathBuf::from("/d/config/controls/etc.json")
         );
     }
 

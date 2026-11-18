@@ -2,7 +2,9 @@
 //! only through the ports in `ports`, so everything here runs in tests with fakes.
 
 use crate::detect;
-use crate::model::{assess, CoreChoice, CoreOptionView, MachineInfo, SlotInfo};
+use crate::model::{
+    assess, CoreChoice, CoreOptionView, MachineInfo, ScopedControls, ScopedSettings, SlotInfo,
+};
 use crate::model::{game_views, GameMeta, Outcome, Overview, Settings, SystemView};
 use crate::paths::Paths;
 use crate::ports::{
@@ -449,6 +451,93 @@ impl App {
         Ok(config)
     }
 
+    fn known_system(system: &str) -> Result<(), String> {
+        crate::registry::by_id(system)
+            .map(|_| ())
+            .ok_or_else(|| format!("unknown system {system}"))
+    }
+
+    /// Settings for everything (`None`) or for one system. A system shows what it overrides
+    /// and what it would otherwise inherit.
+    pub fn scoped_settings(&self, system: Option<&str>) -> Result<ScopedSettings, String> {
+        let base = self.store.load_game_settings();
+        let Some(system) = system else {
+            return Ok(ScopedSettings {
+                effective: base.clone(),
+                inherited: base,
+                overridden: Default::default(),
+            });
+        };
+        Self::known_system(system)?;
+        let ov = self
+            .store
+            .load_overrides()
+            .systems
+            .remove(system)
+            .unwrap_or_default();
+        Ok(ScopedSettings {
+            effective: ov.apply(base.clone()),
+            inherited: base,
+            overridden: ov,
+        })
+    }
+
+    /// Replace what one system overrides (`None` fields inherit again).
+    pub fn set_system_override(
+        &self,
+        system: &str,
+        ov: vuretro_settings::scoped::Override,
+    ) -> Result<ScopedSettings, String> {
+        Self::known_system(system)?;
+        let mut all = self.store.load_overrides();
+        all.set_system(system, ov);
+        self.store.save_overrides(&all)?;
+        self.scoped_settings(Some(system))
+    }
+
+    /// Key bindings for everything (`None`) or for one system.
+    pub fn controls_for(&self, system: Option<&str>) -> Result<ScopedControls, String> {
+        let Some(system) = system else {
+            return Ok(ScopedControls {
+                config: self.store.load_controls(),
+                custom: false,
+            });
+        };
+        Self::known_system(system)?;
+        Ok(match self.store.load_system_controls(system) {
+            Some(config) => ScopedControls {
+                config,
+                custom: true,
+            },
+            None => ScopedControls {
+                config: self.store.load_controls(),
+                custom: false,
+            },
+        })
+    }
+
+    /// Give a system key bindings of its own.
+    pub fn set_controls_for(
+        &self,
+        system: &str,
+        config: ControlsConfig,
+    ) -> Result<ScopedControls, String> {
+        Self::known_system(system)?;
+        let config = config.sanitized();
+        self.store.save_system_controls(system, &config)?;
+        Ok(ScopedControls {
+            config,
+            custom: true,
+        })
+    }
+
+    /// Drop a system's own key bindings: it uses the general ones again.
+    pub fn reset_controls_for(&self, system: &str) -> Result<ScopedControls, String> {
+        Self::known_system(system)?;
+        self.store.remove_system_controls(system)?;
+        self.controls_for(Some(system))
+    }
+
     pub fn game_settings(&self) -> GameSettings {
         self.store.load_game_settings()
     }
@@ -677,7 +766,7 @@ impl App {
             .locator
             .core(chosen)
             .ok_or_else(|| format!("core {chosen} not installed (install it in Cores & BIOS)"))?;
-        self.start(&core, &rom, Some(path), slot)
+        self.start(&core, &rom, Some(path), slot, sys.id)
     }
 
     /// Run the fake test core so the app can be tried without any ROM.
@@ -687,7 +776,7 @@ impl App {
             .test_core()
             .ok_or("test core not built. Run `make build` first.")?;
         let rom = self.store.ensure_demo_rom()?;
-        self.start(&core, &rom, None, None)
+        self.start(&core, &rom, None, None, "")
     }
 
     fn start(
@@ -696,6 +785,7 @@ impl App {
         rom: &Path,
         track: Option<String>,
         load_slot: Option<u8>,
+        system: &str,
     ) -> Result<Option<Running>, String> {
         let runner = self
             .locator
@@ -708,6 +798,7 @@ impl App {
             system_dir: self.paths.system_dir(),
             cover: self.paths.cover_file(rom),
             load_slot,
+            system: system.to_string(),
         })?;
 
         // Failing fast (missing BIOS, bad file) should be reported, not silently ignored.

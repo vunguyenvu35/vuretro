@@ -9,6 +9,7 @@ use crate::registry::System;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use vuretro_controls::{macros::MacroConfig, ControlsConfig};
+use vuretro_settings::scoped::Overrides;
 use vuretro_settings::GameSettings;
 
 /// Persistence of the app's own data.
@@ -23,6 +24,14 @@ pub trait Store: Send + Sync {
     fn save_controls(&self, controls: &ControlsConfig) -> Result<(), String>;
     fn load_macros(&self) -> MacroConfig;
     fn save_macros(&self, macros: &MacroConfig) -> Result<(), String>;
+    /// Per-system and per-game choices layered over the general settings.
+    fn load_overrides(&self) -> Overrides;
+    fn save_overrides(&self, overrides: &Overrides) -> Result<(), String>;
+    /// Key bindings of one system, if it has its own.
+    fn load_system_controls(&self, system: &str) -> Option<ControlsConfig>;
+    fn save_system_controls(&self, system: &str, controls: &ControlsConfig) -> Result<(), String>;
+    /// Go back to the general key bindings for this system.
+    fn remove_system_controls(&self, system: &str) -> Result<(), String>;
     /// Window size, sound and the like, shared with the runner.
     fn load_game_settings(&self) -> GameSettings;
     fn save_game_settings(&self, settings: &GameSettings) -> Result<(), String>;
@@ -98,6 +107,8 @@ pub struct LaunchSpec {
     pub cover: PathBuf,
     /// Save slot to load as the game starts.
     pub load_slot: Option<u8>,
+    /// Id of the system, so the runner applies that system's settings and key bindings.
+    pub system: String,
 }
 
 /// A request to make a preview image without opening a window.

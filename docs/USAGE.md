@@ -174,3 +174,13 @@ These systems need a fast computer and a graphics renderer. On **Cores & BIOS** 
 While any game runs, vuretro watches its speed. If the computer cannot keep up, the window title shows **(slow: about N fps)** and a message appears; it goes away when the game runs smoothly again.
 
 For PS2 you also need a PS2 BIOS inside the `system/pcsx2/bios` folder of the vuretro data directory.
+
+## Settings and controls per system
+
+On **Settings** and **Controls**, the **Applies to** box at the top chooses what you are editing: **All games** or one system.
+
+- **Settings per system:** window size, CRT scanlines and rewind can be set for one system (a Game Boy wants a bigger window than a PlayStation). A customised row is tagged **customised** and has a **Use general** link. Anything you do not change follows **All games**, even if you change it there later. Sound and the other settings stay general.
+- **Controls per system:** a system uses the general key bindings until you change a button while that system is selected; from then on it has bindings of its own. **Use the general ones** removes them again.
+- **In a game:** the hotkeys for window size (F9 / F10) and CRT (F4) save to the place that already owns that setting: the system if it customised it, otherwise the general settings.
+
+The files are `config/overrides.json` and `config/controls/<system>.json` in the data folder.

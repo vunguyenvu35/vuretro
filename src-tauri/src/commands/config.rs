@@ -56,3 +56,64 @@ pub fn set_game_settings(
 ) -> Result<GameSettings, String> {
     shell.app.set_game_settings(settings)
 }
+
+#[derive(Serialize)]
+pub struct ScopedControlsView {
+    config: ControlsConfig,
+    custom: bool,
+    pads: Vec<PadInfo>,
+}
+
+fn scoped_view(shell: &Shell, v: vuretro_core::model::ScopedControls) -> ScopedControlsView {
+    ScopedControlsView {
+        config: v.config,
+        custom: v.custom,
+        pads: shell.pads.lock().unwrap().clone(),
+    }
+}
+
+/// Key bindings for everything (`system` empty) or one system.
+#[tauri::command]
+pub fn get_controls_for(
+    shell: State<'_, Shell>,
+    system: Option<String>,
+) -> Result<ScopedControlsView, String> {
+    let v = shell.app.controls_for(system.as_deref().filter(|s| !s.is_empty()))?;
+    Ok(scoped_view(&shell, v))
+}
+
+#[tauri::command]
+pub fn set_controls_for(
+    shell: State<'_, Shell>,
+    system: String,
+    config: ControlsConfig,
+) -> Result<ScopedControlsView, String> {
+    let v = shell.app.set_controls_for(&system, config)?;
+    Ok(scoped_view(&shell, v))
+}
+
+#[tauri::command]
+pub fn reset_controls_for(
+    shell: State<'_, Shell>,
+    system: String,
+) -> Result<ScopedControlsView, String> {
+    let v = shell.app.reset_controls_for(&system)?;
+    Ok(scoped_view(&shell, v))
+}
+
+#[tauri::command]
+pub fn get_scoped_settings(
+    shell: State<'_, Shell>,
+    system: Option<String>,
+) -> Result<vuretro_core::model::ScopedSettings, String> {
+    shell.app.scoped_settings(system.as_deref().filter(|s| !s.is_empty()))
+}
+
+#[tauri::command]
+pub fn set_system_override(
+    shell: State<'_, Shell>,
+    system: String,
+    overrides: vuretro_settings::scoped::Override,
+) -> Result<vuretro_core::model::ScopedSettings, String> {
+    shell.app.set_system_override(&system, overrides)
+}

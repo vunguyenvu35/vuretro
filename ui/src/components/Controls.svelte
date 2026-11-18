@@ -5,9 +5,12 @@
   import { toast } from '../lib/ui.svelte.js';
   import { modKey } from '../lib/systems.js';
   import Select from './Select.svelte';
+  import ScopeBar from './ScopeBar.svelte';
   import { ACTIONS, HOTKEYS, RESERVED, keyName, keyLabel, padLabel, deviceValue, parseDevice } from '../lib/controls.js';
 
   let cfg = $state(null);
+  /** this system has key bindings of its own (otherwise it uses the general ones) */
+  let custom = $state(false);
   let pads = $state([]);
   let tab = $state(0);
   let capture = $state(null); // { player, kind: 'keyboard'|'gamepad', action }
@@ -23,15 +26,36 @@
   const shortId = (id) => id.slice(0, 8);
 
   async function load() {
-    const v = await api.controls();
+    const v = await api.controlsFor(app.scope);
     cfg = v.config;
     pads = v.pads;
+    custom = !!v.custom;
   }
+
+  // the screen shows the bindings of whatever the scope bar says
+  $effect(() => {
+    void app.scope;
+    load();
+  });
+
+  async function useGeneral() {
+    const v = await api.resetControlsFor(app.scope);
+    cfg = v.config;
+    custom = false;
+    toast(`${systemName} uses the general key bindings again`);
+  }
+  const systemName = $derived(app.overview?.systems.find((x) => x.id === app.scope)?.name ?? app.scope);
 
   let saveTimer;
   async function save() {
     try {
-      cfg = await api.setControls($state.snapshot(cfg));
+      if (app.scope) {
+        const v = await api.setControlsFor(app.scope, $state.snapshot(cfg));
+        cfg = v.config;
+        custom = true;
+      } else {
+        cfg = await api.setControls($state.snapshot(cfg));
+      }
       saved = true;
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => (saved = false), 1800);
@@ -102,7 +126,6 @@
   }
 
   onMount(() => {
-    load();
     const offs = [];
     api.onPadsChanged((list) => (pads = list)).then((f) => offs.push(f));
     api
@@ -130,6 +153,17 @@
     </div>
     <span class="saved" class:show={saved}>✓ Saved</span>
   </header>
+
+  <ScopeBar hint="Each system can have its own buttons: a NES pad and a PlayStation pad are not alike." />
+  {#if app.scope}
+    <p class="scopenote">
+      {#if custom}
+        <strong>{systemName}</strong> has its own key bindings. <button class="link" onclick={useGeneral}>Use the general ones</button>
+      {:else}
+        <strong>{systemName}</strong> uses the general key bindings. Change any button below to give it bindings of its own.
+      {/if}
+    </p>
+  {/if}
 
   {#if cfg}
     <h2 class="sec">Players</h2>
@@ -241,6 +275,8 @@
 </section>
 
 <style>
+  .scopenote { color: var(--muted); margin: -8px 0 18px; }
+  .scopenote .link { background: none; border: 0; color: var(--accent); text-decoration: underline; padding: 0; font: inherit; }
   .page { flex: 1; overflow: auto; padding: 32px 40px 56px; min-width: 0; }
   .page > :global(*) { max-width: 1040px; margin-left: auto; margin-right: auto; }
   .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }

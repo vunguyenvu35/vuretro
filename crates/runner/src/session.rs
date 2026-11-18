@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use vuretro_settings::scoped::{load_overrides, save_overrides, Change, Scope};
 use vuretro_settings::GameSettings;
 
 /// Rewind keeps a state every this many frames, up to this much memory.
@@ -41,6 +42,10 @@ pub struct Config {
     pub shots_dir: PathBuf,
     pub settings: GameSettings,
     pub settings_path: PathBuf,
+    /// Per-system and per-game overrides of the settings.
+    pub overrides_path: PathBuf,
+    /// Id of the system being played (empty when unknown).
+    pub system: String,
     /// Where to save a preview image when the window closes.
     pub cover: Option<PathBuf>,
     pub base_w: usize,
@@ -62,6 +67,8 @@ pub struct Session {
     _keep_alive: Box<dyn std::any::Any>,
     settings: GameSettings,
     settings_path: PathBuf,
+    overrides_path: PathBuf,
+    system: String,
     rom_name: String,
     save_dir: PathBuf,
     sram_path: PathBuf,
@@ -112,6 +119,8 @@ impl Session {
             sound_on: cfg.settings.sound,
             settings: cfg.settings,
             settings_path: cfg.settings_path,
+            overrides_path: cfg.overrides_path,
+            system: cfg.system,
             rom_name: cfg.rom_name,
             save_dir: cfg.save_dir,
             sram_path: cfg.sram_path,
@@ -293,9 +302,7 @@ impl Session {
             Act::Crt => {
                 self.crt = !self.crt;
                 self.settings.crt = self.crt;
-                if let Err(e) = vuretro_settings::save(&self.settings_path, &self.settings) {
-                    log::warn!("cannot save the CRT setting: {e}");
-                }
+                self.persist(Change::Crt(self.crt));
                 Some(format!(
                     "CRT effect {}",
                     if self.crt { "on" } else { "off" }
@@ -327,10 +334,26 @@ impl Session {
         self.shown_title.clear();
         self.factor = wanted;
         self.settings.window_scale = wanted as u8;
-        if let Err(e) = vuretro_settings::save(&self.settings_path, &self.settings) {
-            log::warn!("cannot save window size: {e}");
-        }
+        self.persist(Change::WindowScale(wanted as u8));
         Ok(())
+    }
+
+    /// Remember a setting changed by hotkey, in the layer (general, system or game) that
+    /// owns it, so it comes back the same way next time.
+    fn persist(&self, change: Change) {
+        let scope = Scope {
+            system: &self.system,
+            game: &self.rom_name,
+        };
+        let mut base = vuretro_settings::load(&self.settings_path);
+        let mut overrides = load_overrides(&self.overrides_path);
+        overrides.record_change(&mut base, scope, change);
+        if let Err(e) = vuretro_settings::save(&self.settings_path, &base) {
+            log::warn!("cannot save settings: {e}");
+        }
+        if let Err(e) = save_overrides(&self.overrides_path, &overrides) {
+            log::warn!("cannot save settings: {e}");
+        }
     }
 
     fn screenshot(&self) -> String {
@@ -637,6 +660,8 @@ mod tests {
                 shots_dir: dir.path().join("shots"),
                 settings: GameSettings::default(),
                 settings_path: dir.path().join("game.json"),
+                overrides_path: dir.path().join("overrides.json"),
+                system: "snes".into(),
                 cover: None,
                 base_w: 2,
                 base_h: 2,

@@ -10,6 +10,7 @@ use vuretro_core::paths::Paths;
 use vuretro_core::ports::*;
 use vuretro_core::registry::{self, System};
 use vuretro_core::service::App;
+use vuretro_settings::scoped::{Override, Overrides};
 use vuretro_settings::GameSettings;
 
 #[derive(Default)]
@@ -36,6 +37,8 @@ struct World {
     names: HashMap<PathBuf, String>,
     art: HashSet<PathBuf>,
     cheats: HashMap<PathBuf, String>,
+    overrides: Overrides,
+    system_controls: HashMap<String, ControlsConfig>,
     art_calls: Vec<(String, String)>,
     dat_entries: usize,
 }
@@ -44,6 +47,28 @@ struct World {
 struct Fake(Arc<Mutex<World>>);
 
 impl Store for Fake {
+    fn load_overrides(&self) -> Overrides {
+        self.0.lock().unwrap().overrides.clone()
+    }
+    fn save_overrides(&self, o: &Overrides) -> Result<(), String> {
+        self.0.lock().unwrap().overrides = o.clone();
+        Ok(())
+    }
+    fn load_system_controls(&self, system: &str) -> Option<ControlsConfig> {
+        self.0.lock().unwrap().system_controls.get(system).cloned()
+    }
+    fn save_system_controls(&self, system: &str, c: &ControlsConfig) -> Result<(), String> {
+        self.0
+            .lock()
+            .unwrap()
+            .system_controls
+            .insert(system.to_string(), c.clone());
+        Ok(())
+    }
+    fn remove_system_controls(&self, system: &str) -> Result<(), String> {
+        self.0.lock().unwrap().system_controls.remove(system);
+        Ok(())
+    }
     fn list_slots(&self, _: &Path) -> Vec<SlotInfo> {
         self.0.lock().unwrap().slots.clone()
     }
@@ -1054,4 +1079,108 @@ fn art_sources_are_tried_in_order_and_get_the_users_login() {
     // an empty user name forgets the login
     a.set_screenscraper(String::new(), String::new());
     assert!(a.overview().screenscraper_user.is_none());
+}
+
+#[test]
+fn a_system_can_override_window_crt_and_rewind_while_the_rest_stays_general() {
+    let f = ready_world();
+    let a = app(&f);
+    a.set_game_settings(GameSettings {
+        window_scale: 2,
+        volume: 60,
+        ..Default::default()
+    })
+    .unwrap();
+
+    // everything: no overrides
+    let all = a.scoped_settings(None).unwrap();
+    assert_eq!(
+        (all.effective.window_scale, all.inherited.window_scale),
+        (2, 2)
+    );
+    assert!(all.overridden.is_empty());
+
+    // a system: its own size and CRT, the general volume
+    let gba = a
+        .set_system_override(
+            "gba",
+            Override {
+                window_scale: Some(5),
+                crt: Some(true),
+                rewind: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        (
+            gba.effective.window_scale,
+            gba.effective.crt,
+            gba.effective.volume
+        ),
+        (5, true, 60)
+    );
+    assert_eq!(gba.inherited.window_scale, 2);
+    assert_eq!(gba.overridden.window_scale, Some(5));
+    assert!(a
+        .scoped_settings(Some("psx"))
+        .unwrap()
+        .overridden
+        .is_empty());
+
+    // changing the general size later still reaches systems that did not override it
+    a.set_game_settings(GameSettings {
+        window_scale: 3,
+        volume: 60,
+        ..Default::default()
+    })
+    .unwrap();
+    assert_eq!(
+        a.scoped_settings(Some("psx"))
+            .unwrap()
+            .effective
+            .window_scale,
+        3
+    );
+    assert_eq!(
+        a.scoped_settings(Some("gba"))
+            .unwrap()
+            .effective
+            .window_scale,
+        5
+    );
+
+    // an empty override removes the system's entry; unknown systems are refused
+    a.set_system_override("gba", Override::default()).unwrap();
+    assert!(f.0.lock().unwrap().overrides.systems.is_empty());
+    assert!(a.set_system_override("nope", Override::default()).is_err());
+    assert!(a.scoped_settings(Some("nope")).is_err());
+}
+
+#[test]
+fn a_system_can_have_its_own_key_bindings_and_go_back_to_the_general_ones() {
+    let f = ready_world();
+    let a = app(&f);
+    let general = a.controls_for(None).unwrap();
+    assert!(!general.custom);
+    // no bindings of its own: the general ones, not marked custom
+    let snes = a.controls_for(Some("snes")).unwrap();
+    assert!(!snes.custom);
+
+    let mut own = ControlsConfig::default();
+    own.players[0].deadzone = 0.5;
+    let saved = a.set_controls_for("snes", own.clone()).unwrap();
+    assert!(saved.custom);
+    assert_eq!(
+        a.controls_for(Some("snes")).unwrap().config.players[0].deadzone,
+        0.5
+    );
+    assert!(a.controls_for(Some("snes")).unwrap().custom);
+    assert!(
+        !a.controls_for(Some("gba")).unwrap().custom,
+        "other systems are untouched"
+    );
+
+    let back = a.reset_controls_for("snes").unwrap();
+    assert!(!back.custom);
+    assert!(a.set_controls_for("nope", own).is_err());
 }

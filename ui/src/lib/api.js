@@ -53,6 +53,11 @@ export const api = {
   controls: () => call('get_controls'),
   defaultControls: () => call('default_controls'),
   setControls: (config) => call('set_controls', { config }),
+  controlsFor: (system) => call('get_controls_for', { system: system || null }),
+  setControlsFor: (system, config) => call('set_controls_for', { system, config }),
+  resetControlsFor: (system) => call('reset_controls_for', { system }),
+  scopedSettings: (system) => call('get_scoped_settings', { system: system || null }),
+  setSystemOverride: (system, overrides) => call('set_system_override', { system, overrides }),
   macros: () => call('get_macros'),
   setMacros: (config) => call('set_macros', { config }),
 

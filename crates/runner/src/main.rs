@@ -71,6 +71,9 @@ struct Args {
     /// Core options file, `key = value` per line (default: <data dir>/config/<core>.cfg)
     #[arg(long, value_name = "FILE")]
     options: Option<PathBuf>,
+    /// Id of the system being played: picks its settings overrides and its own key bindings
+    #[arg(long, value_name = "ID")]
+    system: Option<String>,
     /// Controls file (default: <data dir>/config/controls.json)
     #[arg(long, value_name = "FILE")]
     controls: Option<PathBuf>,
@@ -195,8 +198,26 @@ fn main() -> Result<()> {
         );
     }
 
+    let system = args.system.clone().unwrap_or_default();
     let settings_path = args.settings.unwrap_or_else(|| paths.game_settings_file());
-    let controls_path = args.controls.unwrap_or_else(|| paths.controls_file());
+    let overrides_path = paths.overrides_file();
+    // general settings, then this system's choices, then this game's
+    let settings = vuretro_settings::scoped::load_overrides(&overrides_path).resolve(
+        &vuretro_settings::load(&settings_path),
+        vuretro_settings::scoped::Scope {
+            system: &system,
+            game: &rom_name,
+        },
+    );
+    // a system can have its own key bindings; otherwise the general ones apply
+    let controls_path = args.controls.unwrap_or_else(|| {
+        let own = paths.system_controls_file(&system);
+        if !system.is_empty() && own.is_file() {
+            own
+        } else {
+            paths.controls_file()
+        }
+    });
     let game_macros = vuretro_controls::macros::load(&paths.macros_file())
         .for_game(&vuretro_controls::macros::game_key(&rom_name));
 
@@ -206,8 +227,10 @@ fn main() -> Result<()> {
         save_dir,
         sram_path,
         shots_dir: paths.screenshots_dir(),
-        settings: vuretro_settings::load(&settings_path),
+        settings,
         settings_path,
+        overrides_path,
+        system,
         controls: vuretro_controls::load(&controls_path),
         macros: game_macros,
         scale: args.scale,

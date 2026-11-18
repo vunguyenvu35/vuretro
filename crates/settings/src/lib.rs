@@ -3,6 +3,7 @@
 
 pub mod cheats;
 pub mod core_options;
+pub mod scoped;
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;

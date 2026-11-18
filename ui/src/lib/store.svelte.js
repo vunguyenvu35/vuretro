@@ -35,6 +35,7 @@ export const app = $state({
   selecting: false, // choosing several games to remove at once
   picked: [], // paths of the chosen games
   capturing: false, // a key or button is being recorded on the Controls screen
+  scope: '', // system id the Settings and Controls screens edit; empty = all games
 });
 
 const hash = typeof location !== "undefined" ? location.hash.slice(1).split(",") : [];

@@ -241,6 +241,23 @@ pub fn assess(sys: &System, machine: &MachineInfo) -> Assessment {
     Assessment { level, reasons }
 }
 
+/// Settings as one scope sees them: what applies, what it would inherit, and what it overrides.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ScopedSettings {
+    pub effective: vuretro_settings::GameSettings,
+    /// The values this scope would use if it overrode nothing.
+    pub inherited: vuretro_settings::GameSettings,
+    pub overridden: vuretro_settings::scoped::Override,
+}
+
+/// Key bindings as one scope sees them.
+#[derive(Debug, Clone, Serialize)]
+pub struct ScopedControls {
+    pub config: vuretro_controls::ControlsConfig,
+    /// The system has bindings of its own (otherwise it uses the general ones).
+    pub custom: bool,
+}
+
 /// One option a core offers. The first value is the core's default.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CoreOptionDef {

@@ -69,6 +69,8 @@ pub struct Params {
     pub shots_dir: PathBuf,
     pub settings: GameSettings,
     pub settings_path: PathBuf,
+    pub overrides_path: PathBuf,
+    pub system: String,
     pub controls: ControlsConfig,
     pub macros: Vec<Macro>,
     /// Window scale from the command line, overriding the saved setting.
@@ -139,6 +141,8 @@ pub fn open(p: Params) -> Result<Session> {
             shots_dir: p.shots_dir,
             settings: p.settings,
             settings_path: p.settings_path,
+            overrides_path: p.overrides_path,
+            system: p.system,
             cover: p.cover,
             base_w,
             base_h,

@@ -3,6 +3,9 @@
   import { api } from '../lib/api.js';
   import { toast } from '../lib/ui.svelte.js';
   import { HOTKEYS, APP_SHORTCUTS } from '../lib/controls.js';
+  import { app } from '../lib/store.svelte.js';
+  import ScopeBar from './ScopeBar.svelte';
+  import SystemSettings from './SystemSettings.svelte';
 
   let s = $state(null);
   let saved = $state(false);
@@ -84,7 +87,11 @@
       </span>
     </header>
 
-    {#if s}
+    <ScopeBar hint="Window size, CRT and rewind can differ per system." />
+
+    {#if app.scope}
+      <SystemSettings system={app.scope} name={app.overview?.systems.find((x) => x.id === app.scope)?.name ?? app.scope} />
+    {:else if s}
       <!-- ================= DISPLAY ================= -->
       <h2 class="group">Display</h2>
       <div class="panel">

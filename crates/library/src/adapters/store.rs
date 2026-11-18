@@ -5,6 +5,7 @@ use vuretro_controls::{macros, macros::MacroConfig, ControlsConfig};
 use vuretro_core::model::{GameMeta, Settings, SlotInfo, SAVE_SLOTS};
 use vuretro_core::paths::Paths;
 use vuretro_core::ports::Store;
+use vuretro_settings::scoped::Overrides;
 use vuretro_settings::GameSettings;
 
 /// Keeps the app's data as JSON files (and preview images) under the data folder.
@@ -58,6 +59,25 @@ impl Store for JsonStore {
     }
     fn save_macros(&self, config: &MacroConfig) -> Result<(), String> {
         macros::save(&self.paths.macros_file(), config)
+    }
+    fn load_overrides(&self) -> Overrides {
+        vuretro_settings::scoped::load_overrides(&self.paths.overrides_file())
+    }
+    fn save_overrides(&self, overrides: &Overrides) -> Result<(), String> {
+        vuretro_settings::scoped::save_overrides(&self.paths.overrides_file(), overrides)
+    }
+    fn load_system_controls(&self, system: &str) -> Option<ControlsConfig> {
+        let path = self.paths.system_controls_file(system);
+        path.is_file().then(|| vuretro_controls::load(&path))
+    }
+    fn save_system_controls(&self, system: &str, controls: &ControlsConfig) -> Result<(), String> {
+        vuretro_controls::save(&self.paths.system_controls_file(system), controls)
+    }
+    fn remove_system_controls(&self, system: &str) -> Result<(), String> {
+        match std::fs::remove_file(self.paths.system_controls_file(system)) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
+            _ => Ok(()),
+        }
     }
     fn load_game_settings(&self) -> GameSettings {
         vuretro_settings::load(&self.paths.game_settings_file())

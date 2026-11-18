@@ -64,6 +64,8 @@ impl Launcher for ProcessLauncher {
             .arg(&spec.system_dir)
             .arg("--cover")
             .arg(&spec.cover)
+            .arg("--system")
+            .arg(&spec.system)
             .args(
                 spec.load_slot
                     .iter()

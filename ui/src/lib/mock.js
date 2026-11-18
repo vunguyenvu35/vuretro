@@ -96,4 +96,25 @@ mock.get_macros = async () => mockMacros;
 mock.set_macros = async ({ config }) => ((mockMacros = config), config);
 mock.reveal_path = async () => {};
 
+// per-system overrides and key bindings, kept in memory for browser development
+const mockOverrides = {};
+const mockSystemControls = {};
+const scoped = (system) => {
+  const ov = mockOverrides[system] ?? {};
+  const eff = { ...mockGame };
+  for (const k of ['window_scale', 'crt', 'rewind']) if (ov[k] != null) eff[k] = ov[k];
+  return { effective: eff, inherited: { ...mockGame }, overridden: { window_scale: null, crt: null, rewind: null, ...ov } };
+};
+mock.get_scoped_settings = async ({ system }) => (system ? scoped(system) : { effective: { ...mockGame }, inherited: { ...mockGame }, overridden: { window_scale: null, crt: null, rewind: null } });
+mock.set_system_override = async ({ system, overrides }) => {
+  const clean = Object.fromEntries(Object.entries(overrides).filter(([, v]) => v != null));
+  if (Object.keys(clean).length) mockOverrides[system] = clean;
+  else delete mockOverrides[system];
+  return scoped(system);
+};
+const controlsView = async (system) => ({ config: mockSystemControls[system] ?? (await mock.get_controls()).config, custom: !!mockSystemControls[system], pads: [] });
+mock.get_controls_for = async ({ system }) => (system ? controlsView(system) : { ...(await mock.get_controls()), custom: false });
+mock.set_controls_for = async ({ system, config }) => ((mockSystemControls[system] = config), controlsView(system));
+mock.reset_controls_for = async ({ system }) => (delete mockSystemControls[system], controlsView(system));
+
 export { mock, DEFAULT_GAME };
