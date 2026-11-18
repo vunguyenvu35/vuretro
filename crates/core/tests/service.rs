@@ -1381,7 +1381,8 @@ impl Archive for FakeArchive {
     ) -> Result<vuretro_core::backup::BackupSummary, String> {
         self.0 .0.lock().unwrap().archive_calls.push(format!(
             "create {} [{}]",
-            dest.display(),
+            // Windows joins paths with a backslash; compare with forward slashes everywhere
+            dest.display().to_string().replace('\\', "/"),
             includes.join(",")
         ));
         Ok(vuretro_core::backup::BackupSummary {
