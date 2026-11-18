@@ -34,6 +34,12 @@ pub struct GameMeta {
     pub last_played: u64,
     pub play_secs: u64,
     pub favorite: bool,
+    /// Official name found by hashing the file against the user's DAT files.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Collections the user put the game in.
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 /// A ROM found on disk.
@@ -248,6 +254,11 @@ pub struct GameView {
     pub blocked: Option<String>,
     /// Imported into the app's library (can be removed from it), not just linked.
     pub imported: bool,
+    /// The title came from a DAT file, not from the file name.
+    pub identified: bool,
+    /// Another file in the library has the same official title.
+    pub duplicate: bool,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -259,6 +270,10 @@ pub struct Overview {
     pub games: Vec<GameView>,
     pub runner_found: bool,
     pub demo_available: bool,
+    /// Dumps known from the user's DAT files (0 = none added).
+    pub dat_entries: usize,
+    /// Collection names in use, sorted.
+    pub collections: Vec<String>,
 }
 
 /// Join scanned games with their system status and bookkeeping. Games of a system that
@@ -269,7 +284,7 @@ pub fn game_views(
     meta: &HashMap<String, GameMeta>,
     roms_dir: &Path,
 ) -> Vec<GameView> {
-    scanned
+    let mut views: Vec<GameView> = scanned
         .into_iter()
         .filter_map(|g| {
             let sys = systems.iter().find(|s| s.id == g.system)?;
@@ -279,15 +294,27 @@ pub fn game_views(
                 blocked: sys.blocked_reason(),
                 imported: g.path.starts_with(roms_dir),
                 system: g.system,
-                title: g.title,
+                title: m.name.clone().unwrap_or(g.title),
                 path: key,
                 size: g.size,
                 last_played: m.last_played,
                 play_secs: m.play_secs,
                 favorite: m.favorite,
+                identified: m.name.is_some(),
+                duplicate: false,
+                tags: m.tags,
             })
         })
-        .collect()
+        .collect();
+    // Games with the same official title (in the same system) are probably the same dump.
+    let mut seen: HashMap<(String, String), usize> = HashMap::new();
+    for v in views.iter().filter(|v| v.identified) {
+        *seen.entry((v.system.clone(), v.title.clone())).or_default() += 1;
+    }
+    for v in views.iter_mut().filter(|v| v.identified) {
+        v.duplicate = seen[&(v.system.clone(), v.title.clone())] > 1;
+    }
+    views
 }
 
 #[cfg(test)]
@@ -363,6 +390,7 @@ mod tests {
                 last_played: 5,
                 play_secs: 60,
                 favorite: true,
+                ..Default::default()
             },
         );
         let games = game_views(

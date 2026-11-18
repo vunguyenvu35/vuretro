@@ -77,3 +77,11 @@ test('removal and bios summaries', () => {
   assert.equal(b.text, '✓ Installed n.zip\n✕ x.bin: nope');
   assert.equal(b.failed, 1);
 });
+
+test('filters by collection and names it in the heading', () => {
+  const ov = overview([game('Zelda', { tags: ['RPG', 'Co-op'] }), game('Mario', { tags: ['Platformer'] }), game('Old')]);
+  assert.deepEqual(visibleGames(ov, { collection: 'RPG' }).map((g) => g.title), ['Zelda']);
+  assert.deepEqual(visibleGames(ov, { collection: 'Nope' }), []);
+  assert.equal(headingFor(ov, { system: null, filter: 'all', collection: 'RPG' }), 'Collection: RPG');
+  assert.equal(headingFor(ov, { system: null, filter: 'all', collection: null }), 'All games');
+});

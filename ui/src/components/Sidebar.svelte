@@ -12,8 +12,15 @@
     app.view = 'library';
     app.filter = filter;
     app.system = system;
+    app.collection = null;
   }
-  const libActive = (f) => app.view === 'library' && !app.system && app.filter === f;
+  function goCollection(name) {
+    app.view = 'library';
+    app.filter = 'all';
+    app.system = null;
+    app.collection = name;
+  }
+  const libActive = (f) => app.view === 'library' && !app.system && !app.collection && app.filter === f;
 </script>
 
 <aside>
@@ -38,6 +45,15 @@
         <span class="sysico" style="color:{colorOf(s.id)}"><Icon name={s.id} /></span>{s.name} <small>{s.game_count}</small>
       </button>
     {/each}
+
+    {#if app.overview?.collections?.length}
+      <div class="label gap">Collections</div>
+      {#each app.overview.collections as c (c)}
+        <button class:active={app.view === 'library' && app.collection === c} onclick={() => goCollection(c)}>
+          <Icon name="favorites" />{c} <small>{app.overview.games.filter((g) => g.tags?.includes(c)).length}</small>
+        </button>
+      {/each}
+    {/if}
 
     <div class="label gap">App</div>
     <button class:active={app.view === 'cores'} onclick={() => (app.view = 'cores')}><Icon name="cores" />Cores &amp; BIOS</button>

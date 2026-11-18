@@ -16,6 +16,7 @@ export const app = $state({
   loaded: false,
   filter: 'all', // all | recent | favorites
   system: null, // system id or null
+  collection: null, // collection name or null
   query: '',
   sort: 'recent', // recent | az | size
   layout: readLayout(), // grid | list
@@ -51,6 +52,34 @@ export async function loadCovers(paths) {
   }
 }
 
+let identifying = false;
+/** Look games up in the DAT files in the background; names show up on the next refresh. */
+async function identifyLater() {
+  const ov = app.overview;
+  if (identifying || !ov?.dat_entries || ov.games.every((g) => g.identified)) return;
+  identifying = true;
+  try {
+    if ((await api.identifyGames()) > 0) {
+      app.overview = await api.overview();
+    }
+  } catch {
+    /* names are optional */
+  }
+  identifying = false;
+}
+
+/** Add DAT files (No-Intro / Redump) so games get official names. */
+export async function importDats(paths) {
+  if (!paths?.length) return;
+  const results = await api.importDats(paths);
+  const bad = results.filter((r) => !r.ok);
+  toast(
+    [...results.filter((r) => r.ok).map((r) => `✓ ${r.message}`), ...bad.map((r) => `✕ ${r.source.split(/[\\/]/).pop()}: ${r.message}`)].join("\n"),
+    bad.length ? 'error' : 'info',
+  );
+  await refresh();
+}
+
 /** Show the previews that exist and make the ones that are missing, in the background. */
 export async function syncCovers() {
   const games = app.overview?.games ?? [];
@@ -68,6 +97,7 @@ export async function reloadLastPlayed() {
 export async function refresh() {
   try {
     app.overview = await api.overview();
+    identifyLater();
     if (startSelect && !app.selected) app.selected = app.overview.games.find((g) => g.blocked)?.path ?? app.overview.games[0]?.path ?? null;
   } catch (e) {
     toast(String(e), 'error');

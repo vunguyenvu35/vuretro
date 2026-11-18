@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { app, refresh, importBios } from '../lib/store.svelte.js';
+  import { app, refresh, importBios, importDats } from '../lib/store.svelte.js';
   import { api } from '../lib/api.js';
   import { colorOf } from '../lib/systems.js';
   import Select from './Select.svelte';
@@ -41,6 +41,10 @@
       delete installing[core];
       refresh();
     }
+  }
+
+  async function browseDats() {
+    importDats(await api.pickFiles('Choose DAT files'));
   }
 
   const importFiles = importBios;
@@ -129,6 +133,13 @@
     <span class="muted">or click to browse</span>
   </div>
   <p class="note">vuretro does not provide BIOS files. Use dumps from hardware you own.</p>
+
+  <h3 class="sec">Official game names</h3>
+  <p class="sub dat">
+    Add No-Intro or Redump DAT files (XML) and vuretro names your games by their hash, and marks duplicates.
+    {#if ov?.dat_entries}<strong>{ov.dat_entries.toLocaleString()} known dumps</strong>{:else}<span class="muted">No DAT files added yet.</span>{/if}
+  </p>
+  <button class="btn" onclick={browseDats}>Add DAT files…</button>
 </section>
 
 {#if optionsFor}
@@ -164,5 +175,6 @@
   }
   .drop strong { color: var(--accent); font-size: 15px; }
   .drop:hover, .drop.over { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  .dat { margin: 0 auto 12px; }
   .note { color: var(--faint); margin-top: 10px; }
 </style>

@@ -32,6 +32,9 @@ struct World {
     core_options: HashMap<String, BTreeMap<String, String>>,
     offered: Vec<CoreOptionDef>,
     slots: Vec<SlotInfo>,
+    /// Official names the fake DAT knows, by file path.
+    names: HashMap<PathBuf, String>,
+    dat_entries: usize,
 }
 
 #[derive(Clone, Default)]
@@ -121,6 +124,20 @@ impl Store for Fake {
 }
 
 impl Catalog for Fake {
+    fn identify(&self, path: &Path) -> Option<String> {
+        self.0.lock().unwrap().names.get(path).cloned()
+    }
+    fn import_dat(&self, src: &Path) -> Result<usize, String> {
+        if src.extension().is_some_and(|e| e == "dat") {
+            self.0.lock().unwrap().dat_entries += 3;
+            Ok(3)
+        } else {
+            Err("no ROM entries found".into())
+        }
+    }
+    fn dat_entries(&self) -> usize {
+        self.0.lock().unwrap().dat_entries
+    }
     fn scan(&self, dir: &Path) -> Vec<GameEntry> {
         self.0
             .lock()
@@ -692,4 +709,77 @@ fn a_game_starts_from_the_chosen_save_slot() {
     let spawned = f.0.lock().unwrap().spawned.clone();
     assert_eq!(spawned[0].load_slot, Some(2));
     assert_eq!(spawned[1].load_slot, None);
+}
+
+#[test]
+fn games_get_official_names_from_dats_and_duplicates_are_flagged() {
+    let f = ready_world();
+    {
+        let mut w = f.0.lock().unwrap();
+        w.scans.insert(
+            "/data/roms".into(),
+            vec![
+                entry("snes", "/data/roms/snes/a.sfc"),
+                entry("snes", "/data/roms/snes/a copy.sfc"),
+                entry("snes", "/data/roms/snes/b.sfc"),
+            ],
+        );
+        w.names
+            .insert("/data/roms/snes/a.sfc".into(), "Super A (USA)".into());
+        w.names
+            .insert("/data/roms/snes/a copy.sfc".into(), "Super A (USA)".into());
+    }
+    let a = app(&f);
+    // no DAT added yet: nothing to look up
+    assert_eq!(a.identify_games(), 0);
+    assert!(a.overview().games.iter().all(|g| !g.identified));
+    assert_eq!(a.overview().dat_entries, 0);
+
+    let out = a.import_dats(vec!["/x/snes.dat".into(), "/x/readme.txt".into()]);
+    assert!(out[0].ok && !out[1].ok);
+    assert_eq!(a.identify_games(), 2);
+    assert_eq!(a.identify_games(), 0, "already looked up: no second pass");
+
+    let ov = a.overview();
+    assert_eq!(ov.dat_entries, 3);
+    let by = |p: &str| ov.games.iter().find(|g| g.path == p).unwrap().clone();
+    let a1 = by("/data/roms/snes/a.sfc");
+    assert_eq!(
+        (a1.title.as_str(), a1.identified, a1.duplicate),
+        ("Super A (USA)", true, true)
+    );
+    let b = by("/data/roms/snes/b.sfc");
+    assert_eq!(
+        (b.title.as_str(), b.identified, b.duplicate),
+        ("g", false, false)
+    );
+    // the name is saved
+    assert_eq!(
+        f.0.lock().unwrap().meta["/data/roms/snes/a.sfc"]
+            .name
+            .as_deref(),
+        Some("Super A (USA)")
+    );
+}
+
+#[test]
+fn collections_are_cleaned_saved_and_listed() {
+    let f = ready_world();
+    f.0.lock().unwrap().scans.insert(
+        "/data/roms".into(),
+        vec![entry("snes", "/data/roms/snes/a.sfc")],
+    );
+    let a = app(&f);
+    let tags = a.set_tags(
+        "/data/roms/snes/a.sfc".into(),
+        vec![" RPG ".into(), "rpg".into(), "".into(), "Co-op".into()],
+    );
+    assert_eq!(tags, vec!["RPG", "Co-op"]);
+    let ov = a.overview();
+    assert_eq!(ov.games[0].tags, vec!["RPG", "Co-op"]);
+    assert_eq!(ov.collections, vec!["Co-op", "RPG"]);
+    assert!(a
+        .set_tags("/data/roms/snes/a.sfc".into(), vec![])
+        .is_empty());
+    assert!(a.overview().collections.is_empty());
 }

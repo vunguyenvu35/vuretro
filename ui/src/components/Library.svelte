@@ -5,6 +5,16 @@
   import Welcome from "./Welcome.svelte";
   import Icon from './Icon.svelte';
   import SaveSlots from './SaveSlots.svelte';
+  let newTag = $state('');
+  async function setTags(game, tags) {
+    await api.setTags(game.path, tags);
+    await refresh();
+  }
+  async function addTag(game) {
+    const t = newTag.trim();
+    newTag = '';
+    if (t) await setTags(game, [...(game.tags ?? []), t]);
+  }
   import { api } from '../lib/api.js';
   import { colorOf, formatAgo, formatPlaytime, modKey } from '../lib/systems.js';
 
@@ -324,6 +334,17 @@
       </dd>
     </dl>
 
+    {#if selected.duplicate}
+      <p class="dupe" title="Another file in the library has the same official title">⚠ Duplicate: another file has the same official title</p>
+    {/if}
+    <h3 class="label">Collections</h3>
+    <div class="tags">
+      {#each selected.tags ?? [] as t (t)}
+        <span class="tag">{t}<button aria-label="Remove {t}" onclick={() => setTags(selected, selected.tags.filter((x) => x !== t))}>×</button></span>
+      {/each}
+      <input class="taginput" placeholder="Add to a collection…" bind:value={newTag} onkeydown={(e) => e.key === 'Enter' && addTag(selected)} aria-label="Add to a collection" />
+    </div>
+
     <SaveSlots game={selected} version={ov?.games.map((g) => g.last_played).join()} />
 
     <button class="btn primary wide" disabled={!!selected.blocked} onclick={() => play(selected)}>
@@ -341,6 +362,12 @@
 {/if}
 
 <style>
+  .dupe { color: var(--warn, #ffb347); font-size: 12px; margin: 8px 0 0; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .tag { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-2); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: 12px; }
+  .tag button { background: none; border: 0; color: var(--muted); padding: 0 4px; font-size: 14px; line-height: 1; }
+  .tag button:hover { color: var(--text); }
+  .taginput { flex: 1 1 120px; min-width: 100px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; color: var(--text); font: inherit; font-size: 12px; }
   .dropzone { position: fixed; inset: 12px; z-index: 20; display: grid; place-items: center; border: 2px dashed var(--accent); border-radius: 16px; background: color-mix(in srgb, var(--bg, #000) 80%, transparent); color: var(--accent); font-size: 18px; pointer-events: none; }
   .danger { color: var(--bad); }
   .main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 16px 20px 0; gap: 14px; }

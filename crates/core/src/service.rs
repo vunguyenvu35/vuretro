@@ -52,6 +52,8 @@ pub struct App {
     covering: AtomicBool,
     /// Games a preview could not be made for (not retried until the app restarts).
     cover_failed: Mutex<HashSet<String>>,
+    /// Games already looked up in the DAT files (cleared when a DAT is added).
+    identify_checked: Mutex<HashSet<String>>,
 }
 
 impl App {
@@ -77,6 +79,7 @@ impl App {
             meta,
             covering: AtomicBool::new(false),
             cover_failed: Mutex::new(HashSet::new()),
+            identify_checked: Mutex::new(HashSet::new()),
         }
     }
 
@@ -123,15 +126,9 @@ impl App {
 
     // ---------- library overview ----------
 
-    /// Everything the library screen shows. Scans the disk, so it can take a moment.
-    pub fn overview(&self) -> Overview {
-        let settings = self.settings.lock().unwrap().clone();
-        let meta = self.meta.lock().unwrap().clone();
-        let system_dir = self.paths.system_dir();
-        let roms_dir = self.paths.roms_dir();
-
-        // The app's own library plus, if the user still links one, that folder read in place.
-        let mut scanned = self.catalog.scan(&roms_dir);
+    /// The app's own library plus, if the user still links one, that folder read in place.
+    fn scan_all(&self, settings: &Settings) -> Vec<crate::model::GameEntry> {
+        let mut scanned = self.catalog.scan(&self.paths.roms_dir());
         if let Some(dir) = settings.rom_dir.as_deref() {
             for g in self.catalog.scan(Path::new(dir)) {
                 if !scanned.iter().any(|x| x.path == g.path) {
@@ -139,6 +136,17 @@ impl App {
                 }
             }
         }
+        scanned
+    }
+
+    /// Everything the library screen shows. Scans the disk, so it can take a moment.
+    pub fn overview(&self) -> Overview {
+        let settings = self.settings.lock().unwrap().clone();
+        let meta = self.meta.lock().unwrap().clone();
+        let system_dir = self.paths.system_dir();
+        let roms_dir = self.paths.roms_dir();
+
+        let scanned = self.scan_all(&settings);
 
         let systems: Vec<SystemView> = systems()
             .iter()
@@ -159,6 +167,13 @@ impl App {
                 )
             })
             .collect();
+        let mut collections: Vec<String> = scanned
+            .iter()
+            .filter_map(|g| meta.get(g.path.to_string_lossy().as_ref()))
+            .flat_map(|m| m.tags.iter().cloned())
+            .collect();
+        collections.sort();
+        collections.dedup();
         let games = game_views(scanned, &systems, &meta, &roms_dir);
 
         Overview {
@@ -169,6 +184,8 @@ impl App {
             games,
             runner_found: self.locator.runner().is_some(),
             demo_available: self.locator.test_core().is_some(),
+            dat_entries: self.catalog.dat_entries(),
+            collections,
         }
     }
 
@@ -317,6 +334,63 @@ impl App {
                 Err(message) => Outcome::failed(p, message),
             })
             .collect()
+    }
+
+    /// Add DAT files (No-Intro, Redump style XML) so games get their official names.
+    pub fn import_dats(&self, paths: Vec<String>) -> Vec<Outcome> {
+        let out = paths
+            .into_iter()
+            .map(|p| match self.catalog.import_dat(Path::new(&p)) {
+                Ok(n) => Outcome::ok(p, format!("{n} dumps added")),
+                Err(message) => Outcome::failed(p, message),
+            })
+            .collect();
+        self.identify_checked.lock().unwrap().clear();
+        out
+    }
+
+    /// Look games up in the DAT files and remember their official names. Slow (reads
+    /// files): run it on a thread. Returns how many games got a name now.
+    pub fn identify_games(&self) -> usize {
+        if self.catalog.dat_entries() == 0 {
+            return 0;
+        }
+        let settings = self.settings.lock().unwrap().clone();
+        let mut found = 0;
+        for g in self.scan_all(&settings) {
+            let key = g.path.to_string_lossy().into_owned();
+            let known = self
+                .meta
+                .lock()
+                .unwrap()
+                .get(&key)
+                .is_some_and(|m| m.name.is_some());
+            if known || !self.identify_checked.lock().unwrap().insert(key.clone()) {
+                continue;
+            }
+            if let Some(name) = self.catalog.identify(&g.path) {
+                self.meta.lock().unwrap().entry(key).or_default().name = Some(name);
+                found += 1;
+            }
+        }
+        if found > 0 {
+            self.save_meta();
+        }
+        found
+    }
+
+    /// Put a game in collections (replaces its list). Names are trimmed; blanks and repeats go.
+    pub fn set_tags(&self, path: String, tags: Vec<String>) -> Vec<String> {
+        let mut clean: Vec<String> = Vec::new();
+        for t in tags {
+            let t: String = t.trim().chars().take(40).collect();
+            if !t.is_empty() && !clean.iter().any(|c| c.eq_ignore_ascii_case(&t)) {
+                clean.push(t);
+            }
+        }
+        self.meta.lock().unwrap().entry(path).or_default().tags = clean.clone();
+        self.save_meta();
+        clean
     }
 
     /// Copy ROM files, or every ROM found inside the folders given, into the app's library.

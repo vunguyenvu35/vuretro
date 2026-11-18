@@ -39,6 +39,10 @@ impl Paths {
     pub fn cores_dir(&self) -> PathBuf {
         self.data_dir.join("cores")
     }
+    /// DAT files the user added (official names of known dumps).
+    pub fn dats_dir(&self) -> PathBuf {
+        self.data_dir.join("dats")
+    }
     pub fn screenshots_dir(&self) -> PathBuf {
         self.data_dir.join("screenshots")
     }

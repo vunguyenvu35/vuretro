@@ -133,9 +133,9 @@ Order of work: registry as data first, then systems one by one (each is a data e
 
 Goal: a large ROM folder gets proper names, cover art and can be browsed from the couch.
 
-- [ ] Identify games by hash (CRC/MD5 against No-Intro DATs) for correct names and duplicate detection
+- [x] Identify games by hash against DAT files the user adds (`vuretro-library::dat`: XML parser, CRC32 + size, iNES/SMC/Lynx/7800 headers ignored, single-file zips): official titles, duplicate flag. DATs are not bundled (the user adds them on Cores & BIOS). Not yet tried with a real No-Intro DAT
 - [ ] Cover art: user-supplied, or from a metadata source (ScreenScraper, libretro-thumbnails) through a new `MetadataSource` port; cache in `covers/`. Check each service's terms and API key rules
-- [ ] Collections and tags; group multi-disc games; richer filters
+- [x] Collections: tags per game (details panel), sidebar list and filter. Still open: group multi-disc games, richer filters
 - [ ] Gamepad-driven navigation of the whole UI
 
 ## M5: Advanced

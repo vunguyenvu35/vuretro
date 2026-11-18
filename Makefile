@@ -51,10 +51,10 @@ dev: toolchain node_modules ## Open the vuretro app (Library UI); builds the run
 	  cargo build -p vuretro-runner -p vuretro-test-core; \
 	  npx tauri dev --additional-watch-folders crates
 
-app-build: toolchain node_modules ## Build the installable app bundle (release)
+app-build: toolchain node_modules ## Build the installable app bundle (release, runner bundled inside)
 	@export PATH="$$HOME/.cargo/bin:$$PATH"; set -e; \
-	  cargo build --release -p vuretro-runner; \
-	  npx tauri build
+	  ./scripts/prepare-sidecar.sh; \
+	  npx tauri build --config src-tauri/tauri.bundle.conf.json
 
 node_modules: package.json
 	npm install

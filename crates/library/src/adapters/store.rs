@@ -167,6 +167,8 @@ mod tests {
                 last_played: 1,
                 play_secs: 2,
                 favorite: true,
+                name: Some("Official".into()),
+                tags: vec!["Favorites 2".into()],
             },
         );
         store.save_meta(&m);

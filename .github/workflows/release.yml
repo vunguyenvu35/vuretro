@@ -1,0 +1,66 @@
+name: Release
+
+# Push a tag like v0.2.0 to build installers for every OS and attach them to a draft
+# GitHub release. Without the signing secrets below the packages are unsigned.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  package:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: universal-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'macos-14' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target\nsrc-tauri -> target"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libasound2-dev libudev-dev libx11-dev libxkbcommon-dev
+
+      - run: npm ci
+      - name: Build the runner (bundled next to the app)
+        shell: bash
+        run: ./scripts/prepare-sidecar.sh ${{ matrix.target }}
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS signing and notarization (optional; leave the secrets unset for unsigned builds)
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: .
+          tauriScript: npx tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: "vuretro ${{ github.ref_name }}"
+          releaseDraft: true
+          prerelease: false
+          args: --config src-tauri/tauri.bundle.conf.json --target ${{ matrix.target }}

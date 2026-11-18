@@ -158,3 +158,8 @@ Everything lives in one data folder:
 | Crackling sound or stutter | Try **Smooth motion** in **Settings**; run from a terminal with `RUST_LOG=debug` for details. |
 
 Found a bug? Use **Help ▸ Report an Issue…**. For security problems, see [SECURITY.md](../SECURITY.md).
+
+## Official names and collections
+
+- **Official names.** On **Cores & BIOS**, press **Add DAT files…** and choose No-Intro or Redump DAT files (XML). vuretro hashes your games (CRC32) and shows their official titles. A game that matches another file is marked as a duplicate in its details. DAT files are not included; download them from the project that publishes them.
+- **Collections.** Select a game and type a name under **Collections**. Collections are listed in the sidebar and filter the library.

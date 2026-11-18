@@ -4268,6 +4268,7 @@ name = "vuretro-library"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "crc32fast",
  "directories",
  "md5",
  "serde",

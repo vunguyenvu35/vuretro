@@ -11,10 +11,11 @@ const SORTS = {
  * Games to show for a view. `view` is { system, filter, query, sort } as kept in the store;
  * games of a system the user switched off are hidden.
  */
-export function visibleGames(overview, { system = null, filter = 'all', query = '', sort = 'recent' } = {}) {
+export function visibleGames(overview, { system = null, filter = 'all', collection = null, query = '', sort = 'recent' } = {}) {
   if (!overview) return [];
   let list = overview.games.filter((g) => overview.systems.find((s) => s.id === g.system)?.enabled !== false);
   if (system) list = list.filter((g) => g.system === system);
+  if (collection) list = list.filter((g) => g.tags?.includes(collection));
   if (filter === 'recent') list = list.filter((g) => g.last_played);
   if (filter === 'favorites') list = list.filter((g) => g.favorite);
   const q = query.trim().toLowerCase();
@@ -27,7 +28,8 @@ export function lastPlayed(games) {
   return [...games].filter((g) => g.last_played).sort((a, b) => b.last_played - a.last_played)[0];
 }
 
-export function headingFor(overview, { system, filter }) {
+export function headingFor(overview, { system, filter, collection }) {
+  if (collection) return `Collection: ${collection}`;
   if (system) return overview?.systems.find((s) => s.id === system)?.name ?? system;
   return { all: 'All games', recent: 'Recently played', favorites: 'Favorites' }[filter];
 }

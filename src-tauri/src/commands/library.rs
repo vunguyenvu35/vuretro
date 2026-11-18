@@ -76,3 +76,23 @@ pub fn get_slot_thumbnail(shell: State<'_, Shell>, path: String, slot: u8) -> Op
         format!("data:image/png;base64,{b64}")
     })
 }
+
+/// Add DAT files so games get their official names.
+#[tauri::command]
+pub fn import_dats(shell: State<'_, Shell>, paths: Vec<String>) -> Vec<Outcome> {
+    shell.app.import_dats(paths)
+}
+
+/// Look games up in the DAT files (reads files, so off the UI thread). Returns how many
+/// games got a name.
+#[tauri::command]
+pub async fn identify_games(shell: State<'_, Shell>) -> Result<usize, String> {
+    let core_app = shell.app.clone();
+    super::blocking(move || core_app.identify_games()).await
+}
+
+/// Replace a game's collections; returns the cleaned list.
+#[tauri::command]
+pub fn set_tags(shell: State<'_, Shell>, path: String, tags: Vec<String>) -> Vec<String> {
+    shell.app.set_tags(path, tags)
+}

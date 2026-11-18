@@ -3,6 +3,7 @@
 
 pub mod adapters;
 pub mod bios;
+pub mod dat;
 pub mod roms;
 pub mod scan;
 

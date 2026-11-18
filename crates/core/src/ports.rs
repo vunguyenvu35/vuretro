@@ -58,6 +58,12 @@ pub trait Catalog: Send + Sync {
     fn import_rom(&self, src: &Path, system: Option<&str>) -> Result<ImportedRom, String>;
     /// Copy every recognised ROM of a folder into the library.
     fn import_folder(&self, dir: &Path) -> Vec<(PathBuf, Result<ImportedRom, String>)>;
+    /// Official name of a ROM according to the user's DAT files, if they know it.
+    fn identify(&self, path: &Path) -> Option<String>;
+    /// Add a DAT file; returns how many dumps it lists.
+    fn import_dat(&self, src: &Path) -> Result<usize, String>;
+    /// Dumps known from the DAT files added so far.
+    fn dat_entries(&self) -> usize;
     /// Delete a ROM from the library (never anything outside it).
     fn remove_rom(&self, path: &Path) -> Result<(), String>;
 }
