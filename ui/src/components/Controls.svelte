@@ -164,7 +164,7 @@
 
   <ScopeBar hint="Each system can have its own buttons: a NES pad and a PlayStation pad are not alike." />
   {#if scope.kind !== 'all'}
-    { parent = scope.kind === 'game' ? "its system's (or the general)" : 'the general'}
+    {@const parent = scope.kind === 'game' ? "its system's (or the general)" : 'the general'}
     <p class="scopenote">
       {#if custom}
         <strong>{scopeName}</strong> has its own key bindings. <button class="link" onclick={useGeneral}>Use {parent} ones</button>

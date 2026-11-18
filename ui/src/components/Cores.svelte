@@ -162,7 +162,7 @@
           </dd>
         </dl>
         {#if !s.core_installed}
-          { core = s.core}
+          {@const core = s.core}
           <button class="btn primary" disabled={core in installing} onclick={() => install(core)}>
             {core in installing ? `Installing… ${installing[core]}%` : `Install ${core.replace(/_libretro$/, '')}`}
           </button>
