@@ -118,6 +118,7 @@ Order of work: registry as data first, then systems one by one (each is a data e
 
 - [x] Saturn registered (`yabause` default, Beetle Saturn as alternative; BIOS optional for Yabause) with a new `folder_only` flag so its disc types (`.cue`, `.chd`) never claim PlayStation files; the Arcade system also lists `mame_libretro` and `mame2003_libretro` as alternatives. Core names checked on the buildbot, nothing played; Saturn may be slow on the software cores
 - [x] Systems wave 2 registered and detected, except Sega CD and DOS (Sega CD needs the disc work below; DOS needs keyboard and mouse input in the runner). Cores exist on the buildbot; no real games tried yet:
+- [ ] Arcade (MAME 2003-Plus) found crashing at load on macOS because the runner did not offer `GET_LOG_INTERFACE`; fixed, the core now loads and reports missing ROMs normally. Still not played with a real MAME 2003+ romset
 
 | System | Default core | Notes |
 |---|---|---|

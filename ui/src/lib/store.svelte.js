@@ -1,6 +1,6 @@
 import { api } from './api.js';
 import { summarizeBios, summarizeImport, summarizeRemoval } from './library.js';
-import { toast } from './ui.svelte.js';
+import { toast, confirmDialog } from './ui.svelte.js';
 import { clampSidebar, parseSidebar } from './layout.js';
 
 function readLayout() {
@@ -273,4 +273,18 @@ export function setSidebarWidth(width, save = false) {
   } catch {
     /* a width that is not remembered is fine */
   }
+}
+
+/** Throw away every preview picture and make them again (chosen or downloaded art stays). */
+export async function regenerateCovers() {
+  const ok = await confirmDialog({
+    title: 'Make all previews again?',
+    message: 'Every preview picture is deleted and made again in the background. Cover art you chose or downloaded is kept.',
+    confirmLabel: 'Make again',
+  });
+  if (!ok) return;
+  const n = await api.regeneratePreviews();
+  for (const k of Object.keys(covers)) delete covers[k];
+  await syncCovers();
+  toast(`${n} previews are being made again`);
 }

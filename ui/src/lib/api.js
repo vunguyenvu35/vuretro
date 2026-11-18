@@ -28,6 +28,7 @@ export const api = {
   setCustomArt: (path, image) => call('set_custom_art', { path, image }),
   setScreenscraper: (user, password) => call('set_screenscraper', { user, password }),
   clearArt: (path) => call('clear_art', { path }),
+  regeneratePreviews: () => call('regenerate_previews'),
   async pickImage() {
     if (!inTauri) return null;
     const r = await open({ multiple: false, title: 'Choose a cover image', filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg'] }] });

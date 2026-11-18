@@ -137,6 +137,12 @@ pub unsafe extern "C" fn environment_cb(cmd: c_uint, data: *mut c_void) -> bool 
             with(|fe| fe.definitions = defs);
             true
         }
+        // Many cores take for granted that the frontend offers logging, and crash on a null
+        // function pointer when it does not (MAME 2003-Plus does).
+        RETRO_ENVIRONMENT_GET_LOG_INTERFACE => {
+            (*(data as *mut retro_log_callback)).log = Some(core_log);
+            true
+        }
         RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE => {
             let cb = *(data as *const retro_disk_control_callback);
             with(|fe| fe.disk = Some(cb));
@@ -151,6 +157,21 @@ pub unsafe extern "C" fn environment_cb(cmd: c_uint, data: *mut c_void) -> bool 
             log::trace!("unhandled environment cmd {cmd}");
             false
         }
+    }
+}
+
+/// What a core's log calls end up as. Levels follow libretro: 0 debug, 1 info, 2 warn, 3 error.
+unsafe extern "C" fn core_log(level: std::os::raw::c_int, fmt: *const c_char) {
+    if fmt.is_null() {
+        return;
+    }
+    let text = std::ffi::CStr::from_ptr(fmt).to_string_lossy();
+    let text = text.trim_end();
+    match level {
+        0 => log::debug!(target: "core", "{text}"),
+        1 => log::info!(target: "core", "{text}"),
+        2 => log::warn!(target: "core", "{text}"),
+        _ => log::error!(target: "core", "{text}"),
     }
 }
 
@@ -253,5 +274,31 @@ mod tests {
         assert_eq!(rgb565_to_rgb888(0xF800), 0x00FF_0000);
         assert_eq!(rgb1555_to_rgb888(0x7FFF), 0x00FF_FFFF);
         assert_eq!(rgb1555_to_rgb888(0x001F), 0x0000_00FF);
+    }
+}
+
+#[cfg(test)]
+mod log_tests {
+    use super::*;
+
+    #[test]
+    fn a_core_asking_for_logging_gets_a_working_log_function() {
+        let mut cb = retro_log_callback { log: None };
+        let ok = unsafe {
+            environment_cb(
+                RETRO_ENVIRONMENT_GET_LOG_INTERFACE,
+                &mut cb as *mut _ as *mut c_void,
+            )
+        };
+        assert!(
+            ok,
+            "a core that assumes logging exists would crash on a null pointer"
+        );
+        let log = cb.log.expect("the function is filled in");
+        let msg = CString::new("hello from a core\n").unwrap();
+        for level in 0..5 {
+            unsafe { log(level, msg.as_ptr()) };
+        }
+        unsafe { log(1, std::ptr::null()) }; // a null format must not crash either
     }
 }

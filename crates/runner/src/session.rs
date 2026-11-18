@@ -626,7 +626,16 @@ mod tests {
             self.0.borrow_mut().new_frame.take()
         }
         fn current(&self) -> Frame {
-            ((0..10_000u32).collect(), 100, 100) // many colours: worth a cover
+            (
+                // blocks of many colours, like a game screen: worth a cover
+                (0..10_000usize)
+                    .map(|i| {
+                        ((i % 100 / 5 + i / 100 / 5 * 20) as u32).wrapping_mul(2654435761) >> 8
+                    })
+                    .collect(),
+                100,
+                100,
+            )
         }
     }
 

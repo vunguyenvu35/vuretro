@@ -57,6 +57,9 @@ pub trait Store: Send + Sync {
     fn remove_cover(&self, rom: &Path);
     /// Delete the temporary files of a preview run.
     fn clear_cover_scratch(&self);
+    /// Delete every screenshot preview (downloaded or chosen cover art is kept); returns how
+    /// many were removed.
+    fn remove_all_previews(&self) -> usize;
     /// The cheat file text of a game (empty if none).
     fn load_cheats(&self, rom: &Path) -> String;
     fn save_cheats(&self, rom: &Path, text: &str) -> Result<(), String>;

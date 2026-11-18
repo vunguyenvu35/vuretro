@@ -77,3 +77,9 @@ pub fn clear_art(shell: State<'_, Shell>, path: String) {
 pub fn set_screenscraper(shell: State<'_, Shell>, user: String, password: String) {
     shell.app.set_screenscraper(user, password);
 }
+
+/// Delete every screenshot preview so they are made again; returns how many were removed.
+#[tauri::command]
+pub fn regenerate_previews(shell: State<'_, Shell>) -> usize {
+    shell.app.regenerate_previews()
+}

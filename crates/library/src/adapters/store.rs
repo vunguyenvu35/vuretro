@@ -208,6 +208,24 @@ impl Store for JsonStore {
         std::fs::read(self.paths.state_thumb(rom, slot)).ok()
     }
 
+    fn remove_all_previews(&self) -> usize {
+        let Some(dir) = self
+            .paths
+            .cover_file(Path::new("x"))
+            .parent()
+            .map(Path::to_path_buf)
+        else {
+            return 0;
+        };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return 0;
+        };
+        entries
+            .flatten()
+            .filter(|e| e.path().extension().is_some_and(|x| x == "png"))
+            .filter(|e| std::fs::remove_file(e.path()).is_ok())
+            .count()
+    }
     fn clear_cover_scratch(&self) {
         let _ = std::fs::remove_dir_all(self.paths.cover_scratch_dir());
     }

@@ -1,23 +1,54 @@
 //! Game preview images ("covers"): the library shows a screenshot of each game.
 
 use anyhow::{Context, Result};
-use std::collections::HashSet;
 use std::path::Path;
 
 /// A frame needs at least this many distinct colours to be worth showing (a black or
 /// single-colour boot screen has 1 to 3).
 pub const MIN_COLOURS: usize = 16;
 
-/// How colourful a frame is: distinct colours in a sample of its pixels, capped.
-pub fn richness(buf: &[u32]) -> usize {
-    let mut seen = HashSet::new();
+/// If two colours cover more of the picture than this, it is a flat fill, not a game screen.
+/// A game that did not start properly often shows stripes of two colours with a few
+/// corrupted tiles on top; those tiles add many colours but the picture is still not one.
+const MAX_TOP2_SHARE: f64 = 0.88;
+
+/// If almost every neighbouring pixel differs, it is static, not a picture.
+const MAX_NOISE: f64 = 0.92;
+
+/// How good a frame is as a preview: the number of distinct colours in a sample of its
+/// pixels (capped), or 0 when it is not a plausible game screen: too few colours, a flat
+/// fill, or noise.
+pub fn richness(buf: &[u32], w: usize) -> usize {
+    use std::collections::HashMap;
+    let mut counts: HashMap<u32, usize> = HashMap::new();
+    let mut sampled = 0usize;
     for &p in buf.iter().step_by(5) {
-        seen.insert(p);
-        if seen.len() >= 4096 {
-            break;
+        *counts.entry(p).or_default() += 1;
+        sampled += 1;
+    }
+    if counts.len() < MIN_COLOURS || sampled == 0 {
+        return 0;
+    }
+    let mut shares: Vec<usize> = counts.values().copied().collect();
+    shares.sort_unstable_by(|a, b| b.cmp(a));
+    let top2 = shares.iter().take(2).sum::<usize>() as f64 / sampled as f64;
+    if top2 > MAX_TOP2_SHARE {
+        return 0;
+    }
+    // neighbouring pixels along rows (a row of the picture is `w` pixels)
+    let (mut pairs, mut differ) = (0usize, 0usize);
+    if w > 1 {
+        for row in buf.chunks_exact(w).step_by(3) {
+            for pair in row.windows(2).step_by(2) {
+                pairs += 1;
+                differ += usize::from(pair[0] != pair[1]);
+            }
         }
     }
-    seen.len()
+    if pairs > 0 && differ as f64 / pairs as f64 > MAX_NOISE {
+        return 0;
+    }
+    counts.len().min(4096)
 }
 
 pub fn write_png(path: &Path, buf: &[u32], w: usize, h: usize) -> Result<()> {
@@ -46,8 +77,8 @@ pub struct Best {
 
 impl Best {
     pub fn offer(&mut self, buf: &[u32], w: usize, h: usize) {
-        let score = richness(buf);
-        if score >= MIN_COLOURS && score > self.score {
+        let score = richness(buf, w);
+        if score > self.score {
             self.score = score;
             self.frame = Some((buf.to_vec(), w, h));
         }
@@ -66,17 +97,66 @@ impl Best {
 mod tests {
     use super::*;
 
-    #[test]
-    fn picks_the_colourful_frame_and_writes_a_png() {
-        let blank = vec![0u32; 64 * 48];
-        let busy: Vec<u32> = (0..64 * 48)
+    const W: usize = 64;
+    const H: usize = 48;
+
+    /// Something like a game screen: blocks of many different colours.
+    fn scene() -> Vec<u32> {
+        (0..W * H)
+            .map(|i| {
+                let (x, y) = (i % W, i / W);
+                let block = (x / 4 + y / 4 * 5) as u32;
+                block.wrapping_mul(2654435761) >> 8
+            })
+            .collect()
+    }
+
+    /// What a game that did not start properly can show: stripes of two greens with a patch
+    /// of corrupted tiles (many colours, but not a picture).
+    fn stripes_with_garbage() -> Vec<u32> {
+        (0..W * H)
+            .map(|i| {
+                let (x, y) = (i % W, i / W);
+                if x < 10 && y > 30 {
+                    (i as u32).wrapping_mul(2654435761) >> 8
+                } else if y % 2 == 0 {
+                    0x0060_d040
+                } else {
+                    0x0050_b838
+                }
+            })
+            .collect()
+    }
+
+    fn static_noise() -> Vec<u32> {
+        (0..W * H)
             .map(|i| (i as u32).wrapping_mul(2654435761) >> 8)
-            .collect();
+            .collect()
+    }
+
+    #[test]
+    fn only_plausible_game_screens_score() {
+        assert!(richness(&scene(), W) >= MIN_COLOURS);
+        assert_eq!(richness(&vec![0; W * H], W), 0, "blank");
+        assert_eq!(
+            richness(&stripes_with_garbage(), W),
+            0,
+            "two-colour stripes with a corrupted patch"
+        );
+        assert_eq!(richness(&static_noise(), W), 0, "static");
+    }
+
+    #[test]
+    fn keeps_the_real_screen_even_when_a_broken_frame_has_more_colours() {
         let mut best = Best::default();
-        best.offer(&blank, 64, 48);
-        assert!(best.frame.is_none()); // blank screens are never kept
-        best.offer(&busy, 64, 48);
+        best.offer(&vec![0u32; W * H], W, H);
+        assert!(best.frame.is_none(), "blank screens are never kept");
+        best.offer(&stripes_with_garbage(), W, H);
+        best.offer(&static_noise(), W, H);
+        assert!(best.frame.is_none(), "broken frames are not kept either");
+        best.offer(&scene(), W, H);
         assert!(best.frame.is_some());
+
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("a/b.png");
         assert!(best.save(&path).unwrap());

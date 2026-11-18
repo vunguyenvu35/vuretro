@@ -204,6 +204,12 @@ impl Store for Fake {
     fn clear_cover_scratch(&self) {
         self.0.lock().unwrap().scratch_cleared = true;
     }
+    fn remove_all_previews(&self) -> usize {
+        let mut w = self.0.lock().unwrap();
+        let n = w.covers.len();
+        w.covers.clear();
+        n
+    }
     fn ensure_demo_rom(&self) -> Result<PathBuf, String> {
         Ok(PathBuf::from("/data/demo.test"))
     }
@@ -1493,4 +1499,21 @@ fn the_library_can_be_exported_as_csv() {
         ["write /out/games.csv 3"],
         "header plus two games"
     );
+}
+
+#[test]
+fn previews_can_be_made_again_and_failed_ones_are_retried() {
+    let f = ready_world();
+    f.0.lock()
+        .unwrap()
+        .covers
+        .insert("/data/covers/a.png".into());
+    f.0.lock()
+        .unwrap()
+        .covers
+        .insert("/data/covers/b.png".into());
+    let a = app(&f);
+    assert_eq!(a.regenerate_previews(), 2);
+    assert!(f.0.lock().unwrap().covers.is_empty());
+    assert_eq!(a.regenerate_previews(), 0);
 }

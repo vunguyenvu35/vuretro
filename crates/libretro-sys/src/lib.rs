@@ -2,7 +2,7 @@
 //! Only what the vuretro frontend uses; extend as cores need more.
 #![allow(non_camel_case_types)]
 
-use std::os::raw::{c_char, c_uint, c_void};
+use std::os::raw::{c_char, c_int, c_uint, c_void};
 
 pub const RETRO_API_VERSION: c_uint = 1;
 
@@ -120,3 +120,11 @@ pub type retro_audio_sample_batch_t =
 pub type retro_input_poll_t = unsafe extern "C" fn();
 pub type retro_input_state_t =
     unsafe extern "C" fn(port: c_uint, device: c_uint, index: c_uint, id: c_uint) -> i16;
+
+/// The logging function a core asks the frontend for (`GET_LOG_INTERFACE`). In C it is
+/// variadic (`printf`-style); declared here with its two fixed arguments only, which is how
+/// it is read: extra arguments are ignored and the format string is logged as it is.
+#[repr(C)]
+pub struct retro_log_callback {
+    pub log: Option<unsafe extern "C" fn(level: c_int, fmt: *const c_char)>,
+}

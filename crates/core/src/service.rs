@@ -421,6 +421,14 @@ impl App {
     }
 
     /// The slots of a game that hold a save.
+    /// Forget every screenshot preview so they are made again (with the current rules for what
+    /// makes a good one). Cover art that was downloaded or chosen is kept.
+    pub fn regenerate_previews(&self) -> usize {
+        let n = self.store.remove_all_previews();
+        self.cover_failed.lock().unwrap().clear();
+        n
+    }
+
     /// Use a picture the user chose as the game's cover.
     pub fn set_custom_art(&self, path: &str, image: &str) -> Result<(), String> {
         self.store.import_art(Path::new(path), Path::new(image))

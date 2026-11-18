@@ -1,5 +1,5 @@
 <script>
-  import { chooseCover, resetCover } from '../lib/store.svelte.js';
+  import { chooseCover, resetCover, regenerateCovers } from '../lib/store.svelte.js';
 import { gameScope } from '../lib/scope.js';
 import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, covers, setLayout, pickRomFiles, pickRomFolder } from '../lib/store.svelte.js';
   import { openMenu, confirmDialog } from '../lib/ui.svelte.js';
@@ -212,6 +212,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
       { label: 'Import a folder…', hint: `${modKey}⇧O`, action: pickRomFolder },
       SEP,
       { label: 'Refresh library', hint: `${modKey}R`, action: refresh },
+      { label: 'Make all previews again…', action: regenerateCovers },
       SEP,
       { label: app.layout === 'list' ? 'View as grid' : 'View as list', action: () => setLayout(app.layout === 'list' ? 'grid' : 'list') },
       removable.length ? { label: app.selecting ? 'Done selecting' : 'Select games…', action: () => (app.selecting ? stopSelecting() : ((autoSelect = false), (app.selecting = true))) } : SEP,

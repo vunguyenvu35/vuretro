@@ -4,6 +4,8 @@
 
 - **Backup and restore** (Settings): one zip with settings, favorites, collections, controls, cheats and optionally saves and cover pictures; restoring first saves a copy of the current state. **Export** the game list as CSV.
 - Import: BIOS files found in an imported folder, or picked by mistake as a game, are now installed as BIOS.
+- **Previews:** a game that did not start properly (corrupted picture, flat stripes, FBNeo's "romset is missing files for this version" error page, static) no longer gets that picture as its preview; it gets none, so the title shows instead. **Make all previews again…** (right-click in the library) redoes the existing ones.
+- Cores that assume the frontend offers a log function no longer crash the runner (MAME 2003-Plus did).
 - Fixes: list header overlapping game rows, readability of secondary text, text shown wrongly on Controls and the Install button.
 
 ## 0.1.3

@@ -70,6 +70,7 @@ fn main() {
             import_dats,
             set_fetch_art,
             set_custom_art,
+            regenerate_previews,
             set_screenscraper,
             clear_art,
             fetch_art,
