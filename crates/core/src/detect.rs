@@ -62,7 +62,7 @@ pub fn detect_system(root: &Path, path: &Path) -> Option<&'static System> {
     }
     let mut matches = systems()
         .iter()
-        .filter(|s| s.extensions.contains(&ext.as_str()));
+        .filter(|s| !s.folder_only && s.extensions.contains(&ext.as_str()));
     match (matches.next(), matches.next()) {
         (Some(sys), None) => Some(sys),
         _ => None, // unknown or shared by several systems
@@ -132,6 +132,16 @@ mod tests {
         // zip sets need a folder, and "arcade" does not clash with the console folders
         assert_eq!(id("/roms", "/roms/mame/pacman.zip"), Some("arcade"));
         assert_eq!(id("/roms", "/roms/neogeo/pacman.zip"), Some("neogeo"));
+    }
+
+    #[test]
+    fn saturn_discs_need_their_folder_and_do_not_steal_playstation_files() {
+        assert_eq!(id("/roms", "/roms/Saturn/nights.cue"), Some("saturn"));
+        assert_eq!(id("/roms", "/roms/sega-saturn/nights.chd"), Some("saturn"));
+        // outside a Saturn folder the shared types still mean PlayStation
+        assert_eq!(id("/roms", "/roms/crash.chd"), Some("psx"));
+        assert_eq!(id("/roms", "/roms/crash.cue"), Some("psx"));
+        assert_eq!(id("/roms", "/roms/psx/crash.cue"), Some("psx"));
     }
 
     #[test]

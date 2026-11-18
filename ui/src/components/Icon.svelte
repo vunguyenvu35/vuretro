@@ -22,7 +22,7 @@
     <!-- triangle, circle, cross, square -->
     <path d="M10 2.6l2.3 4H7.7l2.3-4z" /><circle cx="15.3" cy="10.2" r="2.2" />
     <path d="M7.9 13.3l4.2 4.2M12.1 13.3l-4.2 4.2" /><rect x="2.8" y="8" width="4.4" height="4.4" rx=".9" />
-  {:else if ['snes', 'nes', 'genesis', 'sms', 'pce', 'atari2600', 'atari7800', 'sega32x', 'arcade'].includes(name)}
+  {:else if ['snes', 'nes', 'genesis', 'sms', 'pce', 'atari2600', 'atari7800', 'sega32x', 'arcade', 'saturn'].includes(name)}
     <rect x="1.6" y="5.4" width="16.8" height="9.2" rx="4.6" /><path d="M5.7 7.6v4.8M3.3 10h4.8" />
     <circle cx="13.2" cy="11.4" r=".95" fill="currentColor" stroke="none" /><circle cx="15.7" cy="8.8" r=".95" fill="currentColor" stroke="none" />
   {:else if ['gba', 'gb', 'gbc', 'gg', 'lynx', 'ngp', 'wonderswan', 'virtualboy', 'nds'].includes(name)}

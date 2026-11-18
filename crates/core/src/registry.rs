@@ -25,6 +25,9 @@ pub struct System {
     pub thumbnails: &'static str,
     /// ScreenScraper `systemeid` (0: not listed there).
     pub screenscraper: u32,
+    /// Its file types are shared with other systems (disc images), so a file counts for
+    /// this system only inside one of its `folders`.
+    pub folder_only: bool,
     pub extensions: &'static [&'static str],
     /// Folder names under the ROM root that force this system.
     pub folders: &'static [&'static str],
@@ -62,6 +65,8 @@ struct RawSystem {
     thumbnails: String,
     #[serde(default)]
     screenscraper: u32,
+    #[serde(default)]
+    folder_only: bool,
     extensions: Vec<String>,
     #[serde(default)]
     folders: Vec<String>,
@@ -117,6 +122,7 @@ pub fn parse_systems(json: &str) -> Result<Vec<System>, String> {
             alt_cores: leak_all(r.alt_cores),
             thumbnails: leak(r.thumbnails),
             screenscraper: r.screenscraper,
+            folder_only: r.folder_only,
             extensions: leak_all(r.extensions),
             folders: leak_all(r.folders),
             bios: Box::leak(bios.into_boxed_slice()),

@@ -20,6 +20,7 @@ export const SYSTEM_COLORS = {
   sega32x: '#5f8dff',
   nds: '#c2c8d6',
   arcade: '#ff9f43',
+  saturn: '#6c8cff',
 };
 export const colorOf = (id) => SYSTEM_COLORS[id] ?? '#8b93a7';
 

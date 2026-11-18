@@ -158,9 +158,24 @@
   },
   {
     "id": "arcade", "name": "Arcade (MAME)", "core": "mame2003_plus_libretro",
+    "alt_cores": ["mame_libretro", "mame2003_libretro"],
     "thumbnails": "MAME",
     "screenscraper": 75,
     "extensions": ["zip", "7z"],
     "folders": ["mame", "arcade", "mame2003", "mame2003-plus"]
+  },
+  {
+    "id": "saturn", "name": "Sega Saturn", "core": "yabause_libretro",
+    "alt_cores": ["mednafen_saturn_libretro"],
+    "thumbnails": "Sega - Saturn",
+    "screenscraper": 22,
+    "folder_only": true,
+    "extensions": ["cue", "chd", "iso", "ccd", "mds", "m3u"],
+    "folders": ["saturn", "sega-saturn", "segasaturn"],
+    "bios": [
+      { "file": "saturn_bios.bin", "note": "optional for Yabause (it has a built-in replacement)" },
+      { "file": "sega_101.bin", "md5": ["85ec9ca47d8f6807718151cbcca8b964"], "note": "Beetle Saturn: this (JP) or mpr-17933.bin" },
+      { "file": "mpr-17933.bin", "md5": ["3240872c70984b6cbfda1586cab68dbe"], "note": "Beetle Saturn: this (US/EU) or sega_101.bin" }
+    ]
   }
 ]
