@@ -62,7 +62,7 @@ Compared with RetroArch, OpenEmu, ES-DE/Pegasus and Playnite/LaunchBox, what vur
 |---|---|---|
 | Release | Real-game checks on all 3 OSes; CI `app` job not yet green; no installers or updater; cores are fetched with `make cores`, not by the app | M1 |
 | Play experience | `wgpu` renderer (aspect, integer scale, fullscreen), shaders/CRT, in-game menu, rewind, cheats, save-slot picker with thumbnails, core options UI (only `.cfg` files now) | M2 |
-| Systems | Only 4 (Neo Geo, PS1, SNES, GBA); no NES, GB/GBC, Genesis, SMS, PC Engine; no choice of core per system; no PS1 disc swap | M3 |
+| Systems | Only 4 (Neo Geo, PS1, SNES, GBA); no NES, GB/GBC, Genesis, SMS, PC Engine (wave 1), no Atari, handhelds, Sega CD, NDS, MAME, DOS (wave 2); no choice of core per system; no PS1 disc swap | M3 |
 | Library | No cover art source or scraper, no hash identification (No-Intro), no collections or tags, no multi-disc grouping | M4 |
 | Input | No per-system/per-game overrides, rumble, rebinding of in-game hotkeys, gamepad hotkeys, lightgun/mouse | M2 |
 | Living-room use | UI cannot be driven by a gamepad ("big picture") | M4 |
@@ -100,10 +100,33 @@ Goal: fullscreen, shaders, slots with thumbnails and core options without leavin
 Goal: adding a system is a data change plus a test, not a code change.
 
 - [x] SNES (snes9x) and GBA (mGBA) enabled: registry, extensions (incl. zip), optional GBA BIOS, `make play CORE=snes|gba`
-- [ ] Move `registry` from Rust constants to data (TOML/JSON): core, extensions, folder aliases, BIOS
-- [ ] More than one core per system, selectable per system
-- [ ] Genesis (Genesis Plus GX), NES, GB/GBC, Master System, PC Engine
-- [ ] Multi-disc PS1 via `.m3u` + disc swap (`SET_DISK_CONTROL_INTERFACE`)
+Order of work: registry as data first, then systems one by one (each is a data entry, a `make cores` entry and a test).
+
+- [ ] Move `registry` from Rust constants to data (TOML/JSON): core, extensions, folder aliases, BIOS. Done when adding a system needs no Rust change
+- [ ] More than one core per system, selectable per system (setting stored in `config/`, shown on the Cores & BIOS screen)
+- [ ] Systems wave 1 (cheap, software cores, no BIOS or optional BIOS):
+
+| System | Default core | Alternative | License note |
+|---|---|---|---|
+| NES / Famicom | `fceumm` | `mesen`, `nestopia` | GPL |
+| Game Boy / GBC | `gambatte` | `mgba` (already used for GBA) | GPL |
+| Genesis / Mega Drive, Master System, Game Gear | `genesis_plus_gx` | `picodrive` | non-commercial, same rule as FBNeo |
+| PC Engine / TurboGrafx-16 | `mednafen_pce_fast` | `mednafen_pce` | GPL; CD games need `syscard3.pce` BIOS |
+
+- [ ] Systems wave 2 (software cores, small effort once the registry is data):
+
+| System | Default core | Notes |
+|---|---|---|
+| Atari 2600 | `stella` | |
+| Atari 7800, Lynx | `prosystem`, `handy` | Lynx needs a BIOS |
+| Neo Geo Pocket, WonderSwan, Virtual Boy | `mednafen_ngp`, `mednafen_wswan`, `mednafen_vb` | |
+| Sega CD, 32X | `genesis_plus_gx`, `picodrive` | Sega CD needs BIOS and disc images (`.chd`/`.cue`) |
+| Nintendo DS | `melonds` or `desmume` | two screens: `Screen` and the window layout must support it; BIOS optional |
+| Arcade (MAME) | `mame2003_plus` | romset versions must match the core |
+| DOS | `dosbox_pure` | folder or `.zip`, keyboard and mouse input |
+
+- [ ] Multi-disc PS1 via `.m3u` + disc swap (`SET_DISK_CONTROL_INTERFACE`); reused by Sega CD and PC Engine CD
+- [ ] Each system must have: a registry entry, a core download entry, a documented BIOS list, a synthetic-ROM or fake-core test, and a line in [USAGE.md](USAGE.md)
 
 ## M4: Rich library
 
@@ -119,8 +142,18 @@ Goal: a large ROM folder gets proper names, cover art and can be browsed from th
 Only when there is demand; each item is large.
 
 - [ ] RetroAchievements (`rcheevos`, MIT; needs per-system ROM hashing)
-- [ ] Hardware-render cores (OpenGL/Vulkan) for N64 and PSP: the runner only handles software frames today
+- [ ] Hardware-render cores (OpenGL/Vulkan) for N64 (`mupen64plus_next`), PSP (`ppsspp`), Dreamcast (`flycast`), Saturn: the runner only handles software frames today. Needs `SET_HW_RENDER` and a GL/Vulkan context shared with `wgpu`, so do it after M2
 - [ ] Netplay, run-ahead, larger shader library (slang)
+
+## Done when (acceptance per milestone)
+
+| Milestone | Done when |
+|---|---|
+| M1 | A clean machine of each OS installs a package, installs a core from the app, adds a ROM and plays; CI builds the installers; an update from version N to N+1 works |
+| M2 | A game runs fullscreen with correct aspect and a CRT shader; Esc opens a menu; slots show thumbnails; core options are edited in the app; rewind works on at least SNES |
+| M3 | Wave 1 systems play a real game each; adding a wave 2 system touches only data and tests |
+| M4 | A folder of 1000+ ROMs shows correct names and covers for most files, and the whole UI works with a gamepad only |
+| M5 | Per feature: one real game works (an achievement unlocks; an N64 game renders; two machines play netplay) |
 
 ## Ordering and risks
 
@@ -128,6 +161,17 @@ Only when there is demand; each item is large.
 2. **M2 and M3 in parallel**: they touch different crates; M3 is cheap and visible.
 3. **M4 after M3**: metadata is worth more once there are more systems.
 4. **M5 only on demand**, hardware rendering above all.
+
+Risks:
+
+| Risk | Impact | Mitigation |
+|---|---|---|
+| Core licenses (FBNeo, snes9x, Genesis Plus GX are non-commercial) | App must stay free; cannot bundle in a paid build | Download cores at install time; keep a license table per core in the registry data |
+| Code signing certificates cost money and need setup time | M1 installers blocked | Start with unsigned builds and document the Gatekeeper/SmartScreen steps; add signing when certificates exist |
+| BIOS files cannot be shipped | Users hit "BIOS missing" | Keep the BIOS check and import flow; give exact file names and MD5 in the UI |
+| Cover-art services have terms and API keys | M4 metadata blocked | Support user-supplied art first; one `MetadataSource` adapter per service |
+| Hardware rendering shares a GL/Vulkan context with the renderer | M5 rework | Design the `wgpu` renderer in M2 with a hardware-frame path in mind |
+| Real-game behaviour differs from synthetic ROMs | Late bugs | Do the 3-OS real-game check at the start of M1 and keep a short manual checklist in [DEVELOPMENT.md](DEVELOPMENT.md) |
 
 Architecture rule for all of it: rules and use cases go in `vuretro-core` behind ports, adapters in `vuretro-library`, glue in `src-tauri`, and each new use case gets fake-based tests (see [ARCHITECTURE.md](ARCHITECTURE.md#layers)). Size estimates in this plan are rough.
 
