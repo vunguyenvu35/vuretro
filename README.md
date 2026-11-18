@@ -84,7 +84,7 @@ docs/             plan, architecture, UI design, dev guide (+ images/)
 Makefile          make dev, play, cores, scan, check, ci …
 ```
 
-Docs: [USAGE](docs/USAGE.md) · [BRAND](docs/assets/brand/README.md) · [DEVELOPMENT](docs/DEVELOPMENT.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [UI](docs/UI.md) · [PLAN](docs/PLAN.md)
+Docs: [CHANGELOG](CHANGELOG.md) · [USAGE](docs/USAGE.md) · [BRAND](docs/assets/brand/README.md) · [DEVELOPMENT](docs/DEVELOPMENT.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [UI](docs/UI.md) · [PLAN](docs/PLAN.md)
 
 ## License
 
