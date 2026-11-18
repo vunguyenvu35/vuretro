@@ -136,7 +136,7 @@ Goal: a large ROM folder gets proper names, cover art and can be browsed from th
 - [x] Identify games by hash against DAT files the user adds (`vuretro-library::dat`: XML parser, CRC32 + size, iNES/SMC/Lynx/7800 headers ignored, single-file zips): official titles, duplicate flag. DATs are not bundled (the user adds them on Cores & BIOS). Not yet tried with a real No-Intro DAT
 - [x] Cover art from libretro-thumbnails (`ArtSource` port, `ThumbnailsArt` adapter): opt-in switch on Cores & BIOS because it sends game names to a third party; works for games that have an official name from a DAT; box art wins over the screenshot preview. User-supplied art and ScreenScraper are not done. Tested with fakes; not yet run against the live server
 - [x] Collections: tags per game (details panel), sidebar list and filter. Still open: group multi-disc games, richer filters
-- [ ] Gamepad-driven navigation of the whole UI
+- [x] Gamepad-driven navigation of the whole UI: D-pad or left stick moves focus (`gamepadNav.js`, spatial pick is tested), A presses, B sends Escape; paused while a button is being recorded on Controls. Not yet tried with a real pad in the window
 
 ## M5: Advanced
 

@@ -11,6 +11,7 @@
   import ContextMenu from './components/ContextMenu.svelte';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import Toasts from './components/Toasts.svelte';
+  import { startGamepadNav } from './lib/gamepadNav.js';
 
   onMount(() => {
     refresh();
@@ -22,7 +23,12 @@
     api.onCoversUpdated((path) => loadCovers([path])).then((f) => off.push(f));
     api.onMenu(handleMenu).then((f) => off.push(f));
     api.onCoversDone(() => syncCovers()).then((f) => off.push(f));
-    return () => off.forEach((f) => f());
+    // a pad on the Controls screen is being recorded, not used to move around
+    const stopNav = startGamepadNav(() => app.capturing);
+    return () => {
+      stopNav();
+      off.forEach((f) => f());
+    };
   });
 </script>
 
