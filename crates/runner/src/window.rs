@@ -1,7 +1,7 @@
 //! Window-independent rules of a game session: actions, title text, size limits, frame
 //! pacing and the paused picture. Pure, so they are unit-tested without a window.
 
-pub const SLOTS: u8 = 4;
+pub const SLOTS: u8 = vuretro_core::model::SAVE_SLOTS;
 const NOTICE_FOR: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// Output level in percent: 0 when sound is off or the game is paused.

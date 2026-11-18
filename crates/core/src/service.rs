@@ -3,7 +3,7 @@
 
 use crate::detect;
 use crate::model::{game_views, GameMeta, Outcome, Overview, Settings, SystemView};
-use crate::model::{CoreChoice, CoreOptionView};
+use crate::model::{CoreChoice, CoreOptionView, SlotInfo};
 use crate::paths::Paths;
 use crate::ports::{
     Catalog, CoreInstaller, CoverJob, GameProcess, LaunchSpec, Launcher, Locator, Store,
@@ -216,6 +216,16 @@ impl App {
         } else {
             Err(format!("{stem} is not a core vuretro knows"))
         }
+    }
+
+    /// The slots of a game that hold a save.
+    pub fn save_slots(&self, path: &str) -> Vec<SlotInfo> {
+        self.store.list_slots(Path::new(path))
+    }
+
+    /// The picture taken when a slot was saved.
+    pub fn slot_thumbnail(&self, path: &str, slot: u8) -> Option<Vec<u8>> {
+        self.store.read_slot_thumb(Path::new(path), slot)
     }
 
     /// Pick which core runs a system. Only cores the registry lists for it are accepted.
@@ -439,7 +449,7 @@ impl App {
     // ---------- launching ----------
 
     /// Start a game from the library. `Ok(None)` means it already finished successfully.
-    pub fn launch_game(&self, path: String) -> Result<Option<Running>, String> {
+    pub fn launch_game(&self, path: String, slot: Option<u8>) -> Result<Option<Running>, String> {
         let rom_dir = self
             .settings
             .lock()
@@ -458,7 +468,7 @@ impl App {
             .locator
             .core(chosen)
             .ok_or_else(|| format!("core {chosen} not installed (install it in Cores & BIOS)"))?;
-        self.start(&core, &rom, Some(path))
+        self.start(&core, &rom, Some(path), slot)
     }
 
     /// Run the fake test core so the app can be tried without any ROM.
@@ -468,7 +478,7 @@ impl App {
             .test_core()
             .ok_or("test core not built. Run `make build` first.")?;
         let rom = self.store.ensure_demo_rom()?;
-        self.start(&core, &rom, None)
+        self.start(&core, &rom, None, None)
     }
 
     fn start(
@@ -476,6 +486,7 @@ impl App {
         core: &Path,
         rom: &Path,
         track: Option<String>,
+        load_slot: Option<u8>,
     ) -> Result<Option<Running>, String> {
         let runner = self
             .locator
@@ -487,6 +498,7 @@ impl App {
             rom: rom.to_path_buf(),
             system_dir: self.paths.system_dir(),
             cover: self.paths.cover_file(rom),
+            load_slot,
         })?;
 
         // Failing fast (missing BIOS, bad file) should be reported, not silently ignored.

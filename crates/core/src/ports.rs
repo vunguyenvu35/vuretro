@@ -2,7 +2,7 @@
 //! (`vuretro-library::adapters` for disk and processes); tests use fakes.
 
 use crate::model::{
-    BiosStatus, CoreOptionDef, GameEntry, GameMeta, ImportedBios, ImportedRom, Settings,
+    BiosStatus, CoreOptionDef, GameEntry, GameMeta, ImportedBios, ImportedRom, Settings, SlotInfo,
 };
 use crate::registry::System;
 use std::collections::{BTreeMap, HashMap};
@@ -25,6 +25,10 @@ pub trait Store: Send + Sync {
     /// Window size, sound and the like, shared with the runner.
     fn load_game_settings(&self) -> GameSettings;
     fn save_game_settings(&self, settings: &GameSettings) -> Result<(), String>;
+
+    /// The save slots of a game that hold a save, in slot order.
+    fn list_slots(&self, rom: &Path) -> Vec<SlotInfo>;
+    fn read_slot_thumb(&self, rom: &Path, slot: u8) -> Option<Vec<u8>>;
 
     /// Bytes of a game's preview image, if it has one.
     fn read_cover(&self, rom: &Path) -> Option<Vec<u8>>;
@@ -75,6 +79,8 @@ pub struct LaunchSpec {
     pub system_dir: PathBuf,
     /// Where the runner stores the game's preview image on exit.
     pub cover: PathBuf,
+    /// Save slot to load as the game starts.
+    pub load_slot: Option<u8>,
 }
 
 /// A request to make a preview image without opening a window.

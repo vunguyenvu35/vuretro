@@ -146,10 +146,10 @@ export async function toggleFavorite(game) {
   refresh();
 }
 
-export async function play(game) {
+export async function play(game, slot = null) {
   if (game.blocked) return toast(game.blocked, 'error');
   try {
-    await api.launchGame(game.path);
+    await api.launchGame(game.path, slot);
     toast(`Started ${game.title}`);
   } catch (e) {
     toast(String(e), 'error');

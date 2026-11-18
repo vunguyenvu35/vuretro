@@ -115,6 +115,18 @@ impl Outcome {
     }
 }
 
+/// Number of save-state slots per game (the runner uses the same).
+pub const SAVE_SLOTS: u8 = 4;
+
+/// A save-state slot that holds a save.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SlotInfo {
+    pub slot: u8,
+    /// Unix seconds of the last save.
+    pub saved_at: u64,
+    pub has_thumb: bool,
+}
+
 /// One option a core offers. The first value is the core's default.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CoreOptionDef {

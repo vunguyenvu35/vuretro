@@ -72,6 +72,8 @@ pub struct Params {
     /// Where to save a preview image when the window closes.
     pub cover: Option<PathBuf>,
     pub audio_buf: Arc<Mutex<VecDeque<i16>>>,
+    /// Save slot to load at start.
+    pub start_slot: Option<u8>,
 }
 
 /// Open the window, start the audio and wire up the real core and controls.
@@ -138,6 +140,7 @@ pub fn open(p: Params) -> Result<Session> {
             base_h,
             factor,
             fps,
+            start_slot: p.start_slot,
         },
     ))
 }

@@ -57,6 +57,8 @@ fn main() {
             set_system_core,
             install_core,
             get_core_options,
+            get_save_slots,
+            get_slot_thumbnail,
             set_core_options,
             toggle_favorite,
             import_bios,

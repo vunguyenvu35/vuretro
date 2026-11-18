@@ -29,7 +29,9 @@ export const api = {
   reveal: (path) => call('reveal_path', { path }),
 
   // running games
-  launchGame: (path) => call('launch_game', { path }),
+  launchGame: (path, slot = null) => call('launch_game', { path, slot }),
+  saveSlots: (path) => call('get_save_slots', { path }),
+  slotThumbnail: (path, slot) => call('get_slot_thumbnail', { path, slot }),
   launchDemo: () => call('launch_demo'),
 
   // controls and macros

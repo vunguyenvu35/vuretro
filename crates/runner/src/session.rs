@@ -43,6 +43,8 @@ pub struct Config {
     pub factor: usize,
     /// Frames per second the video is paced to.
     pub fps: f64,
+    /// Load this save slot as soon as the game starts.
+    pub start_slot: Option<u8>,
 }
 
 pub struct Session {
@@ -71,6 +73,7 @@ pub struct Session {
     last_sram_save: Instant,
 
     slot: u8,
+    start_slot: Option<u8>,
     sound_on: bool,
     /// Pause: F3, or the window losing focus when that is switched on in the settings.
     paused: bool,
@@ -112,6 +115,7 @@ impl Session {
             deadline: Instant::now(),
             last_sram_save: Instant::now(),
             slot: 1,
+            start_slot: cfg.start_slot.filter(|n| (1..=SLOTS).contains(n)),
             paused: false,
             holding: false,
             last_frame: None,
@@ -123,6 +127,11 @@ impl Session {
 
     /// Play until the window closes, then save.
     pub fn run(mut self) -> Result<()> {
+        if let Some(n) = self.start_slot.take() {
+            self.slot = n;
+            let note = self.apply(Act::LoadState)?;
+            self.notice = note.map(|t| (t, Instant::now()));
+        }
         while self.screen.is_open() && !self.quit && !self.screen.key_down(Key::Escape) {
             self.frame()?;
         }
@@ -182,12 +191,26 @@ impl Session {
         self.save_dir.join(format!("{}.state{slot}", self.rom_name))
     }
 
+    /// The picture shown for the slot in the app's slot picker.
+    fn save_thumbnail(&self) {
+        let (buf, w, h) = self.frames.current();
+        let png = self
+            .save_dir
+            .join(format!("{}.state{}.png", self.rom_name, self.slot));
+        if let Err(e) = cover::write_png(&png, &buf, w, h) {
+            log::warn!("cannot save slot thumbnail: {e}");
+        }
+    }
+
     /// Carry out one action; the returned text is shown in the title bar for a moment.
     fn apply(&mut self, act: Act) -> Result<Option<String>> {
         Ok(match act {
             Act::SaveState => Some(match self.emulator.save_state() {
                 Some(data) => match std::fs::write(self.state_path(self.slot), data) {
-                    Ok(_) => format!("saved to slot {}", self.slot),
+                    Ok(_) => {
+                        self.save_thumbnail();
+                        format!("saved to slot {}", self.slot)
+                    }
                     Err(e) => format!("save failed: {e}"),
                 },
                 None => "this core has no save states".to_string(),
@@ -496,6 +519,7 @@ mod tests {
                 base_h: 2,
                 factor: 2,
                 fps: 1000.0,
+                start_slot: None,
             },
         );
         (session, Rig { log, gain, dir })
@@ -587,6 +611,23 @@ mod tests {
         r.log.borrow_mut().pressed.insert(Key::F7);
         s.frame().unwrap();
         assert_eq!(r.log.borrow().state, Some(vec![7, 7]));
+    }
+
+    #[test]
+    fn saving_also_writes_a_thumbnail_png_for_the_slot() {
+        let (mut s, r) = rig(100);
+        s.apply(Act::SaveState).unwrap();
+        let png = std::fs::read(r.dir.path().join("game.state1.png")).unwrap();
+        assert_eq!(&png[1..4], b"PNG");
+    }
+
+    #[test]
+    fn a_start_slot_is_loaded_before_the_first_frame() {
+        let (mut s, r) = rig(1);
+        std::fs::write(r.dir.path().join("game.state3"), [9, 9]).unwrap();
+        s.start_slot = Some(3);
+        s.run().unwrap();
+        assert_eq!(r.log.borrow().state, Some(vec![9, 9]));
     }
 
     #[test]

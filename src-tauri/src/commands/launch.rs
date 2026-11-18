@@ -18,9 +18,10 @@ pub async fn launch_game(
     app: AppHandle,
     shell: State<'_, Shell>,
     path: String,
+    slot: Option<u8>,
 ) -> Result<(), String> {
     let core = shell.app.clone();
-    let running = blocking(move || core.launch_game(path)).await??;
+    let running = blocking(move || core.launch_game(path, slot)).await??;
     watch(&app, &shell, running);
     Ok(())
 }

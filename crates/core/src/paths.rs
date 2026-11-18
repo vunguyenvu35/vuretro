@@ -76,6 +76,22 @@ impl Paths {
         self.data_dir.join("cover-scratch")
     }
 
+    /// Save-state file of a game's slot, as the runner writes it.
+    pub fn state_file(&self, rom: &Path, slot: u8) -> PathBuf {
+        let stem = rom
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        self.saves_dir().join(format!("{stem}.state{slot}"))
+    }
+
+    /// The picture taken when the slot was saved.
+    pub fn state_thumb(&self, rom: &Path, slot: u8) -> PathBuf {
+        let mut p = self.state_file(rom, slot).into_os_string();
+        p.push(".png");
+        PathBuf::from(p)
+    }
+
     /// Preview image of a game (a screenshot taken from the game itself).
     pub fn cover_file(&self, rom: &Path) -> PathBuf {
         let name: String = rom
@@ -105,6 +121,20 @@ mod tests {
         assert_eq!(
             p.cover_file(Path::new("/x/Metal Slug (U).zip")),
             PathBuf::from("/d/covers/Metal_Slug__U_.zip.png")
+        );
+    }
+
+    #[test]
+    fn slot_files_match_the_runner_naming() {
+        let p = Paths::new("/d");
+        let rom = Path::new("/roms/Super Game (U).sfc");
+        assert_eq!(
+            p.state_file(rom, 2),
+            Path::new("/d/saves/Super Game (U).state2")
+        );
+        assert_eq!(
+            p.state_thumb(rom, 2),
+            Path::new("/d/saves/Super Game (U).state2.png")
         );
     }
 

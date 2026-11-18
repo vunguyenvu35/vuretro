@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use vuretro_controls::{macros, macros::MacroConfig, ControlsConfig};
-use vuretro_core::model::{GameMeta, Settings};
+use vuretro_core::model::{GameMeta, Settings, SlotInfo, SAVE_SLOTS};
 use vuretro_core::paths::Paths;
 use vuretro_core::ports::Store;
 use vuretro_settings::GameSettings;
@@ -102,6 +102,32 @@ impl Store for JsonStore {
             vuretro_settings::core_options::render_config(options),
         )
         .map_err(|e| format!("cannot write {}: {e}", path.display()))
+    }
+
+    fn list_slots(&self, rom: &Path) -> Vec<SlotInfo> {
+        (1..=SAVE_SLOTS)
+            .filter_map(|slot| {
+                let modified = std::fs::metadata(self.paths.state_file(rom, slot))
+                    .ok()?
+                    .modified()
+                    .ok()?;
+                Some(SlotInfo {
+                    slot,
+                    saved_at: modified
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0),
+                    has_thumb: self.paths.state_thumb(rom, slot).is_file(),
+                })
+            })
+            .collect()
+    }
+
+    fn read_slot_thumb(&self, rom: &Path, slot: u8) -> Option<Vec<u8>> {
+        if !(1..=SAVE_SLOTS).contains(&slot) {
+            return None;
+        }
+        std::fs::read(self.paths.state_thumb(rom, slot)).ok()
     }
 
     fn clear_cover_scratch(&self) {

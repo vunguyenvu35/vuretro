@@ -64,6 +64,11 @@ impl Launcher for ProcessLauncher {
             .arg(&spec.system_dir)
             .arg("--cover")
             .arg(&spec.cover)
+            .args(
+                spec.load_slot
+                    .iter()
+                    .flat_map(|n| ["--load-slot".to_string(), n.to_string()]),
+            )
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(log)

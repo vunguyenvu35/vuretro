@@ -4,6 +4,7 @@
   import { visibleGames, lastPlayed, headingFor, pickRange, formatSize } from '../lib/library.js';
   import Welcome from "./Welcome.svelte";
   import Icon from './Icon.svelte';
+  import SaveSlots from './SaveSlots.svelte';
   import { api } from '../lib/api.js';
   import { colorOf, formatAgo, formatPlaytime, modKey } from '../lib/systems.js';
 
@@ -322,6 +323,8 @@
         {/each}
       </dd>
     </dl>
+
+    <SaveSlots game={selected} version={ov?.games.map((g) => g.last_played).join()} />
 
     <button class="btn primary wide" disabled={!!selected.blocked} onclick={() => play(selected)}>
       {selected.blocked ? `🔒 ${selected.blocked}` : '▶ Play'}

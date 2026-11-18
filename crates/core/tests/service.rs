@@ -31,12 +31,19 @@ struct World {
     scratch_cleared: bool,
     core_options: HashMap<String, BTreeMap<String, String>>,
     offered: Vec<CoreOptionDef>,
+    slots: Vec<SlotInfo>,
 }
 
 #[derive(Clone, Default)]
 struct Fake(Arc<Mutex<World>>);
 
 impl Store for Fake {
+    fn list_slots(&self, _: &Path) -> Vec<SlotInfo> {
+        self.0.lock().unwrap().slots.clone()
+    }
+    fn read_slot_thumb(&self, _: &Path, slot: u8) -> Option<Vec<u8>> {
+        (slot == 1).then(|| vec![0x89, b'P'])
+    }
     fn load_core_options(&self, stem: &str) -> BTreeMap<String, String> {
         self.0
             .lock()
@@ -380,7 +387,10 @@ fn launch_rejects_missing_bios_and_core_before_spawning() {
     let a = app(&f);
     // PlayStation needs a required BIOS
     f.0.lock().unwrap().bios_ok = false;
-    let err = a.launch_game("/data/roms/psx/g.cue".into()).err().unwrap();
+    let err = a
+        .launch_game("/data/roms/psx/g.cue".into(), None)
+        .err()
+        .unwrap();
     assert!(err.starts_with("BIOS missing"), "{err}");
 
     {
@@ -388,10 +398,13 @@ fn launch_rejects_missing_bios_and_core_before_spawning() {
         w.bios_ok = true;
         w.cores.remove("pcsx_rearmed_libretro");
     }
-    let err = a.launch_game("/data/roms/psx/g.cue".into()).err().unwrap();
+    let err = a
+        .launch_game("/data/roms/psx/g.cue".into(), None)
+        .err()
+        .unwrap();
     assert!(err.contains("not installed"), "{err}");
 
-    let err = a.launch_game("/x/readme.txt".into()).err().unwrap();
+    let err = a.launch_game("/x/readme.txt".into(), None).err().unwrap();
     assert_eq!(err, "unknown system for this file");
     assert!(f.0.lock().unwrap().spawned.is_empty());
 }
@@ -404,7 +417,7 @@ fn launch_reports_an_early_crash_with_the_log_tail() {
         detail: "bad rom".into(),
     });
     let err = app(&f)
-        .launch_game("/data/roms/snes/a.sfc".into())
+        .launch_game("/data/roms/snes/a.sfc".into(), None)
         .err()
         .unwrap();
     assert_eq!(err, "bad rom");
@@ -415,7 +428,7 @@ fn launch_tracks_play_time_until_exit() {
     let f = ready_world();
     let a = app(&f);
     let running = a
-        .launch_game("/data/roms/snes/a.sfc".into())
+        .launch_game("/data/roms/snes/a.sfc".into(), None)
         .unwrap()
         .expect("still running after the grace period");
     let spawn = f.0.lock().unwrap().spawned[0].clone();
@@ -657,4 +670,26 @@ fn core_options_need_the_core_to_be_installed() {
     f.0.lock().unwrap().runner = true;
     let err = app(&f).core_options("snes9x_libretro").unwrap_err();
     assert!(err.contains("not installed"));
+}
+
+#[test]
+fn a_game_starts_from_the_chosen_save_slot() {
+    let f = ready_world();
+    f.0.lock().unwrap().slots = vec![SlotInfo {
+        slot: 2,
+        saved_at: 5,
+        has_thumb: true,
+    }];
+    let a = app(&f);
+    assert_eq!(a.save_slots("/data/roms/snes/a.sfc")[0].slot, 2);
+    assert_eq!(
+        a.slot_thumbnail("/data/roms/snes/a.sfc", 1),
+        Some(vec![0x89, b'P'])
+    );
+
+    a.launch_game("/data/roms/snes/a.sfc".into(), Some(2)).ok();
+    a.launch_game("/data/roms/snes/a.sfc".into(), None).ok();
+    let spawned = f.0.lock().unwrap().spawned.clone();
+    assert_eq!(spawned[0].load_slot, Some(2));
+    assert_eq!(spawned[1].load_slot, None);
 }

@@ -51,7 +51,7 @@ Phases 0 to 2 are the foundation. M1 to M5 are ordered by what gets vuretro to r
 - [ ] Controls: per-system and per-game overrides, button diagram, analog trigger and right-stick options (moved to M2)
 - [x] Tauri commands calling `vuretro-library` (scan, BIOS check/import) and spawning `vuretro-runner`, reporting early failures from `runner.log`
 - [x] Metadata (play time, last played, favorites) in `library.json`; SQLite deferred until the library is big enough to need it
-- [ ] Save-slot thumbnails and slot picker in the details panel (needs runner stdout JSON; moved to M2)
+- [x] Save-slot thumbnails and slot picker in the details panel (done in M2)
 - [ ] Verify the window on Windows and Linux; CI job `app` is added but not yet seen green (moved to M1)
 
 ## Gaps compared with other frontends
@@ -87,9 +87,9 @@ Goal: fullscreen, shaders, slots with thumbnails and core options without leavin
 
 - [ ] `wgpu` renderer replacing `minifb`: keep aspect ratio, integer scale, fullscreen. The `Screen` trait in `crates/runner/src/ports.rs` stays, so `Session` and its tests do not change
 - [ ] CRT shader (scanlines, curvature), toggleable
-- [ ] Runner reports to the app as JSON on stdout (play time, save slots); `GameProcess` in `vuretro-core` gets an event stream
+- [x] Runner-to-app reporting: decided against stdout JSON; the runner writes files the app reads (save state + `.png` thumbnail per slot, `--load-slot N` to start from one). Play time is already tracked by the app from the process lifetime
 - [ ] In-game menu (Esc): save/load, change slot, back to Library
-- [ ] Save-slot thumbnails and slot picker in the details panel (carried over from Phase 2)
+- [x] Save-slot thumbnails and slot picker in the details panel (`Store::list_slots`, `SaveSlots.svelte`, `launch_game(path, slot)`; tested with fakes, not yet seen in the window)
 - [x] **Core options screen** in the app: runner `--options-json` (no ROM needed), `Launcher::list_core_options`, `Store::{load,save}_core_options`, `App::{core_options,set_core_options}`, dialog on Cores & BIOS (shared `.cfg` format in `vuretro-settings`). Not yet checked in the window with a real core
 - [ ] Per-game and per-system overrides on top of the global `controls.json` and `game.json` (carried over from Phase 2)
 - [ ] Controls: button diagram, analog trigger and right-stick options (carried over from Phase 2); rumble; rebindable in-game hotkeys; gamepad hotkey chord
