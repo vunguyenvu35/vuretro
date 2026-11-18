@@ -1,6 +1,7 @@
 import { api } from './api.js';
 import { summarizeBios, summarizeImport, summarizeRemoval } from './library.js';
 import { toast } from './ui.svelte.js';
+import { clampSidebar, parseSidebar } from './layout.js';
 
 function readLayout() {
   try {
@@ -10,7 +11,16 @@ function readLayout() {
   }
 }
 
+function readSidebar() {
+  try {
+    return parseSidebar(localStorage.getItem('vuretro.sidebar'));
+  } catch {
+    return parseSidebar(null);
+  }
+}
+
 export const app = $state({
+  sidebarW: readSidebar(), // px, dragged by the user
   view: 'library', // library | cores | controls | macros | settings
   overview: null,
   loaded: false,
@@ -251,4 +261,15 @@ export async function resetCover(game) {
   delete covers[game.path];
   await loadCovers([game.path]);
   syncCovers();
+}
+
+/** Set the sidebar width (px); `save` also remembers it for the next start. */
+export function setSidebarWidth(width, save = false) {
+  app.sidebarW = clampSidebar(width, typeof window === 'undefined' ? Infinity : window.innerWidth);
+  if (!save) return;
+  try {
+    localStorage.setItem('vuretro.sidebar', String(app.sidebarW));
+  } catch {
+    /* a width that is not remembered is fine */
+  }
 }

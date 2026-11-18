@@ -85,3 +85,20 @@ test('filters by collection and names it in the heading', () => {
   assert.equal(headingFor(ov, { system: null, filter: 'all', collection: 'RPG' }), 'Collection: RPG');
   assert.equal(headingFor(ov, { system: null, filter: 'all', collection: null }), 'All games');
 });
+
+import { clampSidebar, parseSidebar, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from './layout.js';
+
+test('the sidebar width stays within its limits and half of a small window', () => {
+  assert.equal(clampSidebar(300), 300);
+  assert.equal(clampSidebar(10), SIDEBAR_MIN);
+  assert.equal(clampSidebar(9999), SIDEBAR_MAX);
+  assert.equal(clampSidebar(400, 600), 300, 'half of a 600 px window');
+  assert.equal(clampSidebar(400, 200), SIDEBAR_MIN, 'the minimum wins in a tiny window');
+  assert.equal(clampSidebar(NaN), SIDEBAR_DEFAULT);
+});
+
+test('a saved sidebar width is read safely', () => {
+  assert.equal(parseSidebar('310'), 310);
+  assert.equal(parseSidebar('5'), SIDEBAR_MIN);
+  for (const bad of [null, undefined, '', 'wide', 'NaN']) assert.equal(parseSidebar(bad), SIDEBAR_DEFAULT, String(bad));
+});

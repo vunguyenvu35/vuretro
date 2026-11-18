@@ -1,8 +1,32 @@
 <script>
-  import { app, pickRomFiles, pickRomFolder, linkFolder, unlinkFolder } from '../lib/store.svelte.js';
+  import { app, pickRomFiles, pickRomFolder, linkFolder, unlinkFolder, setSidebarWidth } from '../lib/store.svelte.js';
   import { colorOf } from '../lib/systems.js';
   import logo from '../lib/logo-mark.svg';
   import Icon from './Icon.svelte';
+  import { SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../lib/layout.js';
+
+  let dragging = $state(false);
+  function startDrag(e) {
+    e.preventDefault();
+    dragging = true;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  function drag(e) {
+    if (dragging) setSidebarWidth(e.clientX);
+  }
+  function endDrag() {
+    if (!dragging) return;
+    dragging = false;
+    setSidebarWidth(app.sidebarW, true);
+  }
+  /** Arrow keys resize by 16 px (64 with Shift); Home resets. */
+  function resizeKey(e) {
+    const step = e.shiftKey ? 64 : 16;
+    const next = { ArrowLeft: app.sidebarW - step, ArrowRight: app.sidebarW + step, Home: SIDEBAR_DEFAULT }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    setSidebarWidth(next, true);
+  }
 
   const total = $derived(app.overview?.games.length ?? 0);
   const recent = $derived(app.overview?.games.filter((g) => g.last_played).length ?? 0);
@@ -84,13 +108,42 @@
       </div>
     {/if}
   </div>
+  <div
+    class="grip"
+    class:on={dragging}
+    role="separator"
+    aria-orientation="vertical"
+    aria-label="Resize the sidebar"
+    aria-valuemin={SIDEBAR_MIN}
+    aria-valuemax={SIDEBAR_MAX}
+    aria-valuenow={app.sidebarW}
+    tabindex="0"
+    title="Drag to resize, double-click to reset"
+    onpointerdown={startDrag}
+    onpointermove={drag}
+    onpointerup={endDrag}
+    onpointercancel={endDrag}
+    ondblclick={() => setSidebarWidth(SIDEBAR_DEFAULT, true)}
+    onkeydown={resizeKey}
+  ></div>
 </aside>
+
+<svelte:window onblur={endDrag} />
+{#if dragging}<div class="dragshield"></div>{/if}
 
 <style>
   aside {
+    position: relative; min-width: 0;
     background: var(--surface); border-right: 1px solid var(--border);
     display: flex; flex-direction: column; padding: 14px 10px; gap: 8px; min-height: 0;
   }
+  /* a thin strip on the sidebar's right edge: easy to grab, invisible until hovered */
+  .grip { position: absolute; top: 0; right: -3px; bottom: 0; width: 7px; cursor: col-resize; z-index: 5; touch-action: none; }
+  .grip::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: transparent; transition: background .12s, box-shadow .12s; }
+  .grip:hover::after, .grip:focus-visible::after, .grip.on::after { background: var(--accent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); }
+  .grip:focus-visible { outline: none; }
+  /* while dragging, keep the cursor and ignore what is underneath */
+  .dragshield { position: fixed; inset: 0; z-index: 100; cursor: col-resize; user-select: none; }
   .brand { display: flex; align-items: center; gap: 10px; padding: 2px 8px 14px; font: 700 18px var(--font-head); }
   .brand b { color: var(--brand-magenta); font-weight: 700; }
   nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; overflow-x: hidden; flex: 1; min-height: 0; scrollbar-gutter: stable; }

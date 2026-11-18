@@ -36,7 +36,7 @@
      system's Cut / Copy / Paste menu. Screens that have their own menu stop the event. -->
 <svelte:window oncontextmenu={(e) => { if (!(e.target instanceof HTMLElement && e.target.closest('input, textarea'))) e.preventDefault(); }} />
 
-<div class="shell">
+<div class="shell" style="grid-template-columns: {app.sidebarW}px 1fr">
   <Sidebar />
   <main>
     {#if !app.loaded}
@@ -59,7 +59,7 @@
 </div>
 
 <style>
-  .shell { display: grid; grid-template-columns: 224px 1fr; height: 100%; }
+  .shell { display: grid; height: 100%; }
   main { min-width: 0; overflow: hidden; display: flex; }
   .loading { margin: auto; color: var(--muted); }
 </style>
