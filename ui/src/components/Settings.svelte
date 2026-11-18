@@ -21,7 +21,7 @@
   const STAGE_MAX = 290;
 
   // Whatever the backend sends, fill in anything missing so a switch never gets stuck.
-  const DEFAULTS = { window_scale: 2, sound: true, volume: 100, sync_display: true, pause_on_blur: false };
+  const DEFAULTS = { window_scale: 2, sound: true, volume: 100, sync_display: true, pause_on_blur: false, crt: false };
   const withDefaults = (v) => ({ ...DEFAULTS, ...v });
 
   onMount(async () => {
@@ -48,6 +48,10 @@
   }
   function toggleSync() {
     s.sync_display = !s.sync_display;
+    save();
+  }
+  function toggleCrt() {
+    s.crt = !s.crt;
     save();
   }
   function togglePause() {
@@ -154,6 +158,16 @@
             <div class="d">The game stops and goes quiet while you are in another app, and carries on when you come back. Press <kbd>P</kbd> in a game to pause it yourself, and again to resume.</div>
           </div>
           <button class="switch" role="switch" aria-checked={s.pause_on_blur} aria-label="Pause when the window loses focus" class:on={s.pause_on_blur} onclick={togglePause}><span></span></button>
+        </div>
+        <div class="row">
+          <span class="tile green" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><rect x="4" y="5" width="16" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.7" /><path d="M7 9h10M7 12h10M9 19h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>
+          </span>
+          <div class="txt">
+            <div class="t">CRT scanlines</div>
+            <div class="d">Draws dark lines between the rows of the picture, like an old TV. Press <kbd>F4</kbd> in a game to switch it on or off.</div>
+          </div>
+          <button class="switch" role="switch" aria-checked={s.crt} aria-label="CRT scanlines" class:on={s.crt} onclick={toggleCrt}><span></span></button>
         </div>
       </div>
 

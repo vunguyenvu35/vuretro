@@ -68,7 +68,7 @@ mock.default_controls = async () => mockControls().config;
 mock.set_controls = async ({ config }) => config;
 
 // ---- game settings ----
-const DEFAULT_GAME = { window_scale: 2, sound: true, volume: 100, sync_display: true, pause_on_blur: false };
+const DEFAULT_GAME = { window_scale: 2, sound: true, volume: 100, sync_display: true, pause_on_blur: false, crt: false };
 let mockGame = { ...DEFAULT_GAME };
 mock.import_roms = async () => [];
 mock.remove_rom = async () => {};

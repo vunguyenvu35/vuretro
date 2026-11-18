@@ -86,7 +86,7 @@ Goal: someone installs vuretro from a package, opens it, gets cores, adds a ROM 
 Goal: fullscreen, shaders, slots with thumbnails and core options without leaving the app.
 
 - [ ] `wgpu` renderer replacing `minifb`: keep aspect ratio, integer scale, fullscreen. The `Screen` trait in `crates/runner/src/ports.rs` stays, so `Session` and its tests do not change
-- [ ] CRT shader (scanlines, curvature), toggleable
+- [x] CRT scanlines, toggleable (F4, Size menu, Settings): CPU version in `crt.rs` (pure, tested). Curvature and a GPU shader come with `wgpu`
 - [x] Runner-to-app reporting: decided against stdout JSON; the runner writes files the app reads (save state + `.png` thumbnail per slot, `--load-slot N` to start from one). Play time is already tracked by the app from the process lifetime
 - [ ] In-game menu (Esc): save/load, change slot, back to Library
 - [x] Save-slot thumbnails and slot picker in the details panel (`Store::list_slots`, `SaveSlots.svelte`, `launch_game(path, slot)`; tested with fakes, not yet seen in the window)

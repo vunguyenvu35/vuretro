@@ -88,6 +88,7 @@ On Windows and Linux use `Ctrl` in place of `⌘`.
 | Hold `Tab` | Fast-forward |
 | `F8` | Sound on / off |
 | `F9` / `F10` | Smaller / bigger window (remembered for next time) |
+| `F4` | CRT scanlines on or off (remembered) |
 | `F12` | Screenshot |
 
 On macOS and Windows the game window also has **Game**, **State** and **Size** menus with the same actions. A short message about what just happened appears in the title bar.

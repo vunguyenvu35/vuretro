@@ -53,6 +53,7 @@ pub fn install_menus(window: &mut Window) {
     add("Size", &|m| {
         item(m, "Smaller (F9)", Act::SizeStep(-1), Some(Key::Minus));
         item(m, "Bigger (F10)", Act::SizeStep(1), Some(Key::Equal));
+        item(m, "CRT Effect (F4)", Act::Crt, None);
         m.add_separator();
         for n in 1..=4u8 {
             item(m, &format!("{n}×"), Act::Size(n), None);

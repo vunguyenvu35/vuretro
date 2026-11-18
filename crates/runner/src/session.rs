@@ -3,6 +3,7 @@
 //! builds the real one. [`Session::run`] plays until the window closes.
 
 use crate::cover;
+use crate::crt;
 use crate::ports::{Controller, Emulator, Frame, FrameSource, Screen};
 use crate::window::{self, clamp_scale, gain_for, pace, paused_overlay, window_title, Act, SLOTS};
 use anyhow::Result;
@@ -72,6 +73,7 @@ pub struct Session {
     deadline: Instant,
     last_sram_save: Instant,
 
+    crt: bool,
     slot: u8,
     start_slot: Option<u8>,
     sound_on: bool,
@@ -88,6 +90,7 @@ pub struct Session {
 impl Session {
     pub fn new(parts: Parts, cfg: Config) -> Self {
         let title = format!("vuretro — {}", cfg.rom_name);
+        let crt = cfg.settings.crt;
         Session {
             screen: parts.screen,
             emulator: parts.emulator,
@@ -114,6 +117,7 @@ impl Session {
             frame_time: Duration::from_secs_f64(1.0 / cfg.fps),
             deadline: Instant::now(),
             last_sram_save: Instant::now(),
+            crt,
             slot: 1,
             start_slot: cfg.start_slot.filter(|n| (1..=SLOTS).contains(n)),
             paused: false,
@@ -152,7 +156,11 @@ impl Session {
 
         if self.holding {
             match (&self.dimmed, &self.last_frame) {
-                (Some(buf), Some((_, w, h))) => self.screen.present(buf, *w, *h)?,
+                (Some(buf), Some((_, w, h))) => {
+                    let (w, h) = (*w, *h);
+                    let buf = buf.clone();
+                    self.show(&buf, w, h)?
+                }
                 _ => self.screen.idle(),
             }
         } else {
@@ -176,6 +184,7 @@ impl Session {
             (Key::F3, Act::Pause),
             (Key::P, Act::Pause), // no Fn needed on a laptop keyboard
             (Key::F12, Act::Screenshot),
+            (Key::F4, Act::Crt),
         ]
         .into_iter()
         .filter(|(k, _)| self.screen.key_pressed(*k))
@@ -257,6 +266,17 @@ impl Session {
                 }
                 Some(format!("size {}×", self.factor))
             }
+            Act::Crt => {
+                self.crt = !self.crt;
+                self.settings.crt = self.crt;
+                if let Err(e) = vuretro_settings::save(&self.settings_path, &self.settings) {
+                    log::warn!("cannot save the CRT setting: {e}");
+                }
+                Some(format!(
+                    "CRT effect {}",
+                    if self.crt { "on" } else { "off" }
+                ))
+            }
             Act::Screenshot => Some(self.screenshot()),
             Act::Quit => {
                 self.quit = true;
@@ -335,6 +355,16 @@ impl Session {
         }
     }
 
+    /// Put a picture on the screen, with the CRT look when it is on.
+    fn show(&mut self, buf: &[u32], w: usize, h: usize) -> Result<()> {
+        if self.crt {
+            let (out, ow, oh) = crt::apply(buf, w, h);
+            self.screen.present(&out, ow, oh)
+        } else {
+            self.screen.present(buf, w, h)
+        }
+    }
+
     /// Feed input, run the core (several times when fast-forwarding) and show its frame.
     fn run_core(&mut self) -> Result<()> {
         self.controller.poll(&*self.screen);
@@ -349,7 +379,7 @@ impl Session {
 
         match self.frames.take_new() {
             Some((buf, w, h)) if w > 0 && h > 0 => {
-                self.screen.present(&buf, w, h)?;
+                self.show(&buf, w, h)?;
                 self.last_frame = Some((buf, w, h));
             }
             _ => self.screen.idle(),
@@ -628,6 +658,15 @@ mod tests {
         s.start_slot = Some(3);
         s.run().unwrap();
         assert_eq!(r.log.borrow().state, Some(vec![9, 9]));
+    }
+
+    #[test]
+    fn the_crt_effect_toggles_and_is_remembered() {
+        let (mut s, r) = rig(100);
+        assert_eq!(s.apply(Act::Crt).unwrap().unwrap(), "CRT effect on");
+        assert!(vuretro_settings::load(&r.dir.path().join("game.json")).crt);
+        assert_eq!(s.apply(Act::Crt).unwrap().unwrap(), "CRT effect off");
+        assert!(!vuretro_settings::load(&r.dir.path().join("game.json")).crt);
     }
 
     #[test]

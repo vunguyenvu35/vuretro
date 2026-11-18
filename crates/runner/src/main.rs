@@ -11,6 +11,7 @@ mod appicon;
 mod audio;
 mod core;
 mod cover;
+mod crt;
 mod display;
 mod frontend;
 mod headless;

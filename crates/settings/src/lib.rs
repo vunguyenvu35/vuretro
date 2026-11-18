@@ -23,6 +23,8 @@ pub struct GameSettings {
     pub sync_display: bool,
     /// Pause the game while its window is not the active one.
     pub pause_on_blur: bool,
+    /// Scanline look (CRT effect).
+    pub crt: bool,
 }
 
 impl Default for GameSettings {
@@ -33,6 +35,7 @@ impl Default for GameSettings {
             volume: 100,
             sync_display: true,
             pause_on_blur: false,
+            crt: false,
         }
     }
 }
@@ -85,6 +88,7 @@ mod tests {
             volume: 250,
             sync_display: true,
             pause_on_blur: false,
+            crt: false,
         }
         .sanitized();
         assert_eq!((s.window_scale, s.volume), (MAX_SCALE, 100));
@@ -121,6 +125,7 @@ mod tests {
             volume: 70,
             sync_display: false,
             pause_on_blur: true,
+            crt: true,
         };
         save(&path, &s).unwrap();
         assert_eq!(load(&path), s);
