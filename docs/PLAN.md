@@ -54,7 +54,7 @@ Phases 0 to 2 are the foundation. M1 to M5 are ordered by what gets vuretro to r
 - [x] Tauri commands calling `vuretro-library` (scan, BIOS check/import) and spawning `vuretro-runner`, reporting early failures from `runner.log`
 - [x] Metadata (play time, last played, favorites) in `library.json`; SQLite deferred until the library is big enough to need it
 - [x] Save-slot thumbnails and slot picker in the details panel (done in M2)
-- [ ] Verify the window on Windows and Linux (moved to M1). CI first run on 2026-11-18: Windows `build` and `app` green, Linux `build` green; Linux `app` failed for a missing `libudev-dev` (fixed), `macos-14` is not a supported runner (switched to `macos-latest`). CI only compiles and runs tests, nobody has opened the window yet
+- [ ] Verify the window on Windows and Linux (moved to M1). CI first run on 2026-11-18: Windows `build` and `app` green, Linux `build` green; Linux `app` failed for a missing `libudev-dev` (fixed; all 6 jobs green on eab2742), `macos-14` is not a supported runner (switched to `macos-latest`). CI only compiles and runs tests, nobody has opened the window yet
 
 ## Gaps compared with other frontends
 
@@ -75,7 +75,7 @@ Compared with RetroArch, OpenEmu, ES-DE/Pegasus and Playnite/LaunchBox, what vur
 Goal: someone installs vuretro from a package, opens it, gets cores, adds a ROM and plays, with no terminal.
 
 - [ ] Real-game check on macOS, Windows and Linux (carried over from Phase 1)
-- [ ] Verify the app window on Windows and Linux; CI job `app` green on all 3 OS (Windows is green; Linux and macOS are re-running after the fixes above)
+- [ ] Verify the app window on Windows and Linux; CI job `app` green on all 3 OS (all 6 CI jobs green on commit eab2742: compile and tests only, windows never opened)
 - [x] **In-app core installer**: `CoreInstaller` port, `BuildbotInstaller` adapter (HTTPS download into `<data dir>/cores`, archive and native-library checks; the buildbot publishes no checksums), `install_core` command with `core-progress` events, Install button with progress on Cores & BIOS. Verified live with `cargo test -p vuretro-library -- --ignored`; the Install button itself is not yet clicked through on a clean machine
 - [ ] macOS: signed + notarized universal `.dmg`. Done so far: `make app-build` produces an unsigned arm64 `.dmg` (6 MB) with `vuretro-runner` bundled inside (checked on this Mac); `release.yml` builds universal and signs when the Apple secrets exist (not run yet)
 - [ ] Windows: signed MSI/NSIS (`release.yml` builds it; not run yet, signing needs a certificate)
