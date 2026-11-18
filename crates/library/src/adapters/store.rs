@@ -87,6 +87,20 @@ impl Store for JsonStore {
     fn art_exists(&self, rom: &Path) -> bool {
         self.paths.art_file(rom).exists()
     }
+    fn import_art(&self, rom: &Path, src: &Path) -> Result<(), String> {
+        let bytes =
+            std::fs::read(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
+        if bytes.len() > vuretro_core::model::MAX_ART_BYTES {
+            return Err("image is larger than 8 MB".into());
+        }
+        if vuretro_core::model::image_mime(&bytes).is_none() {
+            return Err("not a PNG or JPEG image".into());
+        }
+        self.save_art(rom, &bytes)
+    }
+    fn remove_art(&self, rom: &Path) {
+        let _ = std::fs::remove_file(self.paths.art_file(rom));
+    }
     fn load_cheats(&self, rom: &Path) -> String {
         std::fs::read_to_string(self.paths.cheats_file(rom)).unwrap_or_default()
     }
@@ -175,6 +189,28 @@ impl Store for JsonStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chosen_images_are_validated_and_win_over_the_screenshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = JsonStore::new(Paths::new(dir.path().join("data")));
+        let rom = Path::new("/roms/a.sfc");
+        let good = dir.path().join("pic.jpg");
+        std::fs::write(&good, [0xFF, 0xD8, 0xFF, 0xE0, 1, 2]).unwrap();
+        let bad = dir.path().join("pic.png");
+        std::fs::write(&bad, b"not an image").unwrap();
+
+        assert!(store
+            .import_art(rom, &bad)
+            .unwrap_err()
+            .contains("not a PNG or JPEG"));
+        assert!(!store.art_exists(rom));
+        store.import_art(rom, &good).unwrap();
+        assert!(store.art_exists(rom));
+        assert_eq!(store.read_cover(rom).unwrap()[..3], [0xFF, 0xD8, 0xFF]);
+        store.remove_art(rom);
+        assert!(store.read_cover(rom).is_none());
+    }
 
     #[test]
     fn settings_and_meta_round_trip_and_missing_files_give_defaults() {

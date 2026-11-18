@@ -128,6 +128,17 @@ impl Store for Fake {
     fn art_exists(&self, rom: &Path) -> bool {
         self.0.lock().unwrap().art.contains(rom)
     }
+    fn import_art(&self, rom: &Path, src: &Path) -> Result<(), String> {
+        if src.extension().is_some_and(|e| e == "png") {
+            self.0.lock().unwrap().art.insert(rom.to_path_buf());
+            Ok(())
+        } else {
+            Err("not a PNG or JPEG image".into())
+        }
+    }
+    fn remove_art(&self, rom: &Path) {
+        self.0.lock().unwrap().art.remove(rom);
+    }
     fn read_cover(&self, rom: &Path) -> Option<Vec<u8>> {
         self.0
             .lock()
@@ -900,4 +911,31 @@ fn cheats_are_saved_per_game_and_size_limited() {
     assert_eq!(a.cheats("/r/a.sfc"), "7E0DBE05\n");
     assert_eq!(a.cheats("/r/b.sfc"), "");
     assert!(a.set_cheats("/r/a.sfc", &"x".repeat(70_000)).is_err());
+}
+
+#[test]
+fn a_chosen_cover_is_kept_and_never_replaced_by_a_download() {
+    let f = art_world();
+    let a = app(&f).with_art_source(Box::new(FakeArt {
+        f: f.clone(),
+        has: true,
+    }));
+    a.set_fetch_art(true);
+    a.set_custom_art("/data/roms/snes/a.sfc", "/pics/mine.png")
+        .unwrap();
+    assert!(a
+        .set_custom_art("/data/roms/snes/a.sfc", "/pics/doc.txt")
+        .is_err());
+    // a.sfc has a name and a server picture, but the user's choice wins
+    assert_eq!(a.fetch_art(|_| {}), 0);
+    assert!(f.0.lock().unwrap().art_calls.is_empty());
+    a.clear_art("/data/roms/snes/a.sfc");
+    assert_eq!(a.fetch_art(|_| {}), 1);
+}
+
+#[test]
+fn image_types_are_told_by_their_first_bytes() {
+    assert_eq!(image_mime(b"\x89PNG\r\n"), Some("image/png"));
+    assert_eq!(image_mime(&[0xFF, 0xD8, 0xFF, 0xE0]), Some("image/jpeg"));
+    assert_eq!(image_mime(b"GIF89a"), None);
 }

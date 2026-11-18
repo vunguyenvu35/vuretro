@@ -136,6 +136,20 @@ pub struct SlotInfo {
     pub has_thumb: bool,
 }
 
+/// Largest cover image accepted.
+pub const MAX_ART_BYTES: usize = 8 * 1024 * 1024;
+
+/// MIME type of a PNG or JPEG by its first bytes; `None` for anything else.
+pub fn image_mime(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG") {
+        Some("image/png")
+    } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("image/jpeg")
+    } else {
+        None
+    }
+}
+
 /// One option a core offers. The first value is the core's default.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CoreOptionDef {

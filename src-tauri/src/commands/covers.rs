@@ -12,8 +12,9 @@ pub fn get_covers(shell: State<'_, Shell>, paths: Vec<String>) -> HashMap<String
         .covers(paths)
         .into_iter()
         .map(|(path, bytes)| {
-            let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
-            (path, format!("data:image/png;base64,{b64}"))
+            let mime = vuretro_core::model::image_mime(&bytes).unwrap_or("image/png");
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            (path, format!("data:{mime};base64,{b64}"))
         })
         .collect()
 }
@@ -57,4 +58,16 @@ pub fn fetch_art(app: AppHandle, shell: State<'_, Shell>) {
             let _ = app.emit("covers-updated", key);
         });
     });
+}
+
+/// Use a picture the user chose as a game's cover.
+#[tauri::command]
+pub fn set_custom_art(shell: State<'_, Shell>, path: String, image: String) -> Result<(), String> {
+    shell.app.set_custom_art(&path, &image)
+}
+
+/// Drop downloaded or chosen cover art.
+#[tauri::command]
+pub fn clear_art(shell: State<'_, Shell>, path: String) {
+    shell.app.clear_art(&path);
 }

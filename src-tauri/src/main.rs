@@ -61,6 +61,8 @@ fn main() {
             get_save_slots,
             import_dats,
             set_fetch_art,
+            set_custom_art,
+            clear_art,
             fetch_art,
             identify_games,
             set_tags,

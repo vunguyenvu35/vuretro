@@ -296,6 +296,16 @@ impl App {
     }
 
     /// The slots of a game that hold a save.
+    /// Use a picture the user chose as the game's cover.
+    pub fn set_custom_art(&self, path: &str, image: &str) -> Result<(), String> {
+        self.store.import_art(Path::new(path), Path::new(image))
+    }
+
+    /// Drop downloaded or chosen cover art; the screenshot preview comes back.
+    pub fn clear_art(&self, path: &str) {
+        self.store.remove_art(Path::new(path));
+    }
+
     /// The cheat codes of a game as text (see `vuretro_settings::cheats`).
     pub fn cheats(&self, path: &str) -> String {
         self.store.load_cheats(Path::new(path))

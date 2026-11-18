@@ -33,6 +33,10 @@ pub trait Store: Send + Sync {
     /// Keep downloaded cover art for a game (it wins over the screenshot preview).
     fn save_art(&self, rom: &Path, png: &[u8]) -> Result<(), String>;
     fn art_exists(&self, rom: &Path) -> bool;
+    /// Use an image file the user chose as the game's cover (PNG or JPEG, validated).
+    fn import_art(&self, rom: &Path, src: &Path) -> Result<(), String>;
+    /// Forget downloaded or chosen cover art.
+    fn remove_art(&self, rom: &Path);
     /// Bytes of a game's preview image, if it has one.
     fn read_cover(&self, rom: &Path) -> Option<Vec<u8>>;
     fn cover_exists(&self, rom: &Path) -> bool;

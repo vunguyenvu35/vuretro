@@ -1,5 +1,6 @@
 <script>
-  import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, covers, setLayout, pickRomFiles, pickRomFolder } from '../lib/store.svelte.js';
+  import { chooseCover, resetCover } from '../lib/store.svelte.js';
+import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, covers, setLayout, pickRomFiles, pickRomFolder } from '../lib/store.svelte.js';
   import { openMenu, confirmDialog } from '../lib/ui.svelte.js';
   import { visibleGames, lastPlayed, headingFor, pickRange, formatSize } from '../lib/library.js';
   import Welcome from "./Welcome.svelte";
@@ -353,6 +354,8 @@
     <button class="btn primary wide" disabled={!!selected.blocked} onclick={() => play(selected)}>
       {selected.blocked ? `🔒 ${selected.blocked}` : '▶ Play'}
     </button>
+    <button class="btn wide" onclick={() => chooseCover(selected)}>Set cover image…</button>
+    <button class="btn wide" onclick={() => resetCover(selected)}>Reset cover</button>
     <button class="btn wide" onclick={() => fav(selected)}>{selected.favorite ? '★ Favorite' : '☆ Add to favorites'}</button>
     {#if selected.blocked}
       <button class="btn wide" onclick={() => (app.view = 'cores')}>Open Cores &amp; BIOS</button>

@@ -25,6 +25,13 @@ export const api = {
   cheats: (path) => call('get_cheats', { path }),
   setCheats: (path, text) => call('set_cheats', { path, text }),
   fetchArt: () => call('fetch_art'),
+  setCustomArt: (path, image) => call('set_custom_art', { path, image }),
+  clearArt: (path) => call('clear_art', { path }),
+  async pickImage() {
+    if (!inTauri) return null;
+    const r = await open({ multiple: false, title: 'Choose a cover image', filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg'] }] });
+    return r || null;
+  },
   installCore: (core) => call('install_core', { core }),
   coreOptions: (core) => call('get_core_options', { core }),
   setCoreOptions: (core, overrides) => call('set_core_options', { core, overrides }),

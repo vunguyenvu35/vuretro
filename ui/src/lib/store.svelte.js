@@ -232,3 +232,23 @@ export async function handleMenu(id) {
       document.querySelector('input[aria-label="Search games"]')?.focus();
   }
 }
+
+/** Let the user pick a picture for a game's cover. */
+export async function chooseCover(game) {
+  const image = await api.pickImage();
+  if (!image) return;
+  try {
+    await api.setCustomArt(game.path, image);
+    await loadCovers([game.path]);
+  } catch (e) {
+    toast(String(e), 'error');
+  }
+}
+
+/** Remove downloaded or chosen art; the screenshot preview (if any) comes back. */
+export async function resetCover(game) {
+  await api.clearArt(game.path);
+  delete covers[game.path];
+  await loadCovers([game.path]);
+  syncCovers();
+}
