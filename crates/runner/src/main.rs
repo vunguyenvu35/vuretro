@@ -40,8 +40,8 @@ struct Args {
     #[arg(long)]
     core: PathBuf,
     /// Path to the ROM / disc image
-    #[arg(long)]
-    rom: PathBuf,
+    #[arg(long, required_unless_present = "options_json")]
+    rom: Option<PathBuf>,
     /// BIOS directory (default: <data dir>/system)
     #[arg(long)]
     system_dir: Option<PathBuf>,
@@ -73,6 +73,9 @@ struct Args {
     /// Print the core's options as a config template and exit
     #[arg(long)]
     list_options: bool,
+    /// Print the core's options as JSON (key, description, values) and exit; needs no ROM
+    #[arg(long)]
+    options_json: bool,
 }
 
 /// User options for a core, plus the frontend's own defaults for specific cores.
@@ -135,14 +138,19 @@ fn main() -> Result<()> {
         core.info.version,
         core.info.extensions
     );
-    let av = core.load_game(&args.rom)?;
+    if args.options_json {
+        let defs = frontend::with(|fe| fe.definitions.clone());
+        println!("{}", options::to_json(&defs));
+        return Ok(());
+    }
+    let rom = args.rom.clone().context("--rom is required")?;
+    let av = core.load_game(&rom)?;
     if args.list_options {
         let defs = frontend::with(|fe| fe.definitions.clone());
         print!("{}", options::template(&defs));
         return Ok(());
     }
-    let rom_name = args
-        .rom
+    let rom_name = rom
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();

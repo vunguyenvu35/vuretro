@@ -31,6 +31,11 @@ const mock = {
   set_system_enabled: async () => {},
   set_system_core: async () => {},
   install_core: async () => {},
+  get_core_options: async () => [
+    { key: "region", description: "Region", values: ["auto", "pal", "ntsc"], default: "auto", value: "auto" },
+    { key: "overscan", description: "Show overscan", values: ["off", "on"], default: "off", value: "off" },
+  ],
+  set_core_options: async () => {},
   toggle_favorite: async () => true,
   import_bios: async ({ paths }) => paths.map((p) => ({ source: p, ok: false, message: 'Not available in browser preview' })),
   launch_game: async () => {},

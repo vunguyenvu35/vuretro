@@ -90,7 +90,7 @@ Goal: fullscreen, shaders, slots with thumbnails and core options without leavin
 - [ ] Runner reports to the app as JSON on stdout (play time, save slots); `GameProcess` in `vuretro-core` gets an event stream
 - [ ] In-game menu (Esc): save/load, change slot, back to Library
 - [ ] Save-slot thumbnails and slot picker in the details panel (carried over from Phase 2)
-- [ ] **Core options screen** in the app, built from the core's `SET_VARIABLES`, replacing hand-edited `.cfg` files
+- [x] **Core options screen** in the app: runner `--options-json` (no ROM needed), `Launcher::list_core_options`, `Store::{load,save}_core_options`, `App::{core_options,set_core_options}`, dialog on Cores & BIOS (shared `.cfg` format in `vuretro-settings`). Not yet checked in the window with a real core
 - [ ] Per-game and per-system overrides on top of the global `controls.json` and `game.json` (carried over from Phase 2)
 - [ ] Controls: button diagram, analog trigger and right-stick options (carried over from Phase 2); rumble; rebindable in-game hotkeys; gamepad hotkey chord
 - [ ] Rewind, then cheats

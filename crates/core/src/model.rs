@@ -115,6 +115,50 @@ impl Outcome {
     }
 }
 
+/// One option a core offers. The first value is the core's default.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CoreOptionDef {
+    pub key: String,
+    pub description: String,
+    pub values: Vec<String>,
+}
+
+/// An option as the options screen shows it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CoreOptionView {
+    pub key: String,
+    pub description: String,
+    pub values: Vec<String>,
+    pub default: String,
+    /// The saved override, or the default.
+    pub value: String,
+}
+
+impl CoreOptionView {
+    /// Join what the core offers with what the user saved. A saved value the core no
+    /// longer offers is ignored.
+    pub fn merge(defs: Vec<CoreOptionDef>, saved: &BTreeMap<String, String>) -> Vec<Self> {
+        defs.into_iter()
+            .filter(|d| !d.values.is_empty())
+            .map(|d| {
+                let default = d.values[0].clone();
+                let value = saved
+                    .get(&d.key)
+                    .filter(|v| d.values.contains(v))
+                    .cloned()
+                    .unwrap_or_else(|| default.clone());
+                CoreOptionView {
+                    key: d.key,
+                    description: d.description,
+                    values: d.values,
+                    default,
+                    value,
+                }
+            })
+            .collect()
+    }
+}
+
 // ---------- what the UI shows ----------
 
 #[derive(Debug, Clone, Serialize)]

@@ -1,6 +1,8 @@
 //! Game settings (`<data dir>/config/game.json`), shared by the runner (which applies
 //! them when a game starts) and the app (which edits them).
 
+pub mod core_options;
+
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 

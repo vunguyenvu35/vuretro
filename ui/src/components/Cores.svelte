@@ -4,9 +4,12 @@
   import { api } from '../lib/api.js';
   import { colorOf } from '../lib/systems.js';
   import Select from './Select.svelte';
+  import CoreOptions from './CoreOptions.svelte';
   import { toast } from '../lib/ui.svelte.js';
 
   let over = $state(false);
+  /** the system whose core options are open */
+  let optionsFor = $state(null);
   /** core name -> percent while it downloads */
   let installing = $state({});
   const ov = $derived(app.overview);
@@ -110,6 +113,9 @@
             {core in installing ? `Installing… ${installing[core]}%` : `Install ${core.replace(/_libretro$/, '')}`}
           </button>
         {/if}
+        {#if s.core_installed}
+          <button class="btn" onclick={() => (optionsFor = { core: s.core, name: s.name })}>Core options…</button>
+        {/if}
         <button class="btn" onclick={() => toggle(s)}>{s.enabled ? 'Switch off' : 'Switch on'}</button>
       </article>
     {/each}
@@ -124,6 +130,10 @@
   </div>
   <p class="note">vuretro does not provide BIOS files. Use dumps from hardware you own.</p>
 </section>
+
+{#if optionsFor}
+  <CoreOptions core={optionsFor.core} name={optionsFor.name} onclose={() => (optionsFor = null)} />
+{/if}
 
 <style>
   .page { flex: 1; overflow: auto; padding: 32px 40px 56px; min-width: 0; }

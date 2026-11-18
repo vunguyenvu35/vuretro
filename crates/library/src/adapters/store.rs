@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use vuretro_controls::{macros, macros::MacroConfig, ControlsConfig};
 use vuretro_core::model::{GameMeta, Settings};
@@ -74,6 +74,36 @@ impl Store for JsonStore {
     fn remove_cover(&self, rom: &Path) {
         let _ = std::fs::remove_file(self.paths.cover_file(rom));
     }
+    fn load_core_options(&self, stem: &str) -> BTreeMap<String, String> {
+        std::fs::read_to_string(self.paths.core_options_file(stem))
+            .map(|t| vuretro_settings::core_options::parse_config(&t))
+            .unwrap_or_default()
+    }
+
+    fn save_core_options(
+        &self,
+        stem: &str,
+        options: &BTreeMap<String, String>,
+    ) -> Result<(), String> {
+        let path = self.paths.core_options_file(stem);
+        if options.is_empty() {
+            return match std::fs::remove_file(&path) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                    Err(format!("cannot reset {}: {e}", path.display()))
+                }
+                _ => Ok(()),
+            };
+        }
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(
+            &path,
+            vuretro_settings::core_options::render_config(options),
+        )
+        .map_err(|e| format!("cannot write {}: {e}", path.display()))
+    }
+
     fn clear_cover_scratch(&self) {
         let _ = std::fs::remove_dir_all(self.paths.cover_scratch_dir());
     }

@@ -1680,6 +1680,7 @@ dependencies = [
  "log",
  "minifb",
  "png",
+ "serde_json",
  "tempfile",
  "vuretro-controls",
  "vuretro-core",

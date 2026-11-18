@@ -56,6 +56,8 @@ fn main() {
             set_system_enabled,
             set_system_core,
             install_core,
+            get_core_options,
+            set_core_options,
             toggle_favorite,
             import_bios,
             import_roms,

@@ -1,5 +1,6 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use vuretro_core::model::CoreOptionDef;
 use vuretro_core::paths::Paths;
 use vuretro_core::ports::{CoverJob, Exit, GameProcess, LaunchSpec, Launcher};
 
@@ -93,5 +94,20 @@ impl Launcher for ProcessLauncher {
             .stderr(Stdio::null())
             .status();
         matches!(status, Ok(s) if s.success()) && job.out.exists()
+    }
+
+    fn list_core_options(&self, runner: &Path, core: &Path) -> Result<Vec<CoreOptionDef>, String> {
+        let out = Command::new(runner)
+            .arg("--core")
+            .arg(core)
+            .arg("--options-json")
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .map_err(|e| format!("cannot start runner: {e}"))?;
+        if !out.status.success() {
+            return Err("the core could not be loaded".into());
+        }
+        serde_json::from_slice(&out.stdout).map_err(|e| format!("unreadable option list: {e}"))
     }
 }

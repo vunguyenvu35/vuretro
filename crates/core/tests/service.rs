@@ -1,6 +1,6 @@
 //! Use-case tests with in-memory fakes: no disk, no processes, no Tauri.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -29,12 +29,31 @@ struct World {
     spawned: Vec<LaunchSpec>,
     cover_ok: bool,
     scratch_cleared: bool,
+    core_options: HashMap<String, BTreeMap<String, String>>,
+    offered: Vec<CoreOptionDef>,
 }
 
 #[derive(Clone, Default)]
 struct Fake(Arc<Mutex<World>>);
 
 impl Store for Fake {
+    fn load_core_options(&self, stem: &str) -> BTreeMap<String, String> {
+        self.0
+            .lock()
+            .unwrap()
+            .core_options
+            .get(stem)
+            .cloned()
+            .unwrap_or_default()
+    }
+    fn save_core_options(&self, stem: &str, o: &BTreeMap<String, String>) -> Result<(), String> {
+        self.0
+            .lock()
+            .unwrap()
+            .core_options
+            .insert(stem.to_string(), o.clone());
+        Ok(())
+    }
     fn load_settings(&self) -> Settings {
         self.0.lock().unwrap().settings.clone()
     }
@@ -188,6 +207,9 @@ impl Launcher for Fake {
     }
     fn capture_cover(&self, _job: &CoverJob) -> bool {
         self.0.lock().unwrap().cover_ok
+    }
+    fn list_core_options(&self, _: &Path, _: &Path) -> Result<Vec<CoreOptionDef>, String> {
+        Ok(self.0.lock().unwrap().offered.clone())
     }
 }
 
@@ -581,4 +603,58 @@ fn cores_install_through_the_port_and_only_known_ones() {
         .install_core("fceumm_libretro", |_| {})
         .unwrap_err()
         .contains("cannot download"));
+}
+
+fn offered(key: &str, values: &[&str]) -> CoreOptionDef {
+    CoreOptionDef {
+        key: key.into(),
+        description: format!("{key} option"),
+        values: values.iter().map(|v| v.to_string()).collect(),
+    }
+}
+
+#[test]
+fn core_options_merge_saved_choices_and_save_only_overrides() {
+    let f = ready_world();
+    f.0.lock().unwrap().offered = vec![
+        offered("region", &["auto", "pal", "ntsc"]),
+        offered("overscan", &["off", "on"]),
+        offered("empty", &[]),
+    ];
+    let a = app(&f);
+    let opts = a.core_options("snes9x_libretro").unwrap();
+    assert_eq!(opts.len(), 2, "options without values are hidden");
+    assert!(opts.iter().all(|o| o.value == o.default));
+
+    a.set_core_options(
+        "snes9x_libretro",
+        [("region".to_string(), "pal".to_string())].into(),
+    )
+    .unwrap();
+    let opts = a.core_options("snes9x_libretro").unwrap();
+    assert_eq!(opts[0].value, "pal");
+    assert_eq!(opts[1].value, "off");
+
+    // a saved value the core no longer offers falls back to the default
+    f.0.lock().unwrap().core_options.insert(
+        "snes9x_libretro".into(),
+        [("region".to_string(), "mars".to_string())].into(),
+    );
+    assert_eq!(a.core_options("snes9x_libretro").unwrap()[0].value, "auto");
+
+    // unknown cores and values that cannot be stored are refused
+    assert!(a.core_options("../x").is_err());
+    assert!(a.set_core_options("../x", BTreeMap::new()).is_err());
+    let bad = [("k".to_string(), "a\nb=1".to_string())].into();
+    assert!(a.set_core_options("snes9x_libretro", bad).is_err());
+    let bad = [("a=b".to_string(), "x".to_string())].into();
+    assert!(a.set_core_options("snes9x_libretro", bad).is_err());
+}
+
+#[test]
+fn core_options_need_the_core_to_be_installed() {
+    let f = Fake::default();
+    f.0.lock().unwrap().runner = true;
+    let err = app(&f).core_options("snes9x_libretro").unwrap_err();
+    assert!(err.contains("not installed"));
 }

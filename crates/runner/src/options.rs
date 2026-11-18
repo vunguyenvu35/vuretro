@@ -3,6 +3,12 @@
 
 use std::collections::HashMap;
 
+pub fn parse_config(text: &str) -> HashMap<String, String> {
+    vuretro_settings::core_options::parse_config(text)
+        .into_iter()
+        .collect()
+}
+
 /// One option announced by the core via `SET_VARIABLES`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OptionDef {
@@ -10,18 +16,6 @@ pub struct OptionDef {
     pub description: String,
     /// Allowed values; the first one is the core's default.
     pub values: Vec<String>,
-}
-
-pub fn parse_config(text: &str) -> HashMap<String, String> {
-    text.lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty() && !l.starts_with('#') && !l.starts_with(';'))
-        .filter_map(|l| {
-            let (k, v) = l.split_once('=')?;
-            let (k, v) = (k.trim(), v.trim().trim_matches('"'));
-            (!k.is_empty()).then(|| (k.to_string(), v.to_string()))
-        })
-        .collect()
 }
 
 /// Parse a libretro variable definition: `"Description; a|b|c"`.
@@ -36,6 +30,15 @@ pub fn parse_definition(key: &str, value: &str) -> OptionDef {
             .filter(|v| !v.is_empty())
             .collect(),
     }
+}
+
+/// Definitions as JSON for the app: `[{"key","description","values"}]`.
+pub fn to_json(defs: &[OptionDef]) -> String {
+    let list: Vec<_> = defs
+        .iter()
+        .map(|d| serde_json::json!({ "key": d.key, "description": d.description, "values": d.values }))
+        .collect();
+    serde_json::Value::Array(list).to_string()
 }
 
 /// Render definitions as a commented config template (defaults uncommented).
@@ -58,18 +61,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_config() {
-        let cfg = parse_config("# c\n\nfoo = bar\n ; x\nsnes9x_region= \"pal\" \nbad line\n=x\n");
-        assert_eq!(cfg.len(), 2);
-        assert_eq!(cfg["foo"], "bar");
-        assert_eq!(cfg["snes9x_region"], "pal");
-    }
-
-    #[test]
     fn parses_definition() {
         let d = parse_definition("k", "Frameskip; off|auto|manual");
         assert_eq!(d.description, "Frameskip");
         assert_eq!(d.values, ["off", "auto", "manual"]);
-        assert!(template(&[d]).contains("k = off"));
+        assert!(template(std::slice::from_ref(&d)).contains("k = off"));
+        assert_eq!(
+            to_json(&[d]),
+            r#"[{"description":"Frameskip","key":"k","values":["off","auto","manual"]}]"#
+        );
     }
 }

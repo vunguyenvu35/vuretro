@@ -19,6 +19,8 @@ export const api = {
   setSystemEnabled: (id, enabled) => call('set_system_enabled', { id, enabled }),
   setSystemCore: (id, core) => call('set_system_core', { id, core }),
   installCore: (core) => call('install_core', { core }),
+  coreOptions: (core) => call('get_core_options', { core }),
+  setCoreOptions: (core, overrides) => call('set_core_options', { core, overrides }),
   toggleFavorite: (path) => call('toggle_favorite', { path }),
   importBios: (paths) => call('import_bios', { paths }),
   importRoms: (paths, system = null) => call('import_roms', { paths, system }),

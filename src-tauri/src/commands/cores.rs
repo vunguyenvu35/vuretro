@@ -31,3 +31,24 @@ pub async fn install_core(
     })
     .await?
 }
+
+/// The options a core offers, with the user's saved choices. Starts the runner, so it
+/// runs off the UI thread.
+#[tauri::command]
+pub async fn get_core_options(
+    shell: State<'_, Shell>,
+    core: String,
+) -> Result<Vec<vuretro_core::model::CoreOptionView>, String> {
+    let core_app = shell.app.clone();
+    blocking(move || core_app.core_options(&core)).await?
+}
+
+/// Save the options that differ from the core's defaults.
+#[tauri::command]
+pub fn set_core_options(
+    shell: State<'_, Shell>,
+    core: String,
+    overrides: std::collections::BTreeMap<String, String>,
+) -> Result<(), String> {
+    shell.app.set_core_options(&core, overrides)
+}

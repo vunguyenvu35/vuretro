@@ -2,19 +2,20 @@
 //! only through the ports in `ports`, so everything here runs in tests with fakes.
 
 use crate::detect;
-use crate::model::CoreChoice;
 use crate::model::{game_views, GameMeta, Outcome, Overview, Settings, SystemView};
+use crate::model::{CoreChoice, CoreOptionView};
 use crate::paths::Paths;
 use crate::ports::{
     Catalog, CoreInstaller, CoverJob, GameProcess, LaunchSpec, Launcher, Locator, Store,
 };
 use crate::registry::systems;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use vuretro_controls::{macros::MacroConfig, ControlsConfig};
+use vuretro_settings::core_options::is_storable;
 use vuretro_settings::GameSettings;
 
 /// How long a freshly started game is watched for an immediate failure.
@@ -176,6 +177,45 @@ impl App {
     pub fn set_rom_dir(&self, path: Option<String>) {
         self.settings.lock().unwrap().rom_dir = path;
         self.save_settings();
+    }
+
+    /// The options a core offers, with the saved choices. Slow (starts the runner): use a thread.
+    pub fn core_options(&self, stem: &str) -> Result<Vec<CoreOptionView>, String> {
+        self.check_core_name(stem)?;
+        let runner = self.locator.runner().ok_or("runner not found")?;
+        let core = self
+            .locator
+            .core(stem)
+            .ok_or_else(|| format!("core {stem} not installed"))?;
+        let defs = self.launcher.list_core_options(&runner, &core)?;
+        Ok(CoreOptionView::merge(
+            defs,
+            &self.store.load_core_options(stem),
+        ))
+    }
+
+    /// Save the options that differ from the core's defaults (an empty map resets them all).
+    pub fn set_core_options(
+        &self,
+        stem: &str,
+        overrides: BTreeMap<String, String>,
+    ) -> Result<(), String> {
+        self.check_core_name(stem)?;
+        if let Some(bad) = overrides
+            .iter()
+            .find(|(k, v)| k.is_empty() || !is_storable(k) || !is_storable(v) || k.contains('='))
+        {
+            return Err(format!("cannot save option {:?}", bad.0));
+        }
+        self.store.save_core_options(stem, &overrides)
+    }
+
+    fn check_core_name(&self, stem: &str) -> Result<(), String> {
+        if systems().iter().any(|s| s.all_cores().any(|c| c == stem)) {
+            Ok(())
+        } else {
+            Err(format!("{stem} is not a core vuretro knows"))
+        }
     }
 
     /// Pick which core runs a system. Only cores the registry lists for it are accepted.

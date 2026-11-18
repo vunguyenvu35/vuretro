@@ -1,9 +1,11 @@
 //! Ports: what the use cases need from the outside world. Adapters implement them
 //! (`vuretro-library::adapters` for disk and processes); tests use fakes.
 
-use crate::model::{BiosStatus, GameEntry, GameMeta, ImportedBios, ImportedRom, Settings};
+use crate::model::{
+    BiosStatus, CoreOptionDef, GameEntry, GameMeta, ImportedBios, ImportedRom, Settings,
+};
 use crate::registry::System;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use vuretro_controls::{macros::MacroConfig, ControlsConfig};
 use vuretro_settings::GameSettings;
@@ -30,6 +32,13 @@ pub trait Store: Send + Sync {
     fn remove_cover(&self, rom: &Path);
     /// Delete the temporary files of a preview run.
     fn clear_cover_scratch(&self);
+    /// Option overrides saved for a core (`key = value` file shared with the runner).
+    fn load_core_options(&self, stem: &str) -> BTreeMap<String, String>;
+    fn save_core_options(
+        &self,
+        stem: &str,
+        options: &BTreeMap<String, String>,
+    ) -> Result<(), String>;
     /// Make the little file the fake core plays, and return its path.
     fn ensure_demo_rom(&self) -> Result<PathBuf, String>;
 }
@@ -102,6 +111,8 @@ pub trait Launcher: Send + Sync {
     fn spawn(&self, spec: &LaunchSpec) -> Result<Box<dyn GameProcess>, String>;
     /// Run a game headless and keep its best frame. True when the image exists afterwards.
     fn capture_cover(&self, job: &CoverJob) -> bool;
+    /// Ask a core which options it offers (loads it without a game).
+    fn list_core_options(&self, runner: &Path, core: &Path) -> Result<Vec<CoreOptionDef>, String>;
 }
 
 /// Downloads cores into the app's own cores folder.
