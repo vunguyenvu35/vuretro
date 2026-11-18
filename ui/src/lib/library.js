@@ -28,6 +28,15 @@ export function lastPlayed(games) {
   return [...games].filter((g) => g.last_played).sort((a, b) => b.last_played - a.last_played)[0];
 }
 
+/**
+ * The game "Continue playing" offers: the one played most recently *within the view* (the
+ * chosen system, collection or filter), so switching to another system does not keep
+ * offering a game of the previous one. The search text does not narrow it.
+ */
+export function heroFor(overview, view) {
+  return lastPlayed(visibleGames(overview, { ...view, query: '' }));
+}
+
 export function headingFor(overview, { system, filter, collection }) {
   if (collection) return `Collection: ${collection}`;
   if (system) return overview?.systems.find((s) => s.id === system)?.name ?? system;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { visibleGames, lastPlayed, headingFor, pickRange, formatSize, summarizeImport, summarizeRemoval, summarizeBios } from './library.js';
+import { visibleGames, heroFor, lastPlayed, headingFor, pickRange, formatSize, summarizeImport, summarizeRemoval, summarizeBios } from './library.js';
 
 const game = (title, o = {}) => ({ system: 'snes', title, path: `/lib/${title}`, size: 1e6, last_played: 0, favorite: false, imported: true, ...o });
 const overview = (games, disabled = []) => ({
@@ -130,4 +130,22 @@ test('backup file names carry the date, and sizes read naturally', () => {
   assert.equal(formatBytes(1_234_000), '1.2 MB');
   assert.equal(formatBytes(2_500_000_000), '2.5 GB');
   assert.equal(formatBytes(10), '1 KB');
+});
+
+test('the hero is the latest game of the chosen system, not of the whole library', () => {
+  const ov = overview([
+    game('Zelda', { last_played: 9 }),
+    game('Mario', { last_played: 3 }),
+    game('Crash', { system: 'psx', last_played: 7 }),
+    game('Spyro', { system: 'psx' }),
+  ]);
+  assert.equal(heroFor(ov, { filter: 'all' }).title, 'Zelda');
+  assert.equal(heroFor(ov, { system: 'psx', filter: 'all' }).title, 'Crash');
+  assert.equal(heroFor(ov, { system: 'snes', filter: 'all' }).title, 'Zelda');
+  // a system where nothing was played offers nothing
+  const none = overview([game('Zelda', { last_played: 9 }), game('Spyro', { system: 'psx' })]);
+  assert.equal(heroFor(none, { system: 'psx', filter: 'all' }), undefined);
+  // favorites view: only favorites count; the search box does not narrow it
+  const fav = overview([game('A', { last_played: 5 }), game('B', { last_played: 2, favorite: true })]);
+  assert.equal(heroFor(fav, { filter: 'favorites', query: 'zzz' }).title, 'B');
 });

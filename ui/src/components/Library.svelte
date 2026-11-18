@@ -3,7 +3,7 @@
 import { gameScope } from '../lib/scope.js';
 import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, applyPatch, covers, setLayout, pickRomFiles, pickRomFolder } from '../lib/store.svelte.js';
   import { openMenu, confirmDialog } from '../lib/ui.svelte.js';
-  import { visibleGames, lastPlayed, headingFor, pickRange, formatSize } from '../lib/library.js';
+  import { visibleGames, heroFor, headingFor, pickRange, formatSize } from '../lib/library.js';
   import Welcome from "./Welcome.svelte";
   import Icon from './Icon.svelte';
   import SaveSlots from './SaveSlots.svelte';
@@ -43,8 +43,9 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   const sysName = (id) => ov?.systems.find((s) => s.id === id)?.name ?? id;
 
   const visible = $derived(visibleGames(ov, app));
-  const hero = $derived(lastPlayed(ov?.games ?? []));
-  const selected = $derived(ov?.games.find((g) => g.path === app.selected) ?? null);
+  const hero = $derived(heroFor(ov, app));
+  // the details panel only shows a game that is in the list you are looking at
+  const selected = $derived(visible.find((g) => g.path === app.selected) ?? null);
   const sel = $derived(selected ? ov.systems.find((s) => s.id === selected.system) : null);
   const heading = $derived(headingFor(ov, app));
 
