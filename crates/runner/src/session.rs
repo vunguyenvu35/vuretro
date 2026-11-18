@@ -239,11 +239,13 @@ impl Session {
                     r.clear();
                 }
                 Some(match std::fs::read(self.state_path(self.slot)) {
-                Ok(data) if self.emulator.load_state(&data) => format!("loaded slot {}", self.slot),
-                Ok(_) => format!("slot {} was rejected by the core", self.slot),
-                Err(_) => format!("slot {} is empty", self.slot),
-            }),
-            },
+                    Ok(data) if self.emulator.load_state(&data) => {
+                        format!("loaded slot {}", self.slot)
+                    }
+                    Ok(_) => format!("slot {} was rejected by the core", self.slot),
+                    Err(_) => format!("slot {} is empty", self.slot),
+                })
+            }
             Act::NextSlot => {
                 self.slot = self.slot % SLOTS + 1;
                 Some(format!("slot {}", self.slot))
