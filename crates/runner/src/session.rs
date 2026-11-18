@@ -106,7 +106,7 @@ pub struct Session {
 
 impl Session {
     pub fn new(parts: Parts, cfg: Config) -> Self {
-        let title = format!("vuretro — {}", cfg.rom_name);
+        let title = format!("Vuretro — {}", cfg.rom_name);
         let crt = cfg.settings.crt;
         let rewind = cfg.settings.rewind.then(|| Rewind::new(REWIND_BYTES));
         Session {

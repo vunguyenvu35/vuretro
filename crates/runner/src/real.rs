@@ -117,7 +117,7 @@ pub fn open(p: Params) -> Result<Session> {
         av.geometry.base_height as usize,
     );
     let factor = clamp_scale(p.scale.unwrap_or(p.settings.window_scale));
-    let title = format!("vuretro — {}", p.rom_name);
+    let title = format!("Vuretro — {}", p.rom_name);
     let screen = MiniFbScreen::open(&title, base_w, base_h, factor)?;
     appicon::apply();
 

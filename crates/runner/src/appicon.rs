@@ -57,7 +57,7 @@ pub fn apply() {
         let app = send0(cls("NSApplication"), sel("sharedApplication"));
         send1(app, sel("setApplicationIconImage:"), image);
 
-        let name = CString::new("vuretro").unwrap();
+        let name = CString::new("Vuretro").unwrap();
         let ns_name = send_cstr(cls("NSString"), sel("stringWithUTF8String:"), name.as_ptr());
         let info = send0(cls("NSProcessInfo"), sel("processInfo"));
         send1(info, sel("setProcessName:"), ns_name);

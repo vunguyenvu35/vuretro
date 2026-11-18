@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The app is now named **Vuretro** (capital V) in its window title, menu, Dock and installer file names (for example `Vuretro.app`, `Vuretro_<version>_universal.dmg`). The release 0.1.2 packages keep the old lower-case names.
+
 ## 0.1.2
 
 A big step from the first builds: many more systems, a core installer inside the app, and per-system and per-game settings. **This is an early release.** Only SNES and Game Boy Advance have been played, and only with test ROMs; the other systems are set up but not yet tried with real games. Packages are **not signed**, so macOS Gatekeeper and Windows SmartScreen will warn when you open them.

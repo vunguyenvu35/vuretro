@@ -15,7 +15,7 @@ pub fn build(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::W
     };
 
     let settings = item("view-settings", "Settings…", Some("CmdOrCtrl+,"))?;
-    let app_menu = SubmenuBuilder::new(app, "vuretro")
+    let app_menu = SubmenuBuilder::new(app, "Vuretro")
         .about(None)
         .separator()
         .item(&settings)
@@ -90,7 +90,7 @@ pub fn build(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::W
         .build()?;
 
     let help = SubmenuBuilder::new(app, "Help")
-        .item(&item("help-docs", "vuretro Documentation", None)?)
+        .item(&item("help-docs", "Vuretro Documentation", None)?)
         .item(&item("help-issue", "Report an Issue…", None)?)
         .build()?;
 
