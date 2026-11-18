@@ -96,7 +96,7 @@ Resolved with the `directories` crate (`ProjectDirs::from("dev", "vuvn", "vuretr
 
 ## License
 
-- vuretro source: GPL-3.0-or-later (compatible with GPLv2+ cores when distributed together).
+- vuretro source: MIT. Cores are separate libraries loaded at run time, each under its own license; if you ship a core together with vuretro, that core's license applies to it.
 - **FBNeo**: non-commercial license → vuretro must be free if it bundles FBNeo.
 - **PCSX ReARMed**: GPLv2. **snes9x**: non-commercial. **mGBA**: MPL-2.0.
 - DuckStation is not used: its current license does not allow free redistribution.

@@ -86,5 +86,5 @@ Docs: [BRAND](docs/assets/brand/README.md) · [DEVELOPMENT](docs/DEVELOPMENT.md)
 
 ## License
 
-vuretro source: GPL-3.0-or-later.
-Cores have their own licenses (FBNeo and snes9x: non-commercial, PCSX ReARMed: GPLv2, mGBA: MPL-2.0), see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#license).
+vuretro source: [MIT](LICENSE). Security reports: see [SECURITY.md](SECURITY.md).
+Cores are separate programs loaded at run time and have their own licenses (FBNeo and snes9x: non-commercial, PCSX ReARMed: GPLv2, mGBA: MPL-2.0), see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#license).
