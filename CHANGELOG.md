@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.1.4
+
+New since 0.1.3: backup and restore, a better choice of preview pictures, and a crash fix for the arcade core. Still an early release with unsigned packages.
+
+| System | File |
+|---|---|
+| macOS (Apple Silicon and Intel) | `Vuretro_0.1.4_universal.dmg` |
+| Windows | `Vuretro_0.1.4_x64-setup.exe` or `Vuretro_0.1.4_x64_en-US.msi` |
+| Linux | `Vuretro_0.1.4_amd64.AppImage`, `.deb` or `.rpm` |
 
 - **Backup and restore** (Settings): one zip with settings, favorites, collections, controls, cheats and optionally saves and cover pictures; restoring first saves a copy of the current state. **Export** the game list as CSV.
 - Import: BIOS files found in an imported folder, or picked by mistake as a game, are now installed as BIOS.
