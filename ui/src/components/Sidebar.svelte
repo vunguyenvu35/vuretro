@@ -93,7 +93,8 @@
   }
   .brand { display: flex; align-items: center; gap: 10px; padding: 2px 8px 14px; font: 700 18px var(--font-head); }
   .brand b { color: var(--brand-magenta); font-weight: 700; }
-  nav { display: flex; flex-direction: column; gap: 2px; overflow: auto; flex: 1; min-height: 0; }
+  nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; overflow-x: hidden; flex: 1; min-height: 0; scrollbar-gutter: stable; }
+  nav button { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .label { padding: 0 8px; margin: 4px 0; }
   .gap { margin-top: 16px; }
   nav button {
