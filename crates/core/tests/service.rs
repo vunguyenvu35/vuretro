@@ -217,7 +217,7 @@ fn ready_world() -> Fake {
         let mut w = f.0.lock().unwrap();
         w.runner = true;
         w.bios_ok = true;
-        w.cores.extend(registry::SYSTEMS.iter().map(|s| s.core));
+        w.cores.extend(registry::systems().iter().map(|s| s.core));
     }
     f
 }

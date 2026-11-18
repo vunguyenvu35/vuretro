@@ -1,6 +1,8 @@
 //! Known systems: which core runs them, which files they accept, which BIOS they need.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct BiosSpec {
@@ -17,6 +19,8 @@ pub struct System {
     pub name: &'static str,
     /// Core file stem; platform suffix (.dylib/.dll/.so) is added at runtime.
     pub core: &'static str,
+    /// Other cores that can run the system (the user may pick one later).
+    pub alt_cores: &'static [&'static str],
     pub extensions: &'static [&'static str],
     /// Folder names under the ROM root that force this system.
     pub folders: &'static [&'static str],
@@ -24,76 +28,99 @@ pub struct System {
     pub enabled: bool,
 }
 
-pub const SYSTEMS: &[System] = &[
-    System {
-        id: "neogeo",
-        name: "Neo Geo",
-        core: "fbneo_libretro",
-        extensions: &["zip", "7z"],
-        folders: &["neogeo", "neo-geo", "mvs", "aes"],
-        bios: &[BiosSpec {
-            file: "neogeo.zip",
-            md5: &[],
-            required: true,
-            note: "MVS / AES BIOS set",
-        }],
-        enabled: true,
-    },
-    System {
-        id: "psx",
-        name: "PlayStation",
-        core: "pcsx_rearmed_libretro",
-        extensions: &["chd", "cue", "pbp", "m3u", "iso", "img"],
-        folders: &["psx", "ps1", "playstation"],
-        bios: &[
-            BiosSpec {
-                file: "scph5501.bin",
-                md5: &["490f666e1afb15b7362b406ed1cea246"],
-                required: true,
-                note: "NTSC-U",
-            },
-            BiosSpec {
-                file: "scph5500.bin",
-                md5: &["8dd7d5296a650fac7319bce665a6a53c"],
-                required: false,
-                note: "NTSC-J",
-            },
-            BiosSpec {
-                file: "scph5502.bin",
-                md5: &["32736f17079d0b2b7024407c39bd3050"],
-                required: false,
-                note: "PAL",
-            },
-        ],
-        enabled: true,
-    },
-    System {
-        id: "snes",
-        name: "Super Nintendo",
-        core: "snes9x_libretro",
-        extensions: &["sfc", "smc", "swc", "fig", "zip"],
-        folders: &["snes", "sfc", "super-nintendo"],
-        bios: &[],
-        enabled: true,
-    },
-    System {
-        id: "gba",
-        name: "Game Boy Advance",
-        core: "mgba_libretro",
-        extensions: &["gba", "zip", "7z"],
-        folders: &["gba", "game-boy-advance"],
-        bios: &[BiosSpec {
-            file: "gba_bios.bin",
-            md5: &["a860e8c0b6d573d191e4ec7db1b1e4f6"],
-            required: false,
-            note: "optional, mGBA has a built-in replacement",
-        }],
-        enabled: true,
-    },
-];
+/// Raw shape of `data/systems.json`; leaked once into the `'static` registry.
+#[derive(Deserialize)]
+struct RawBios {
+    file: String,
+    #[serde(default)]
+    md5: Vec<String>,
+    #[serde(default)]
+    required: bool,
+    #[serde(default)]
+    note: String,
+}
+
+#[derive(Deserialize)]
+struct RawSystem {
+    id: String,
+    name: String,
+    core: String,
+    #[serde(default)]
+    alt_cores: Vec<String>,
+    extensions: Vec<String>,
+    #[serde(default)]
+    folders: Vec<String>,
+    #[serde(default)]
+    bios: Vec<RawBios>,
+    #[serde(default = "yes")]
+    enabled: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn leak(s: String) -> &'static str {
+    Box::leak(s.into_boxed_str())
+}
+
+fn leak_all(v: Vec<String>) -> &'static [&'static str] {
+    Box::leak(
+        v.into_iter()
+            .map(leak)
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+    )
+}
+
+/// Parse a registry document. Errors name the problem so a bad data file is easy to fix.
+pub fn parse_systems(json: &str) -> Result<Vec<System>, String> {
+    let raw: Vec<RawSystem> = serde_json::from_str(json).map_err(|e| e.to_string())?;
+    let mut seen = HashSet::new();
+    let mut out = Vec::with_capacity(raw.len());
+    for r in raw {
+        if !seen.insert(r.id.clone()) {
+            return Err(format!("duplicate system id {}", r.id));
+        }
+        if r.extensions.is_empty() {
+            return Err(format!("system {} has no extensions", r.id));
+        }
+        let bios: Vec<BiosSpec> = r
+            .bios
+            .into_iter()
+            .map(|b| BiosSpec {
+                file: leak(b.file),
+                md5: leak_all(b.md5),
+                required: b.required,
+                note: leak(b.note),
+            })
+            .collect();
+        out.push(System {
+            id: leak(r.id),
+            name: leak(r.name),
+            core: leak(r.core),
+            alt_cores: leak_all(r.alt_cores),
+            extensions: leak_all(r.extensions),
+            folders: leak_all(r.folders),
+            bios: Box::leak(bios.into_boxed_slice()),
+            enabled: r.enabled,
+        });
+    }
+    Ok(out)
+}
+
+static SYSTEMS: OnceLock<Vec<System>> = OnceLock::new();
+
+/// All known systems, from the embedded `data/systems.json`.
+pub fn systems() -> &'static [System] {
+    SYSTEMS.get_or_init(|| {
+        parse_systems(include_str!("../data/systems.json"))
+            .expect("data/systems.json is valid (checked by tests)")
+    })
+}
 
 pub fn by_id(id: &str) -> Option<&'static System> {
-    SYSTEMS.iter().find(|s| s.id == id)
+    systems().iter().find(|s| s.id == id)
 }
 
 /// File name of a core for the current OS.
@@ -106,4 +133,32 @@ pub fn core_filename(core: &str) -> String {
         "so"
     };
     format!("{core}.{ext}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn embedded_data_is_valid() {
+        let all = systems();
+        assert!(all.len() >= 4);
+        for s in all {
+            assert!(s.core.ends_with("_libretro"), "{}", s.id);
+            assert!(s.alt_cores.iter().all(|c| c.ends_with("_libretro")));
+            assert!(s.extensions.iter().all(|e| *e == e.to_ascii_lowercase()));
+            assert!(s.folders.iter().all(|f| *f == f.to_ascii_lowercase()));
+        }
+        assert_eq!(by_id("gb").unwrap().core, "gambatte_libretro");
+    }
+
+    #[test]
+    fn bad_documents_are_rejected_with_a_reason() {
+        let dup = r#"[{"id":"a","name":"A","core":"x","extensions":["a"]},
+                      {"id":"a","name":"B","core":"y","extensions":["b"]}]"#;
+        assert!(parse_systems(dup).unwrap_err().contains("duplicate"));
+        let none = r#"[{"id":"a","name":"A","core":"x","extensions":[]}]"#;
+        assert!(parse_systems(none).unwrap_err().contains("no extensions"));
+        assert!(parse_systems("nope").is_err());
+    }
 }

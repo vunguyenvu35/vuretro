@@ -3,7 +3,7 @@
 use std::path::Path;
 use vuretro_core::model::{bios_ready, ImportedBios};
 pub use vuretro_core::model::{BiosState, BiosStatus};
-use vuretro_core::registry::{System, SYSTEMS};
+use vuretro_core::registry::{systems, System};
 
 pub fn check(system: &'static System, system_dir: &Path) -> Vec<BiosStatus> {
     system
@@ -48,7 +48,7 @@ pub fn import(src: &Path, system_dir: &Path) -> Result<ImportedBios, String> {
     let name = src.file_name().and_then(|n| n.to_str()).unwrap_or_default();
 
     let all = || {
-        SYSTEMS
+        systems()
             .iter()
             .flat_map(|s| s.bios.iter().map(move |b| (s, b)))
     };

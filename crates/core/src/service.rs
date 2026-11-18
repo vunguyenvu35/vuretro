@@ -5,7 +5,7 @@ use crate::detect;
 use crate::model::{game_views, GameMeta, Outcome, Overview, Settings, SystemView};
 use crate::paths::Paths;
 use crate::ports::{Catalog, CoverJob, GameProcess, LaunchSpec, Launcher, Locator, Store};
-use crate::registry::SYSTEMS;
+use crate::registry::systems;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -108,7 +108,7 @@ impl App {
             }
         }
 
-        let systems: Vec<SystemView> = SYSTEMS
+        let systems: Vec<SystemView> = systems()
             .iter()
             .filter(|s| s.enabled)
             .map(|s| {
@@ -307,7 +307,7 @@ impl App {
         for (path, system) in games {
             let rom = PathBuf::from(&path);
             let failed = self.cover_failed.lock().unwrap().contains(&path);
-            let core = SYSTEMS
+            let core = systems()
                 .iter()
                 .find(|s| s.id == system)
                 .and_then(|s| self.locator.core(s.core));

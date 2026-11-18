@@ -14,7 +14,7 @@ Try the current state: `make dev` (see [DEVELOPMENT.md](DEVELOPMENT.md)). Archit
 | 2 | Tauri UI (see [UI.md](UI.md)) | `make dev` | first version done |
 | M1 | Releasable base: real-game checks on 3 OSes, in-app core installer, installers, updater | install from a package, play without a terminal | not started |
 | M2 | Play experience: `wgpu`, shaders, in-game menu, slots with thumbnails, core options UI, rewind | real play | not started |
-| M3 | More systems: data-driven registry, NES, GB/GBC, Genesis, SMS, PC Engine, multi-disc | `make cores` + ROMs | SNES + GBA done |
+| M3 | More systems: data-driven registry, NES, GB/GBC, Genesis, SMS, PC Engine, multi-disc | `make cores` + ROMs | registry as data, wave 1 registered; SNES + GBA play-tested |
 | M4 | Rich library: hash identification, cover art, collections, gamepad-driven UI | big ROM folder | not started |
 | M5 | Advanced: RetroAchievements, hardware-render cores, netplay | per feature | not started |
 
@@ -102,9 +102,9 @@ Goal: adding a system is a data change plus a test, not a code change.
 - [x] SNES (snes9x) and GBA (mGBA) enabled: registry, extensions (incl. zip), optional GBA BIOS, `make play CORE=snes|gba`
 Order of work: registry as data first, then systems one by one (each is a data entry, a `make cores` entry and a test).
 
-- [ ] Move `registry` from Rust constants to data (TOML/JSON): core, extensions, folder aliases, BIOS. Done when adding a system needs no Rust change
-- [ ] More than one core per system, selectable per system (setting stored in `config/`, shown on the Cores & BIOS screen)
-- [ ] Systems wave 1 (cheap, software cores, no BIOS or optional BIOS):
+- [x] Move `registry` from Rust constants to data: `crates/core/data/systems.json`, parsed and validated by `registry::parse_systems` (duplicate ids, empty extensions rejected)
+- [ ] More than one core per system, selectable per system (setting stored in `config/`, shown on the Cores & BIOS screen) (data has `alt_cores`; the selection setting and UI are still to do)
+- [x] Systems wave 1 registered and detected (cores exist on the buildbot; not yet played with real games, tracked in M1) (cheap, software cores, no BIOS or optional BIOS):
 
 | System | Default core | Alternative | License note |
 |---|---|---|---|

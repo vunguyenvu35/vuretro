@@ -4,6 +4,13 @@ export const SYSTEM_COLORS = {
   psx: '#5ad1ff',
   snes: '#b79cff',
   gba: '#9be36b',
+  nes: '#ff6b6b',
+  gb: '#a3c46a',
+  gbc: '#e08be0',
+  genesis: '#4fb0ff',
+  sms: '#ff8a3d',
+  gg: '#6fd0c0',
+  pce: '#ffd24d',
 };
 export const colorOf = (id) => SYSTEM_COLORS[id] ?? '#8b93a7';
 

@@ -1,0 +1,73 @@
+[
+  {
+    "id": "neogeo", "name": "Neo Geo", "core": "fbneo_libretro",
+    "extensions": ["zip", "7z"],
+    "folders": ["neogeo", "neo-geo", "mvs", "aes"],
+    "bios": [{ "file": "neogeo.zip", "required": true, "note": "MVS / AES BIOS set" }]
+  },
+  {
+    "id": "psx", "name": "PlayStation", "core": "pcsx_rearmed_libretro",
+    "extensions": ["chd", "cue", "pbp", "m3u", "iso", "img"],
+    "folders": ["psx", "ps1", "playstation"],
+    "bios": [
+      { "file": "scph5501.bin", "md5": ["490f666e1afb15b7362b406ed1cea246"], "required": true, "note": "NTSC-U" },
+      { "file": "scph5500.bin", "md5": ["8dd7d5296a650fac7319bce665a6a53c"], "note": "NTSC-J" },
+      { "file": "scph5502.bin", "md5": ["32736f17079d0b2b7024407c39bd3050"], "note": "PAL" }
+    ]
+  },
+  {
+    "id": "snes", "name": "Super Nintendo", "core": "snes9x_libretro",
+    "extensions": ["sfc", "smc", "swc", "fig", "zip"],
+    "folders": ["snes", "sfc", "super-nintendo"]
+  },
+  {
+    "id": "gba", "name": "Game Boy Advance", "core": "mgba_libretro",
+    "extensions": ["gba", "zip", "7z"],
+    "folders": ["gba", "game-boy-advance"],
+    "bios": [{ "file": "gba_bios.bin", "md5": ["a860e8c0b6d573d191e4ec7db1b1e4f6"], "note": "optional, mGBA has a built-in replacement" }]
+  },
+  {
+    "id": "nes", "name": "NES / Famicom", "core": "fceumm_libretro",
+    "alt_cores": ["mesen_libretro", "nestopia_libretro"],
+    "extensions": ["nes", "fds", "unf", "unif", "zip", "7z"],
+    "folders": ["nes", "famicom", "fc", "nintendo-entertainment-system"],
+    "bios": [{ "file": "disksys.rom", "md5": ["ca30b50f880eb660a320674ed365ef7a"], "note": "only for Famicom Disk System games" }]
+  },
+  {
+    "id": "gb", "name": "Game Boy", "core": "gambatte_libretro",
+    "alt_cores": ["mgba_libretro"],
+    "extensions": ["gb", "zip", "7z"],
+    "folders": ["gb", "gameboy", "game-boy"]
+  },
+  {
+    "id": "gbc", "name": "Game Boy Color", "core": "gambatte_libretro",
+    "alt_cores": ["mgba_libretro"],
+    "extensions": ["gbc", "zip", "7z"],
+    "folders": ["gbc", "gameboy-color", "game-boy-color"]
+  },
+  {
+    "id": "genesis", "name": "Genesis / Mega Drive", "core": "genesis_plus_gx_libretro",
+    "alt_cores": ["picodrive_libretro"],
+    "extensions": ["md", "gen", "smd", "zip", "7z"],
+    "folders": ["genesis", "megadrive", "mega-drive", "md", "sega-genesis"]
+  },
+  {
+    "id": "sms", "name": "Master System", "core": "genesis_plus_gx_libretro",
+    "alt_cores": ["picodrive_libretro"],
+    "extensions": ["sms", "zip", "7z"],
+    "folders": ["sms", "mastersystem", "master-system"]
+  },
+  {
+    "id": "gg", "name": "Game Gear", "core": "genesis_plus_gx_libretro",
+    "alt_cores": ["picodrive_libretro"],
+    "extensions": ["gg", "zip", "7z"],
+    "folders": ["gg", "gamegear", "game-gear"]
+  },
+  {
+    "id": "pce", "name": "PC Engine / TurboGrafx-16", "core": "mednafen_pce_fast_libretro",
+    "alt_cores": ["mednafen_pce_libretro"],
+    "extensions": ["pce", "sgx", "zip", "7z"],
+    "folders": ["pce", "pcengine", "pc-engine", "tg16", "turbografx16", "turbografx-16"],
+    "bios": [{ "file": "syscard3.pce", "md5": ["38179df8f4ac870017db21ebcbf53114"], "note": "only for PC Engine CD games (not supported yet)" }]
+  }
+]

@@ -3,7 +3,7 @@
 # into cores/bin/. Usage: ./cores/fetch-cores.sh [core ...]
 set -euo pipefail
 
-if [[ $# -gt 0 ]]; then CORES=("$@"); else CORES=(fbneo pcsx_rearmed snes9x mgba); fi
+if [[ $# -gt 0 ]]; then CORES=("$@"); else CORES=(fbneo pcsx_rearmed snes9x mgba fceumm gambatte genesis_plus_gx mednafen_pce_fast); fi
 BASE="https://buildbot.libretro.com/nightly"
 DEST="$(cd "$(dirname "$0")" && pwd)/bin"
 mkdir -p "$DEST"

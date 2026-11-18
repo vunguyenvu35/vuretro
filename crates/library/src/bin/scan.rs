@@ -10,7 +10,7 @@ fn main() -> anyhow::Result<()> {
         .ok_or_else(|| anyhow::anyhow!("usage: vuretro-scan <rom_dir> [system_dir]"))?;
     let games = scan::scan(root.as_ref());
     let bios: Vec<_> = match args.next() {
-        Some(sys_dir) => registry::SYSTEMS
+        Some(sys_dir) => registry::systems()
             .iter()
             .filter(|s| s.enabled)
             .flat_map(|s| bios::check(s, sys_dir.as_ref()))

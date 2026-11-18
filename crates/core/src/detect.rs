@@ -1,14 +1,14 @@
 //! Decide which system a ROM file belongs to from its path. Pure path logic, no disk access.
 //! Folder name wins (roms/neogeo/x.zip); otherwise a unique extension decides.
 
-use crate::registry::{System, SYSTEMS};
+use crate::registry::{systems, System};
 use std::path::Path;
 
 const ARCHIVE_EXTS: &[&str] = &["zip", "7z"];
 
 /// True for file names that are BIOS files of a known system (not games).
 pub fn is_bios_file(name: &str) -> bool {
-    SYSTEMS
+    systems()
         .iter()
         .flat_map(|s| s.bios.iter())
         .any(|b| b.file.eq_ignore_ascii_case(name))
@@ -25,11 +25,14 @@ fn alnum(s: &str) -> String {
 /// a long alias ignoring case and punctuation ("Neogeo Roms Complete", "Neo-Geo (MVS)").
 fn system_for_dir(dir: &str) -> Option<&'static System> {
     let lower = dir.to_ascii_lowercase();
-    if let Some(sys) = SYSTEMS.iter().find(|s| s.folders.contains(&lower.as_str())) {
+    if let Some(sys) = systems()
+        .iter()
+        .find(|s| s.folders.contains(&lower.as_str()))
+    {
         return Some(sys);
     }
     let flat = alnum(dir);
-    SYSTEMS.iter().find(|s| {
+    systems().iter().find(|s| {
         s.folders.iter().any(|f| {
             let f = alnum(f);
             f.len() >= 5 && flat.starts_with(&f)
@@ -57,7 +60,7 @@ pub fn detect_system(root: &Path, path: &Path) -> Option<&'static System> {
     if ARCHIVE_EXTS.contains(&ext.as_str()) {
         return None;
     }
-    let mut matches = SYSTEMS
+    let mut matches = systems()
         .iter()
         .filter(|s| s.extensions.contains(&ext.as_str()));
     match (matches.next(), matches.next()) {
@@ -93,6 +96,21 @@ mod tests {
         assert_eq!(id("/roms", "/roms/crash.chd"), Some("psx"));
         assert_eq!(id("/roms", "/roms/metroid.gba"), Some("gba"));
         assert_eq!(id("/roms", "/roms/notes.txt"), None);
+    }
+
+    #[test]
+    fn new_systems_are_detected() {
+        assert_eq!(id("/roms", "/roms/mario.nes"), Some("nes"));
+        assert_eq!(id("/roms", "/roms/tetris.gb"), Some("gb"));
+        assert_eq!(id("/roms", "/roms/zelda.gbc"), Some("gbc"));
+        assert_eq!(id("/roms", "/roms/sonic.md"), Some("genesis"));
+        assert_eq!(id("/roms", "/roms/alex.sms"), Some("sms"));
+        assert_eq!(id("/roms", "/roms/sonic.gg"), Some("gg"));
+        assert_eq!(id("/roms", "/roms/r-type.pce"), Some("pce"));
+        // zip needs a folder; the folder decides between systems sharing a core
+        assert_eq!(id("/roms", "/roms/Mega Drive/sonic.zip"), Some("genesis"));
+        assert_eq!(id("/roms", "/roms/mastersystem/alex.zip"), Some("sms"));
+        assert_eq!(id("/roms", "/roms/Games/sonic.zip"), None);
     }
 
     #[test]
