@@ -4251,7 +4251,7 @@ dependencies = [
 
 [[package]]
 name = "vuretro-app"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "base64 0.22.1",
  "gilrs",
@@ -4268,7 +4268,7 @@ dependencies = [
 
 [[package]]
 name = "vuretro-controls"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -4276,7 +4276,7 @@ dependencies = [
 
 [[package]]
 name = "vuretro-core"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "directories",
  "serde",
@@ -4287,7 +4287,7 @@ dependencies = [
 
 [[package]]
 name = "vuretro-library"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "crc32fast",
@@ -4306,7 +4306,7 @@ dependencies = [
 
 [[package]]
 name = "vuretro-settings"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "serde",
  "serde_json",
