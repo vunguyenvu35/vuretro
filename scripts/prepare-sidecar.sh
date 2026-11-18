@@ -16,6 +16,9 @@ if [[ "$TRIPLE" == "universal-apple-darwin" ]]; then
   lipo -create -output "src-tauri/binaries/vuretro-runner-$TRIPLE" \
     target/aarch64-apple-darwin/release/vuretro-runner \
     target/x86_64-apple-darwin/release/vuretro-runner
+  # tauri builds each architecture separately before joining them, and wants a sidecar for each
+  cp target/aarch64-apple-darwin/release/vuretro-runner "src-tauri/binaries/vuretro-runner-aarch64-apple-darwin"
+  cp target/x86_64-apple-darwin/release/vuretro-runner "src-tauri/binaries/vuretro-runner-x86_64-apple-darwin"
 else
   cargo build --release -p vuretro-runner --target "$TRIPLE"
   mkdir -p src-tauri/binaries

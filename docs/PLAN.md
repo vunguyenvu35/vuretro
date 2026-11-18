@@ -77,7 +77,7 @@ Goal: someone installs vuretro from a package, opens it, gets cores, adds a ROM 
 - [ ] Real-game check on macOS, Windows and Linux (carried over from Phase 1)
 - [ ] Verify the app window on Windows and Linux; CI job `app` green on all 3 OS (all 6 CI jobs green on commit eab2742: compile and tests only, windows never opened)
 - [x] **In-app core installer**: `CoreInstaller` port, `BuildbotInstaller` adapter (HTTPS download into `<data dir>/cores`, archive and native-library checks; the buildbot publishes no checksums), `install_core` command with `core-progress` events, Install button with progress on Cores & BIOS. Verified live with `cargo test -p vuretro-library -- --ignored`; the Install button itself is not yet clicked through on a clean machine
-- [ ] macOS: signed + notarized universal `.dmg`. Done so far: `make app-build` produces an unsigned arm64 `.dmg` (6 MB) with `vuretro-runner` bundled inside (checked on this Mac); `release.yml` builds universal and signs when the Apple secrets exist (not run yet)
+- [ ] macOS: signed + notarized universal `.dmg`. Done so far: `make app-build` produces an unsigned arm64 `.dmg` (6 MB) with `vuretro-runner` bundled inside (checked on this Mac); `release.yml` builds universal and signs when the Apple secrets exist (not run yet). First tagged run (v0.1.0): Windows and Linux packages built; macOS failed because the per-architecture sidecars were missing (fixed in `prepare-sidecar.sh`)
 - [ ] Windows: signed MSI/NSIS (`release.yml` builds it; not run yet, signing needs a certificate)
 - [ ] Linux: AppImage (`release.yml` builds it; not run yet), Flatpak (no manifest yet)
 - [ ] Auto-update (Tauri updater) via GitHub Releases
