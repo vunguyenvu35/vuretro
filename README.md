@@ -48,6 +48,8 @@ Linux `~/.local/share/vuretro`.
 
 ## The app
 
+How to add games and BIOS, play, remap controls and set up macros: [docs/USAGE.md](docs/USAGE.md).
+
 ![Library](docs/images/app-library.png)
 
 The screenshot uses sample data. Details and the other screens: [docs/UI.md](docs/UI.md).
@@ -82,7 +84,7 @@ docs/             plan, architecture, UI design, dev guide (+ images/)
 Makefile          make dev, play, cores, scan, check, ci …
 ```
 
-Docs: [BRAND](docs/assets/brand/README.md) · [DEVELOPMENT](docs/DEVELOPMENT.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [UI](docs/UI.md) · [PLAN](docs/PLAN.md)
+Docs: [USAGE](docs/USAGE.md) · [BRAND](docs/assets/brand/README.md) · [DEVELOPMENT](docs/DEVELOPMENT.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [UI](docs/UI.md) · [PLAN](docs/PLAN.md)
 
 ## License
 
