@@ -296,6 +296,19 @@ impl App {
     }
 
     /// The slots of a game that hold a save.
+    /// The cheat codes of a game as text (see `vuretro_settings::cheats`).
+    pub fn cheats(&self, path: &str) -> String {
+        self.store.load_cheats(Path::new(path))
+    }
+
+    /// Save a game's cheat codes; they apply the next time it starts.
+    pub fn set_cheats(&self, path: &str, text: &str) -> Result<(), String> {
+        if text.len() > 64 * 1024 {
+            return Err("cheat list is too long".into());
+        }
+        self.store.save_cheats(Path::new(path), text)
+    }
+
     pub fn save_slots(&self, path: &str) -> Vec<SlotInfo> {
         self.store.list_slots(Path::new(path))
     }

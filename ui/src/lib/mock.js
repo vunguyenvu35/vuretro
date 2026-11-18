@@ -37,6 +37,8 @@ const mock = {
   set_tags: async (a) => a.tags,
   set_fetch_art: async () => {},
   fetch_art: async () => {},
+  get_cheats: async () => "",
+  set_cheats: async () => {},
   get_slot_thumbnail: async () => null,
   get_core_options: async () => [
     { key: "region", description: "Region", values: ["auto", "pal", "ntsc"], default: "auto", value: "auto" },

@@ -94,7 +94,7 @@ Goal: fullscreen, shaders, slots with thumbnails and core options without leavin
 - [ ] Per-game and per-system overrides on top of the global `controls.json` and `game.json` (carried over from Phase 2)
 - [ ] Controls: button diagram, analog trigger and right-stick options (carried over from Phase 2); rumble; rebindable in-game hotkeys; gamepad hotkey chord
 - [x] Rewind: bounded state stack (`rewind.rs`, 64 MB), hold Backspace, Settings switch (off by default). Tested with fakes, not felt in a real game
-- [ ] Cheats
+- [x] Cheats: per-game text file (`config/cheats/<rom>.cht`, `vuretro-settings::cheats`), applied by the runner through `retro_cheat_set` when the core has it; editor in the details panel. Untested with a real core (the fake core has no cheat support)
 
 ## M3: More systems
 

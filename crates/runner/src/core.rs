@@ -18,6 +18,8 @@ type FnUnserialize = unsafe extern "C" fn(*const c_void, usize) -> bool;
 type FnSetPortDevice = unsafe extern "C" fn(c_uint, c_uint);
 type FnMemData = unsafe extern "C" fn(c_uint) -> *mut c_void;
 type FnMemSize = unsafe extern "C" fn(c_uint) -> usize;
+type FnCheatReset = unsafe extern "C" fn();
+type FnCheatSet = unsafe extern "C" fn(c_uint, bool, *const std::os::raw::c_char);
 
 pub struct SystemInfo {
     pub name: String,
@@ -40,6 +42,9 @@ pub struct Core {
     retro_set_controller_port_device: FnSetPortDevice,
     retro_get_memory_data: FnMemData,
     retro_get_memory_size: FnMemSize,
+    /// Cheats are optional in libretro: not every core has these.
+    retro_cheat_reset: Option<FnCheatReset>,
+    retro_cheat_set: Option<FnCheatSet>,
     pub info: SystemInfo,
     game_loaded: bool,
     // Keeps ROM bytes alive for cores that don't need a full path.
@@ -122,6 +127,8 @@ impl Core {
                 retro_set_controller_port_device: sym(&lib, "retro_set_controller_port_device")?,
                 retro_get_memory_data: sym(&lib, "retro_get_memory_data")?,
                 retro_get_memory_size: sym(&lib, "retro_get_memory_size")?,
+                retro_cheat_reset: sym(&lib, "retro_cheat_reset").ok(),
+                retro_cheat_set: sym(&lib, "retro_cheat_set").ok(),
                 info,
                 game_loaded: false,
                 _rom_data: None,
@@ -172,6 +179,23 @@ impl Core {
 
     pub fn reset(&self) {
         unsafe { (self.retro_reset)() }
+    }
+
+    /// Replace the core's cheats by `codes`. Returns how many were handed over, or `None`
+    /// when the core has no cheat support.
+    pub fn set_cheats(&self, codes: &[String]) -> Option<usize> {
+        let (reset, set) = (self.retro_cheat_reset?, self.retro_cheat_set?);
+        unsafe {
+            reset();
+            let mut n = 0;
+            for (i, code) in codes.iter().enumerate() {
+                if let Ok(c) = CString::new(code.as_str()) {
+                    set(i as c_uint, true, c.as_ptr());
+                    n += 1;
+                }
+            }
+            Some(n)
+        }
     }
 
     pub fn save_state(&self) -> Option<Vec<u8>> {

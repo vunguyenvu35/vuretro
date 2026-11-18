@@ -87,6 +87,24 @@ impl Store for JsonStore {
     fn art_exists(&self, rom: &Path) -> bool {
         self.paths.art_file(rom).exists()
     }
+    fn load_cheats(&self, rom: &Path) -> String {
+        std::fs::read_to_string(self.paths.cheats_file(rom)).unwrap_or_default()
+    }
+    fn save_cheats(&self, rom: &Path, text: &str) -> Result<(), String> {
+        let path = self.paths.cheats_file(rom);
+        if text.trim().is_empty() {
+            return match std::fs::remove_file(&path) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                    Err(format!("cannot remove {}: {e}", path.display()))
+                }
+                _ => Ok(()),
+            };
+        }
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(&path, text).map_err(|e| format!("cannot write {}: {e}", path.display()))
+    }
     fn load_core_options(&self, stem: &str) -> BTreeMap<String, String> {
         std::fs::read_to_string(self.paths.core_options_file(stem))
             .map(|t| vuretro_settings::core_options::parse_config(&t))

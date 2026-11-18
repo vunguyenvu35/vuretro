@@ -5,6 +5,7 @@
   import Welcome from "./Welcome.svelte";
   import Icon from './Icon.svelte';
   import SaveSlots from './SaveSlots.svelte';
+  import Cheats from './Cheats.svelte';
   let newTag = $state('');
   async function setTags(game, tags) {
     await api.setTags(game.path, tags);
@@ -344,6 +345,8 @@
       {/each}
       <input class="taginput" placeholder="Add to a collection…" bind:value={newTag} onkeydown={(e) => e.key === 'Enter' && addTag(selected)} aria-label="Add to a collection" />
     </div>
+
+    <Cheats game={selected} />
 
     <SaveSlots game={selected} version={ov?.games.map((g) => g.last_played).join()} />
 

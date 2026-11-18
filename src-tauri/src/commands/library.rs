@@ -96,3 +96,14 @@ pub async fn identify_games(shell: State<'_, Shell>) -> Result<usize, String> {
 pub fn set_tags(shell: State<'_, Shell>, path: String, tags: Vec<String>) -> Vec<String> {
     shell.app.set_tags(path, tags)
 }
+
+/// A game's cheat codes as text.
+#[tauri::command]
+pub fn get_cheats(shell: State<'_, Shell>, path: String) -> String {
+    shell.app.cheats(&path)
+}
+
+#[tauri::command]
+pub fn set_cheats(shell: State<'_, Shell>, path: String, text: String) -> Result<(), String> {
+    shell.app.set_cheats(&path, &text)
+}

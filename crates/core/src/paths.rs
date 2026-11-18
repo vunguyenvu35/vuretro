@@ -62,6 +62,14 @@ impl Paths {
     pub fn core_options_file(&self, core_stem: &str) -> PathBuf {
         self.config_dir().join(format!("{core_stem}.cfg"))
     }
+    /// Cheat codes of a game (`config/cheats/<rom name>.cht`).
+    pub fn cheats_file(&self, rom: &Path) -> PathBuf {
+        let stem = rom
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        self.config_dir().join("cheats").join(format!("{stem}.cht"))
+    }
     /// App settings (linked ROM folder, switched-off systems).
     pub fn settings_file(&self) -> PathBuf {
         self.data_dir.join("settings.json")

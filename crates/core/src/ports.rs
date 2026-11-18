@@ -39,6 +39,9 @@ pub trait Store: Send + Sync {
     fn remove_cover(&self, rom: &Path);
     /// Delete the temporary files of a preview run.
     fn clear_cover_scratch(&self);
+    /// The cheat file text of a game (empty if none).
+    fn load_cheats(&self, rom: &Path) -> String;
+    fn save_cheats(&self, rom: &Path, text: &str) -> Result<(), String>;
     /// Option overrides saved for a core (`key = value` file shared with the runner).
     fn load_core_options(&self, stem: &str) -> BTreeMap<String, String>;
     fn save_core_options(

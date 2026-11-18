@@ -35,6 +35,7 @@ struct World {
     /// Official names the fake DAT knows, by file path.
     names: HashMap<PathBuf, String>,
     art: HashSet<PathBuf>,
+    cheats: HashMap<PathBuf, String>,
     art_calls: Vec<(String, String)>,
     dat_entries: usize,
 }
@@ -48,6 +49,23 @@ impl Store for Fake {
     }
     fn read_slot_thumb(&self, _: &Path, slot: u8) -> Option<Vec<u8>> {
         (slot == 1).then(|| vec![0x89, b'P'])
+    }
+    fn load_cheats(&self, rom: &Path) -> String {
+        self.0
+            .lock()
+            .unwrap()
+            .cheats
+            .get(rom)
+            .cloned()
+            .unwrap_or_default()
+    }
+    fn save_cheats(&self, rom: &Path, text: &str) -> Result<(), String> {
+        self.0
+            .lock()
+            .unwrap()
+            .cheats
+            .insert(rom.to_path_buf(), text.to_string());
+        Ok(())
     }
     fn load_core_options(&self, stem: &str) -> BTreeMap<String, String> {
         self.0
@@ -871,4 +889,15 @@ fn games_the_server_has_no_art_for_are_not_asked_again() {
     assert_eq!(a.fetch_art(|_| {}), 0);
     assert_eq!(a.fetch_art(|_| {}), 0);
     assert_eq!(f.0.lock().unwrap().art_calls.len(), 1);
+}
+
+#[test]
+fn cheats_are_saved_per_game_and_size_limited() {
+    let f = ready_world();
+    let a = app(&f);
+    assert_eq!(a.cheats("/r/a.sfc"), "");
+    a.set_cheats("/r/a.sfc", "7E0DBE05\n").unwrap();
+    assert_eq!(a.cheats("/r/a.sfc"), "7E0DBE05\n");
+    assert_eq!(a.cheats("/r/b.sfc"), "");
+    assert!(a.set_cheats("/r/a.sfc", &"x".repeat(70_000)).is_err());
 }

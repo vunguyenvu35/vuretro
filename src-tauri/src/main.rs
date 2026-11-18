@@ -64,6 +64,8 @@ fn main() {
             fetch_art,
             identify_games,
             set_tags,
+            get_cheats,
+            set_cheats,
             get_slot_thumbnail,
             set_core_options,
             toggle_favorite,

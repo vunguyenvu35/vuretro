@@ -156,6 +156,16 @@ fn main() -> Result<()> {
         print!("{}", options::template(&defs));
         return Ok(());
     }
+    let cheat_file = paths.cheats_file(&rom);
+    if let Ok(text) = std::fs::read_to_string(&cheat_file) {
+        let codes = vuretro_settings::cheats::active(&text);
+        if !codes.is_empty() {
+            match core.set_cheats(&codes) {
+                Some(n) => log::info!("cheats: {n} active from {}", cheat_file.display()),
+                None => log::warn!("this core has no cheat support"),
+            }
+        }
+    }
     let rom_name = rom
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
