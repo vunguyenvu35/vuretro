@@ -114,6 +114,27 @@ mod tests {
     }
 
     #[test]
+    fn wave_two_systems_are_detected() {
+        for (file, sys) in [
+            ("a.a26", "atari2600"),
+            ("a.a78", "atari7800"),
+            ("a.lnx", "lynx"),
+            ("a.ngp", "ngp"),
+            ("a.ngc", "ngp"),
+            ("a.ws", "wonderswan"),
+            ("a.wsc", "wonderswan"),
+            ("a.vb", "virtualboy"),
+            ("a.32x", "sega32x"),
+            ("a.nds", "nds"),
+        ] {
+            assert_eq!(id("/roms", &format!("/roms/{file}")), Some(sys), "{file}");
+        }
+        // zip sets need a folder, and "arcade" does not clash with the console folders
+        assert_eq!(id("/roms", "/roms/mame/pacman.zip"), Some("arcade"));
+        assert_eq!(id("/roms", "/roms/neogeo/pacman.zip"), Some("neogeo"));
+    }
+
+    #[test]
     fn bios_names_are_recognised() {
         assert!(is_bios_file("NeoGeo.zip"));
         assert!(!is_bios_file("mslug.zip"));

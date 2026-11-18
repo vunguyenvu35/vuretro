@@ -69,5 +69,58 @@
     "extensions": ["pce", "sgx", "zip", "7z"],
     "folders": ["pce", "pcengine", "pc-engine", "tg16", "turbografx16", "turbografx-16"],
     "bios": [{ "file": "syscard3.pce", "md5": ["38179df8f4ac870017db21ebcbf53114"], "note": "only for PC Engine CD games (not supported yet)" }]
+  },
+  {
+    "id": "atari2600", "name": "Atari 2600", "core": "stella_libretro",
+    "extensions": ["a26", "zip", "7z"],
+    "folders": ["atari2600", "atari-2600", "a2600"]
+  },
+  {
+    "id": "atari7800", "name": "Atari 7800", "core": "prosystem_libretro",
+    "extensions": ["a78", "zip", "7z"],
+    "folders": ["atari7800", "atari-7800", "a7800"],
+    "bios": [{ "file": "7800 BIOS (U).rom", "md5": ["0763f1ffb006ddbe32e52d497ee848ae"], "note": "optional" }]
+  },
+  {
+    "id": "lynx", "name": "Atari Lynx", "core": "handy_libretro",
+    "alt_cores": ["mednafen_lynx_libretro"],
+    "extensions": ["lnx", "zip", "7z"],
+    "folders": ["lynx", "atari-lynx", "atarilynx"],
+    "bios": [{ "file": "lynxboot.img", "md5": ["fcd403db69f54290b903b5f6be88b9d8"], "note": "recommended; some games need it" }]
+  },
+  {
+    "id": "ngp", "name": "Neo Geo Pocket", "core": "mednafen_ngp_libretro",
+    "extensions": ["ngp", "ngc", "zip", "7z"],
+    "folders": ["ngp", "ngpc", "neo-geo-pocket", "neogeopocket"]
+  },
+  {
+    "id": "wonderswan", "name": "WonderSwan", "core": "mednafen_wswan_libretro",
+    "extensions": ["ws", "wsc", "zip", "7z"],
+    "folders": ["wonderswan", "wonder-swan", "wswan", "ws"]
+  },
+  {
+    "id": "virtualboy", "name": "Virtual Boy", "core": "mednafen_vb_libretro",
+    "extensions": ["vb", "vboy", "zip", "7z"],
+    "folders": ["virtualboy", "virtual-boy", "vb"]
+  },
+  {
+    "id": "sega32x", "name": "Sega 32X", "core": "picodrive_libretro",
+    "extensions": ["32x", "zip", "7z"],
+    "folders": ["32x", "sega32x", "sega-32x"]
+  },
+  {
+    "id": "nds", "name": "Nintendo DS", "core": "melonds_libretro",
+    "extensions": ["nds", "zip", "7z"],
+    "folders": ["nds", "ds", "nintendo-ds", "nintendods"],
+    "bios": [
+      { "file": "bios7.bin", "note": "optional, melonDS has a built-in replacement" },
+      { "file": "bios9.bin", "note": "optional, melonDS has a built-in replacement" },
+      { "file": "firmware.bin", "note": "optional" }
+    ]
+  },
+  {
+    "id": "arcade", "name": "Arcade (MAME)", "core": "mame2003_plus_libretro",
+    "extensions": ["zip", "7z"],
+    "folders": ["mame", "arcade", "mame2003", "mame2003-plus"]
   }
 ]

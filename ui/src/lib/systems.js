@@ -11,6 +11,15 @@ export const SYSTEM_COLORS = {
   sms: '#ff8a3d',
   gg: '#6fd0c0',
   pce: '#ffd24d',
+  atari2600: '#d98c4a',
+  atari7800: '#c9a15c',
+  lynx: '#e0b04a',
+  ngp: '#7fb3ff',
+  wonderswan: '#8fd0ff',
+  virtualboy: '#ff5f5f',
+  sega32x: '#5f8dff',
+  nds: '#c2c8d6',
+  arcade: '#ff9f43',
 };
 export const colorOf = (id) => SYSTEM_COLORS[id] ?? '#8b93a7';
 

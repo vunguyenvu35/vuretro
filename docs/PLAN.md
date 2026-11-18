@@ -113,7 +113,7 @@ Order of work: registry as data first, then systems one by one (each is a data e
 | Genesis / Mega Drive, Master System, Game Gear | `genesis_plus_gx` | `picodrive` | non-commercial, same rule as FBNeo |
 | PC Engine / TurboGrafx-16 | `mednafen_pce_fast` | `mednafen_pce` | GPL; CD games need `syscard3.pce` BIOS |
 
-- [ ] Systems wave 2 (software cores, small effort once the registry is data):
+- [x] Systems wave 2 registered and detected, except Sega CD and DOS (Sega CD needs the disc work below; DOS needs keyboard and mouse input in the runner). Cores exist on the buildbot; no real games tried yet:
 
 | System | Default core | Notes |
 |---|---|---|
