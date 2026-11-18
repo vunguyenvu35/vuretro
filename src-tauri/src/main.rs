@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 use vuretro_core::paths::Paths;
 use vuretro_core::service::App;
 use vuretro_library::adapters::{
-    BuildbotInstaller, FsCatalog, FsLocator, JsonStore, ProcessLauncher, DevLogin, ScreenScraperArt, ThumbnailsArt,
+    BuildbotInstaller, FsCatalog, FsLocator, JsonStore, ProcessLauncher, DevLogin, ScreenScraperArt, SysMachine, ThumbnailsArt,
 };
 
 fn build_app() -> App {
@@ -31,6 +31,7 @@ fn build_app() -> App {
         Box::new(ProcessLauncher::new(paths.clone())),
     )
     .with_installer(Box::new(BuildbotInstaller::new(paths)))
+    .with_machine(Box::new(SysMachine))
     .with_art_source(Box::new(ThumbnailsArt::new()));
     // ScreenScraper needs developer credentials issued to the project; without them it is off.
     match DevLogin::from_env() {

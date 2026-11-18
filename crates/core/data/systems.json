@@ -177,5 +177,44 @@
       { "file": "sega_101.bin", "md5": ["85ec9ca47d8f6807718151cbcca8b964"], "note": "Beetle Saturn: this (JP) or mpr-17933.bin" },
       { "file": "mpr-17933.bin", "md5": ["3240872c70984b6cbfda1586cab68dbe"], "note": "Beetle Saturn: this (US/EU) or sega_101.bin" }
     ]
+  },
+  {
+    "id": "n64", "name": "Nintendo 64", "core": "mupen64plus_next_libretro",
+    "alt_cores": ["parallel_n64_libretro"],
+    "thumbnails": "Nintendo - Nintendo 64", "screenscraper": 14,
+    "hardware": true, "min_ram_gb": 4, "min_cores": 4,
+    "extensions": ["n64", "z64", "v64", "zip", "7z"],
+    "folders": ["n64", "nintendo64", "nintendo-64"]
+  },
+  {
+    "id": "psp", "name": "PlayStation Portable", "core": "ppsspp_libretro",
+    "thumbnails": "Sony - PlayStation Portable", "screenscraper": 61,
+    "hardware": true, "min_ram_gb": 8, "min_cores": 4,
+    "folder_only": true,
+    "extensions": ["iso", "cso", "pbp", "chd"],
+    "folders": ["psp", "playstation-portable", "playstationportable"]
+  },
+  {
+    "id": "gamecube", "name": "GameCube", "core": "dolphin_libretro",
+    "thumbnails": "Nintendo - GameCube", "screenscraper": 13,
+    "hardware": true, "min_ram_gb": 16, "min_cores": 6,
+    "folder_only": true,
+    "extensions": ["iso", "gcm", "gcz", "rvz", "ciso", "wbfs"],
+    "folders": ["gamecube", "gc", "ngc", "nintendo-gamecube"]
+  },
+  {
+    "id": "ps2", "name": "PlayStation 2", "core": "pcsx2_libretro",
+    "thumbnails": "Sony - PlayStation 2", "screenscraper": 58,
+    "hardware": true, "min_ram_gb": 16, "min_cores": 6,
+    "folder_only": true,
+    "extensions": ["iso", "chd", "cso", "gz", "cue"],
+    "folders": ["ps2", "playstation2", "playstation-2"]
+  },
+  {
+    "id": "3ds", "name": "Nintendo 3DS", "core": "citra_libretro",
+    "thumbnails": "Nintendo - Nintendo 3DS", "screenscraper": 17,
+    "hardware": true, "min_ram_gb": 8, "min_cores": 4,
+    "extensions": ["3ds", "cci", "cxi", "3dsx", "cia"],
+    "folders": ["3ds", "nintendo-3ds", "n3ds"]
   }
 ]

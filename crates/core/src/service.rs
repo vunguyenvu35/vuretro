@@ -2,12 +2,12 @@
 //! only through the ports in `ports`, so everything here runs in tests with fakes.
 
 use crate::detect;
+use crate::model::{assess, CoreChoice, CoreOptionView, MachineInfo, SlotInfo};
 use crate::model::{game_views, GameMeta, Outcome, Overview, Settings, SystemView};
-use crate::model::{CoreChoice, CoreOptionView, SlotInfo};
 use crate::paths::Paths;
 use crate::ports::{
     ArtQuery, ArtSource, Catalog, CoreInstaller, CoverJob, GameProcess, LaunchSpec, Launcher,
-    Locator, Store,
+    Locator, Machine, Store,
 };
 use crate::registry::systems;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -21,6 +21,8 @@ use vuretro_settings::GameSettings;
 
 /// How long a freshly started game is watched for an immediate failure.
 const LAUNCH_GRACE: Duration = Duration::from_millis(1500);
+/// Whether the runner can draw 3D (GPU) systems. Switch on when it can.
+const HARDWARE_RENDERER: bool = false;
 const LAUNCH_POLL: Duration = Duration::from_millis(50);
 
 fn now() -> u64 {
@@ -44,6 +46,8 @@ pub struct App {
     locator: Box<dyn Locator>,
     launcher: Box<dyn Launcher>,
     installer: Option<Box<dyn CoreInstaller>>,
+    /// What this computer offers, measured once at start-up.
+    machine: Option<MachineInfo>,
     art: Vec<Box<dyn ArtSource>>,
     /// Games the art server had nothing for (not asked again until restart).
     art_missing: Mutex<HashSet<String>>,
@@ -77,6 +81,7 @@ impl App {
             locator,
             launcher,
             installer: None,
+            machine: None,
             art: Vec::new(),
             art_missing: Mutex::new(HashSet::new()),
             installing: Mutex::new(HashSet::new()),
@@ -87,6 +92,12 @@ impl App {
             cover_failed: Mutex::new(HashSet::new()),
             identify_checked: Mutex::new(HashSet::new()),
         }
+    }
+
+    /// Measure the computer so 3D systems can be judged against it.
+    pub fn with_machine(mut self, machine: Box<dyn Machine>) -> Self {
+        self.machine = Some(machine.info());
+        self
     }
 
     /// Let the app download cores itself.
@@ -233,7 +244,7 @@ impl App {
             .iter()
             .filter(|s| s.enabled)
             .map(|s| {
-                SystemView::new(
+                let mut view = SystemView::new(
                     s,
                     &settings,
                     self.locator.core(settings.core_for(s)).is_some(),
@@ -245,7 +256,12 @@ impl App {
                         .collect(),
                     self.catalog.bios_status(s),
                     scanned.iter().filter(|g| g.system == s.id).count(),
-                )
+                );
+                if s.hardware {
+                    view.renderer_ready = HARDWARE_RENDERER;
+                    view.assessment = self.machine.as_ref().map(|m| assess(s, m));
+                }
+                view
             })
             .collect();
         let mut collections: Vec<String> = scanned
@@ -265,6 +281,7 @@ impl App {
             games,
             runner_found: self.locator.runner().is_some(),
             demo_available: self.locator.test_core().is_some(),
+            machine: self.machine.clone(),
             dat_entries: self.catalog.dat_entries(),
             fetch_art: settings.fetch_art,
             art_sources: self.art.iter().map(|a| a.id()).collect(),
@@ -373,6 +390,17 @@ impl App {
     pub fn set_system_enabled(&self, id: String, enabled: bool) {
         {
             let mut s = self.settings.lock().unwrap();
+            // 3D systems are off unless listed; the others are on unless listed
+            let hardware = crate::registry::by_id(&id).is_some_and(|sys| sys.hardware);
+            if hardware {
+                s.hardware_on.retain(|d| *d != id);
+                if enabled {
+                    s.hardware_on.push(id);
+                }
+                drop(s);
+                self.save_settings();
+                return;
+            }
             s.disabled.retain(|d| *d != id);
             if !enabled {
                 s.disabled.push(id);

@@ -5,7 +5,7 @@
   import { colorOf } from '../lib/systems.js';
   import Select from './Select.svelte';
   import CoreOptions from './CoreOptions.svelte';
-  import { toast } from '../lib/ui.svelte.js';
+  import { toast, confirmDialog } from '../lib/ui.svelte.js';
 
   let over = $state(false);
   /** the system whose core options are open */
@@ -15,9 +15,29 @@
   const ov = $derived(app.overview);
 
   const statusOf = (s) =>
-    !s.enabled ? ['Off', 'muted'] : !s.core_installed ? ['Core missing', 'bad'] : !s.bios_ready ? ['BIOS missing', 'bad'] : ['Ready', 'ok'];
+    !s.enabled ? ['Off', 'muted'] : !s.renderer_ready ? ['3D not supported yet', 'bad'] : !s.core_installed ? ['Core missing', 'bad'] : !s.bios_ready ? ['BIOS missing', 'bad'] : ['Ready', 'ok'];
 
+  const LEVELS = {
+    good: ['Your computer meets the requirements', 'ok'],
+    marginal: ['May lag in demanding games', 'warn'],
+    poor: ['Probably too slow for this system', 'bad'],
+  };
+
+  /** 3D systems are heavy: say what this computer can do before turning one on. */
   async function toggle(s) {
+    if (s.hardware && !s.enabled) {
+      const a = s.assessment;
+      const lines = [a ? `${LEVELS[a.level][0]}.` : 'This computer could not be measured.', ...(a?.reasons ?? [])];
+      if (!s.renderer_ready) lines.push('This version of vuretro cannot draw 3D systems yet, so games will stay locked.');
+      lines.push('vuretro tells you in the window title if a game runs slowly.');
+      const ok = await confirmDialog({
+        title: `Turn on ${s.name}?`,
+        message: lines.map((l) => `• ${l}`).join('\n'),
+        confirmLabel: 'Turn on',
+        danger: a?.level === 'poor',
+      });
+      if (!ok) return;
+    }
     await api.setSystemEnabled(s.id, !s.enabled);
     refresh();
   }
@@ -97,6 +117,9 @@
 <section class="page">
   <h1>Cores &amp; BIOS</h1>
   <p class="sub">Turn systems on or off and add the BIOS files they need.</p>
+  {#if ov?.machine}
+    <p class="machine">This computer: <strong>{ov.machine.cpu_name}</strong> · {ov.machine.cpu_cores} processor cores · {ov.machine.ram_gb.toFixed(0)} GB memory</p>
+  {/if}
 
   <div class="cards">
     {#each ov?.systems ?? [] as s (s.id)}
@@ -106,6 +129,15 @@
           <h3>{s.name}</h3>
           <span class="status {kind}">● {label}</span>
         </header>
+        {#if s.hardware}
+          <div class="three-d">
+            <span class="tag">3D system</span>
+            {#if s.assessment}
+              <span class="lvl {LEVELS[s.assessment.level][1]}">● {LEVELS[s.assessment.level][0]}</span>
+              <ul>{#each s.assessment.reasons as r}<li>{r}</li>{/each}</ul>
+            {/if}
+          </div>
+        {/if}
         <dl>
           <dt>Core</dt>
           <dd>
@@ -200,6 +232,13 @@
   .status.ok, .ok { color: var(--ok); }
   .status.bad, .bad { color: var(--bad); }
   .muted { color: var(--muted); }
+  .machine { color: var(--muted); margin: -14px 0 20px; }
+  .three-d { font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
+  .three-d ul { margin: 0; padding-left: 16px; color: var(--muted); }
+  .tag { align-self: flex-start; background: var(--surface-2); border-radius: 999px; padding: 1px 8px; font-size: 11px; color: var(--muted); }
+  .lvl.ok { color: var(--ok); }
+  .lvl.warn { color: var(--warn, #ffb347); }
+  .lvl.bad { color: var(--bad); }
   dl { display: grid; grid-template-columns: 56px 1fr; gap: 6px 8px; margin: 0; }
   dt { color: var(--muted); }
   dd { margin: 0; min-width: 0; word-break: break-all; }

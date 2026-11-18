@@ -20,6 +20,11 @@ export const SYSTEM_COLORS = {
   sega32x: '#5f8dff',
   nds: '#c2c8d6',
   arcade: '#ff9f43',
+  n64: '#ff7b54',
+  psp: '#7aa2ff',
+  gamecube: '#a58cff',
+  ps2: '#5a7dff',
+  '3ds': '#ff5b6e',
   saturn: '#6c8cff',
 };
 export const colorOf = (id) => SYSTEM_COLORS[id] ?? '#8b93a7';

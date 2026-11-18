@@ -587,6 +587,63 @@ fn controls_round_trip_and_save_errors_reach_the_caller() {
     );
 }
 
+struct FakeMachine(f32, u32);
+
+impl Machine for FakeMachine {
+    fn info(&self) -> MachineInfo {
+        MachineInfo {
+            cpu_name: "Test CPU".into(),
+            cpu_cores: self.1,
+            ram_gb: self.0,
+            os: "test".into(),
+        }
+    }
+}
+
+#[test]
+fn three_d_systems_are_off_by_default_judged_against_the_machine_and_blocked_without_a_renderer() {
+    let f = ready_world();
+    f.0.lock().unwrap().scans.insert(
+        "/data/roms".into(),
+        vec![entry("n64", "/data/roms/n64/g.z64")],
+    );
+    let a = app(&f).with_machine(Box::new(FakeMachine(4.0, 8)));
+    let ov = a.overview();
+    assert_eq!(ov.machine.as_ref().unwrap().cpu_cores, 8);
+    let n64 = ov.systems.iter().find(|s| s.id == "n64").unwrap();
+    assert!(
+        n64.hardware && !n64.enabled,
+        "off until the user turns it on"
+    );
+    let verdict = n64.assessment.as_ref().unwrap();
+    assert_eq!(verdict.level, Level::Marginal, "{verdict:?}"); // 4 GB = the minimum
+    assert!(ov
+        .systems
+        .iter()
+        .find(|s| s.id == "nes")
+        .unwrap()
+        .assessment
+        .is_none());
+
+    a.set_system_enabled("n64".into(), true);
+    assert_eq!(f.0.lock().unwrap().settings.hardware_on, vec!["n64"]);
+    assert!(f.0.lock().unwrap().settings.disabled.is_empty());
+    let ov = a.overview();
+    assert!(ov.systems.iter().find(|s| s.id == "n64").unwrap().enabled);
+    // switched on, but this build cannot draw 3D yet: the game says why
+    assert!(ov.games[0]
+        .blocked
+        .as_deref()
+        .unwrap()
+        .contains("3D renderer"));
+    a.set_system_enabled("n64".into(), false);
+    assert!(f.0.lock().unwrap().settings.hardware_on.is_empty());
+
+    // without a measurement there is no verdict
+    let bare = app(&f).overview();
+    assert!(bare.machine.is_none());
+}
+
 #[test]
 fn a_system_can_be_switched_to_another_listed_core() {
     let f = ready_world();

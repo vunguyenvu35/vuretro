@@ -18,6 +18,7 @@ mod frontend;
 mod headless;
 mod input;
 mod options;
+mod perf;
 mod ports;
 mod real;
 mod rewind;

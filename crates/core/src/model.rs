@@ -19,6 +19,9 @@ pub struct Settings {
     /// ScreenScraper account of the user (stored as plain text in settings.json).
     #[serde(default)]
     pub screenscraper: Option<ScreenScraperLogin>,
+    /// 3D systems the user switched on (they are off until then).
+    #[serde(default)]
+    pub hardware_on: Vec<String>,
     /// Core the user picked per system id (only values listed by the registry count).
     #[serde(default)]
     pub cores: BTreeMap<String, String>,
@@ -160,6 +163,84 @@ pub fn image_mime(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
+/// What the computer offers, as far as it can be measured.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MachineInfo {
+    pub cpu_name: String,
+    pub cpu_cores: u32,
+    pub ram_gb: f32,
+    pub os: String,
+}
+
+/// How well a computer is likely to run a system, worst first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Level {
+    /// Below the minimum: expect it not to run, or to lag badly.
+    Poor,
+    /// Meets the minimum only: some games will lag.
+    Marginal,
+    Good,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Assessment {
+    pub level: Level,
+    pub reasons: Vec<String>,
+}
+
+/// Judge whether `machine` can run `sys`. Only RAM and CPU cores are measured; the graphics
+/// chip is not, so a "good" verdict still carries a reminder about it.
+pub fn assess(sys: &System, machine: &MachineInfo) -> Assessment {
+    let mut level = Level::Good;
+    let mut reasons = Vec::new();
+    let mut worse = |l: Level, why: String| {
+        level = level.min(l);
+        reasons.push(why);
+    };
+    if sys.min_ram_gb > 0 {
+        let (have, need) = (machine.ram_gb, sys.min_ram_gb as f32);
+        if have + 0.5 < need {
+            worse(
+                Level::Poor,
+                format!("needs at least {need:.0} GB of memory, this computer has {have:.0} GB"),
+            );
+        } else if have < need * 1.5 {
+            worse(
+                Level::Marginal,
+                format!(
+                    "{have:.0} GB of memory is just enough; {:.0} GB or more is comfortable",
+                    need * 1.5
+                ),
+            );
+        }
+    }
+    if sys.min_cores > 0 {
+        let (have, need) = (machine.cpu_cores, sys.min_cores);
+        if have < need {
+            worse(
+                Level::Poor,
+                format!("needs at least {need} processor cores, this computer has {have}"),
+            );
+        } else if have < need + 2 {
+            worse(
+                Level::Marginal,
+                format!(
+                    "{have} processor cores is just enough; {} or more is comfortable",
+                    need + 2
+                ),
+            );
+        }
+    }
+    if sys.hardware {
+        reasons.push(
+            "the graphics chip cannot be checked: an old or weak one can still make games lag"
+                .to_string(),
+        );
+    }
+    Assessment { level, reasons }
+}
+
 /// One option a core offers. The first value is the core's default.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CoreOptionDef {
@@ -226,6 +307,12 @@ pub struct SystemView {
     pub bios: Vec<BiosStatus>,
     pub bios_ready: bool,
     pub game_count: usize,
+    /// A 3D system: needs a GPU renderer and a fast computer.
+    pub hardware: bool,
+    /// How this computer is likely to cope (3D systems only, when it could be measured).
+    pub assessment: Option<Assessment>,
+    /// False while the runner cannot draw this kind of system.
+    pub renderer_ready: bool,
 }
 
 impl SystemView {
@@ -243,11 +330,18 @@ impl SystemView {
             core: settings.core_for(sys),
             core_choices,
             extensions: sys.extensions,
-            enabled: !settings.disabled.iter().any(|d| d == sys.id),
+            enabled: if sys.hardware {
+                settings.hardware_on.iter().any(|d| d == sys.id)
+            } else {
+                !settings.disabled.iter().any(|d| d == sys.id)
+            },
             core_installed,
             bios_ready: bios_ready(&bios),
             bios,
             game_count,
+            hardware: sys.hardware,
+            assessment: None,
+            renderer_ready: !sys.hardware,
         }
     }
 
@@ -255,6 +349,11 @@ impl SystemView {
     pub fn blocked_reason(&self) -> Option<String> {
         if !self.enabled {
             Some(format!("{} is switched off", self.name))
+        } else if !self.renderer_ready {
+            Some(format!(
+                "{} needs the 3D renderer, which this version of vuretro does not have yet",
+                self.name
+            ))
         } else if !self.core_installed {
             Some(format!(
                 "core {} not installed (install it in Cores & BIOS)",
@@ -297,6 +396,8 @@ pub struct Overview {
     pub games: Vec<GameView>,
     pub runner_found: bool,
     pub demo_available: bool,
+    /// This computer, if it could be measured.
+    pub machine: Option<MachineInfo>,
     /// Dumps known from the user's DAT files (0 = none added).
     pub dat_entries: usize,
     pub fetch_art: bool,
@@ -372,6 +473,43 @@ mod tests {
             })
             .collect();
         SystemView::new(sys, settings, core, Vec::new(), bios, n)
+    }
+
+    fn machine(ram_gb: f32, cores: u32) -> MachineInfo {
+        MachineInfo {
+            cpu_name: "Test CPU".into(),
+            cpu_cores: cores,
+            ram_gb,
+            os: "test".into(),
+        }
+    }
+
+    #[test]
+    fn machines_are_judged_by_memory_and_cores_with_the_worst_verdict_winning() {
+        let psp = registry::by_id("psp").unwrap(); // 8 GB, 4 cores
+        assert_eq!(assess(psp, &machine(16.0, 8)).level, Level::Good);
+        let a = assess(psp, &machine(8.0, 8));
+        assert_eq!(a.level, Level::Marginal, "{a:?}");
+        let a = assess(psp, &machine(4.0, 8));
+        assert_eq!(a.level, Level::Poor);
+        assert!(a.reasons[0].contains("at least 8 GB") && a.reasons[0].contains("4 GB"));
+        assert_eq!(assess(psp, &machine(32.0, 2)).level, Level::Poor);
+        assert_eq!(assess(psp, &machine(32.0, 5)).level, Level::Marginal);
+        // both low: both reasons are listed
+        let a = assess(psp, &machine(4.0, 2));
+        assert_eq!(
+            a.reasons.iter().filter(|r| r.contains("at least")).count(),
+            2
+        );
+        // the graphics chip is never measured, so 3D systems always say so
+        assert!(assess(psp, &machine(64.0, 16))
+            .reasons
+            .iter()
+            .any(|r| r.contains("graphics")));
+        // a system with no requirements is fine anywhere
+        let nes = registry::by_id("nes").unwrap();
+        let a = assess(nes, &machine(0.5, 1));
+        assert_eq!((a.level, a.reasons.len()), (Level::Good, 0));
     }
 
     #[test]

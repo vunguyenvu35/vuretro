@@ -4,6 +4,7 @@
 
 use crate::cover;
 use crate::crt;
+use crate::perf::{self, PerfMonitor, Status};
 use crate::ports::{Controller, Emulator, Frame, FrameSource, Screen};
 use crate::rewind::Rewind;
 use crate::window::{self, clamp_scale, gain_for, pace, paused_overlay, window_title, Act, SLOTS};
@@ -78,6 +79,9 @@ pub struct Session {
     last_sram_save: Instant,
 
     rewind: Option<Rewind>,
+    perf: PerfMonitor,
+    /// Set while the game runs slower than it should.
+    slow_fps: Option<u32>,
     frames_run: u64,
     crt: bool,
     slot: u8,
@@ -126,6 +130,8 @@ impl Session {
             last_sram_save: Instant::now(),
             rewind,
             frames_run: 0,
+            perf: PerfMonitor::new(Duration::from_secs_f64(1.0 / cfg.fps), perf::WINDOW),
+            slow_fps: None,
             crt,
             slot: 1,
             start_slot: cfg.start_slot.filter(|n| (1..=SLOTS).contains(n)),
@@ -362,7 +368,7 @@ impl Session {
     }
 
     fn update_title(&mut self) {
-        let wanted = window_title(&self.title, self.holding, &self.notice);
+        let wanted = window_title(&self.title, self.holding, self.slow_fps, &self.notice);
         if wanted != self.shown_title {
             self.screen.set_title(&wanted);
             self.shown_title = wanted;
@@ -386,6 +392,27 @@ impl Session {
         } else {
             self.screen.present(buf, w, h)
         }
+    }
+
+    /// Tell the player when the game cannot keep up, and when it can again.
+    fn judge_speed(&mut self, work: Duration) {
+        let Some(change) = self.perf.record(work) else {
+            return;
+        };
+        let msg = match change {
+            Status::Slow { fps } => {
+                self.slow_fps = Some(fps);
+                format!(
+                    "running slowly: about {fps} fps. This computer may be too slow for this game"
+                )
+            }
+            Status::Smooth => {
+                self.slow_fps = None;
+                "running smoothly again".to_string()
+            }
+        };
+        log::warn!("{msg}");
+        self.notice = Some((msg, Instant::now()));
     }
 
     /// Keep a state every few frames so the game can be rewound.
@@ -414,15 +441,20 @@ impl Session {
 
     /// Feed input, run the core (several times when fast-forwarding) and show its frame.
     fn run_core(&mut self) -> Result<()> {
+        let started = Instant::now();
+        // fast-forward and rewind do more or less than one frame of work: not judged
+        let mut normal = true;
         self.controller.poll(&*self.screen);
         if self.rewind.is_some() && self.screen.key_down(Key::Backspace) {
             self.step_back();
+            normal = false;
         } else {
             let runs = if self.screen.key_down(Key::Tab) {
                 FAST_FORWARD_FRAMES
             } else {
                 1
             };
+            normal &= runs == 1;
             for _ in 0..runs {
                 self.emulator.run();
                 self.remember_for_rewind();
@@ -435,6 +467,9 @@ impl Session {
                 self.last_frame = Some((buf, w, h));
             }
             _ => self.screen.idle(),
+        }
+        if normal {
+            self.judge_speed(started.elapsed());
         }
         Ok(())
     }
@@ -725,6 +760,34 @@ mod tests {
         s.frame().unwrap();
         assert_eq!(r.log.borrow().disc_swaps, 1);
         assert_eq!(s.notice.as_ref().unwrap().0, "disc 2 of 2");
+    }
+
+    #[test]
+    fn a_game_that_cannot_keep_up_is_flagged_in_the_title() {
+        let (mut s, _r) = rig(100);
+        // an impossible target makes every frame "late"
+        s.perf = PerfMonitor::new(Duration::ZERO, 3);
+        for _ in 0..4 {
+            s.frame().unwrap();
+        }
+        assert!(s.slow_fps.is_some());
+        assert!(s.shown_title.contains("slow: about"), "{}", s.shown_title);
+        assert!(s
+            .notice
+            .as_ref()
+            .unwrap()
+            .0
+            .contains("too slow for this game"));
+    }
+
+    #[test]
+    fn a_game_on_time_is_not_flagged() {
+        let (mut s, _r) = rig(100);
+        s.perf = PerfMonitor::new(Duration::from_secs(10), 3);
+        for _ in 0..10 {
+            s.frame().unwrap();
+        }
+        assert!(s.slow_fps.is_none());
     }
 
     #[test]

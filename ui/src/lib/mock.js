@@ -15,7 +15,9 @@ const fullMock = () => ({
     { id: 'psx', name: 'PlayStation', core: 'pcsx_rearmed_libretro', core_choices: [{ name: 'pcsx_rearmed_libretro', installed: true }], extensions: ['chd', 'cue', 'pbp'], enabled: true, core_installed: true, bios_ready: false, game_count: 1, bios: [mockBios('psx', 'scph5501.bin', true, 'NTSC-U'), mockBios('psx', 'scph5500.bin', false, 'NTSC-J'), mockBios('psx', 'scph5502.bin', false, 'PAL')] },
     { id: 'snes', name: 'Super Nintendo', core: 'snes9x_libretro', core_choices: [{ name: 'snes9x_libretro', installed: true }], extensions: ['sfc', 'smc'], enabled: true, core_installed: true, bios_ready: true, game_count: 1, bios: [] },
     { id: 'gba', name: 'Game Boy Advance', core: 'mgba_libretro', core_choices: [{ name: 'mgba_libretro', installed: true }], extensions: ['gba'], enabled: true, core_installed: true, bios_ready: true, game_count: 1, bios: [mockBios('gba', 'gba_bios.bin', false, 'optional')] },
+    { id: 'n64', name: 'Nintendo 64', core: 'mupen64plus_next_libretro', core_choices: [{ name: 'mupen64plus_next_libretro', installed: false }], extensions: ['n64', 'z64'], enabled: false, core_installed: false, bios_ready: true, game_count: 0, bios: [], hardware: true, renderer_ready: false, assessment: { level: 'marginal', reasons: ['4 GB of memory is just enough; 6 GB or more is comfortable', 'the graphics chip cannot be checked: an old or weak one can still make games lag'] } },
   ],
+  machine: { cpu_name: 'Mock CPU', cpu_cores: 8, ram_gb: 4, os: 'Mock OS' },
   games: [
     { system: 'neogeo', title: 'Sample Shooter', path: '/roms/neogeo/shooter.zip', size: 31_000_000, last_played: Date.now() / 1000 - 7200, play_secs: 11520, favorite: true, blocked: null, imported: true },
     { system: 'psx', title: 'Sample Racer', path: '/roms/psx/racer.chd', size: 400_000_000, last_played: 0, play_secs: 0, favorite: false, blocked: 'BIOS missing' },

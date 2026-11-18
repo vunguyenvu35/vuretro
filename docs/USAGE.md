@@ -164,3 +164,13 @@ Found a bug? Use **Help ▸ Report an Issue…**. For security problems, see [SE
 
 - **Official names.** On **Cores & BIOS**, press **Add DAT files…** and choose No-Intro or Redump DAT files (XML). vuretro hashes your games (CRC32) and shows their official titles. A game that matches another file is marked as a duplicate in its details. DAT files are not included; download them from the project that publishes them.
 - **Collections.** Select a game and type a name under **Collections**. Collections are listed in the sidebar and filter the library.
+
+## 3D systems (N64, PSP, GameCube, PS2, 3DS)
+
+These systems need a fast computer and a graphics renderer. On **Cores & BIOS** their cards are marked **3D system** and are **off by default**. The card tells you how your computer compares with what the system needs (memory and processor cores; the graphics chip cannot be measured), and turning one on asks for confirmation with that verdict.
+
+**This version cannot draw 3D systems yet**, so their games stay locked even when the system is on. The switch, the check and the slow-game warning are already in place for when it can.
+
+While any game runs, vuretro watches its speed. If the computer cannot keep up, the window title shows **(slow: about N fps)** and a message appears; it goes away when the game runs smoothly again.
+
+For PS2 you also need a PS2 BIOS inside the `system/pcsx2/bios` folder of the vuretro data directory.

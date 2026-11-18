@@ -28,6 +28,12 @@ pub struct System {
     /// Its file types are shared with other systems (disc images), so a file counts for
     /// this system only inside one of its `folders`.
     pub folder_only: bool,
+    /// Needs a GPU renderer (3D systems): off until the user turns it on, with a check
+    /// of the computer first.
+    pub hardware: bool,
+    /// Memory and CPU cores below which the system is unlikely to run (0: no requirement).
+    pub min_ram_gb: u32,
+    pub min_cores: u32,
     pub extensions: &'static [&'static str],
     /// Folder names under the ROM root that force this system.
     pub folders: &'static [&'static str],
@@ -67,6 +73,12 @@ struct RawSystem {
     screenscraper: u32,
     #[serde(default)]
     folder_only: bool,
+    #[serde(default)]
+    hardware: bool,
+    #[serde(default)]
+    min_ram_gb: u32,
+    #[serde(default)]
+    min_cores: u32,
     extensions: Vec<String>,
     #[serde(default)]
     folders: Vec<String>,
@@ -123,6 +135,9 @@ pub fn parse_systems(json: &str) -> Result<Vec<System>, String> {
             thumbnails: leak(r.thumbnails),
             screenscraper: r.screenscraper,
             folder_only: r.folder_only,
+            hardware: r.hardware,
+            min_ram_gb: r.min_ram_gb,
+            min_cores: r.min_cores,
             extensions: leak_all(r.extensions),
             folders: leak_all(r.folders),
             bios: Box::leak(bios.into_boxed_slice()),

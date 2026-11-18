@@ -89,9 +89,13 @@ pub fn act_from_id(id: usize) -> Option<Act> {
 pub fn window_title(
     base: &str,
     holding: bool,
+    slow_fps: Option<u32>,
     notice: &Option<(String, std::time::Instant)>,
 ) -> String {
     let mut t = base.to_string();
+    if let Some(fps) = slow_fps {
+        t.push_str(&format!(" (slow: about {fps} fps)"));
+    }
     if holding {
         t.push_str(" (paused, press P to resume)");
     }

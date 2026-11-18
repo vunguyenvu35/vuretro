@@ -2,7 +2,8 @@
 //! (`vuretro-library::adapters` for disk and processes); tests use fakes.
 
 use crate::model::{
-    BiosStatus, CoreOptionDef, GameEntry, GameMeta, ImportedBios, ImportedRom, Settings, SlotInfo,
+    BiosStatus, CoreOptionDef, GameEntry, GameMeta, ImportedBios, ImportedRom, MachineInfo,
+    Settings, SlotInfo,
 };
 use crate::registry::System;
 use std::collections::{BTreeMap, HashMap};
@@ -135,6 +136,11 @@ pub trait Launcher: Send + Sync {
     fn capture_cover(&self, job: &CoverJob) -> bool;
     /// Ask a core which options it offers (loads it without a game).
     fn list_core_options(&self, runner: &Path, core: &Path) -> Result<Vec<CoreOptionDef>, String>;
+}
+
+/// Measures the computer the app runs on.
+pub trait Machine: Send + Sync {
+    fn info(&self) -> MachineInfo;
 }
 
 /// What to look up.
