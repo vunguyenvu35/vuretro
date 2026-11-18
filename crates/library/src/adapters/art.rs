@@ -1,5 +1,5 @@
 use std::io::Read;
-use vuretro_core::ports::ArtSource;
+use vuretro_core::ports::{ArtQuery, ArtSource};
 
 const BASE: &str = "https://thumbnails.libretro.com";
 /// Box art is a few hundred KB at most.
@@ -51,7 +51,15 @@ fn encode(s: &str) -> String {
 }
 
 impl ArtSource for ThumbnailsArt {
-    fn boxart(&self, system_folder: &str, name: &str) -> Result<Option<Vec<u8>>, String> {
+    fn id(&self) -> &'static str {
+        "libretro-thumbnails"
+    }
+
+    fn boxart(&self, q: &ArtQuery) -> Result<Option<Vec<u8>>, String> {
+        if q.thumbnails.is_empty() {
+            return Ok(None);
+        }
+        let (system_folder, name) = (q.thumbnails, q.name);
         let url = format!(
             "{}/{}/Named_Boxarts/{}.png",
             self.base,
@@ -85,6 +93,15 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
 
+    fn q<'a>(folder: &'a str, name: &'a str) -> ArtQuery<'a> {
+        ArtQuery {
+            name,
+            thumbnails: folder,
+            screenscraper_id: 0,
+            login: None,
+        }
+    }
+
     fn art(reply: Result<Option<Vec<u8>>, String>) -> (ThumbnailsArt, Arc<Mutex<Vec<String>>>) {
         let urls = Arc::new(Mutex::new(Vec::new()));
         let seen = urls.clone();
@@ -113,7 +130,8 @@ mod tests {
         let png = b"\x89PNG....".to_vec();
         let (a, urls) = art(Ok(Some(png.clone())));
         assert_eq!(
-            a.boxart("Nintendo - Game Boy", "Tetris (World)").unwrap(),
+            a.boxart(&q("Nintendo - Game Boy", "Tetris (World)"))
+                .unwrap(),
             Some(png)
         );
         assert_eq!(
@@ -121,10 +139,10 @@ mod tests {
             "https://t.test/Nintendo%20-%20Game%20Boy/Named_Boxarts/Tetris%20%28World%29.png"
         );
         let (a, _) = art(Ok(Some(b"<html>oops".to_vec())));
-        assert_eq!(a.boxart("x", "y").unwrap(), None);
+        assert_eq!(a.boxart(&q("x", "y")).unwrap(), None);
         let (a, _) = art(Ok(None));
-        assert_eq!(a.boxart("x", "y").unwrap(), None);
+        assert_eq!(a.boxart(&q("x", "y")).unwrap(), None);
         let (a, _) = art(Err("download failed: offline".into()));
-        assert!(a.boxart("x", "y").unwrap_err().contains("offline"));
+        assert!(a.boxart(&q("x", "y")).unwrap_err().contains("offline"));
     }
 }

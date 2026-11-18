@@ -39,6 +39,7 @@ const mock = {
   fetch_art: async () => {},
   set_custom_art: async () => {},
   clear_art: async () => {},
+  set_screenscraper: async () => {},
   get_cheats: async () => "",
   set_cheats: async () => {},
   get_slot_thumbnail: async () => null,

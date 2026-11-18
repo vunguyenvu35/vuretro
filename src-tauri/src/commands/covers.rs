@@ -71,3 +71,9 @@ pub fn set_custom_art(shell: State<'_, Shell>, path: String, image: String) -> R
 pub fn clear_art(shell: State<'_, Shell>, path: String) {
     shell.app.clear_art(&path);
 }
+
+/// Save (or, with an empty user name, forget) the user's ScreenScraper login.
+#[tauri::command]
+pub fn set_screenscraper(shell: State<'_, Shell>, user: String, password: String) {
+    shell.app.set_screenscraper(user, password);
+}

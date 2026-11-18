@@ -224,6 +224,10 @@ mod tests {
             disabled: vec!["psx".into()],
             cores: [("nes".to_string(), "mesen_libretro".to_string())].into(),
             fetch_art: true,
+            screenscraper: Some(vuretro_core::model::ScreenScraperLogin {
+                user: "me".into(),
+                password: "pw".into(),
+            }),
         };
         store.save_settings(&s);
         assert_eq!(store.load_settings(), s);

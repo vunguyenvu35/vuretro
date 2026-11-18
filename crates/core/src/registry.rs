@@ -23,6 +23,8 @@ pub struct System {
     pub alt_cores: &'static [&'static str],
     /// Folder name in the libretro-thumbnails server (empty: no cover art source).
     pub thumbnails: &'static str,
+    /// ScreenScraper `systemeid` (0: not listed there).
+    pub screenscraper: u32,
     pub extensions: &'static [&'static str],
     /// Folder names under the ROM root that force this system.
     pub folders: &'static [&'static str],
@@ -58,6 +60,8 @@ struct RawSystem {
     alt_cores: Vec<String>,
     #[serde(default)]
     thumbnails: String,
+    #[serde(default)]
+    screenscraper: u32,
     extensions: Vec<String>,
     #[serde(default)]
     folders: Vec<String>,
@@ -112,6 +116,7 @@ pub fn parse_systems(json: &str) -> Result<Vec<System>, String> {
             core: leak(r.core),
             alt_cores: leak_all(r.alt_cores),
             thumbnails: leak(r.thumbnails),
+            screenscraper: r.screenscraper,
             extensions: leak_all(r.extensions),
             folders: leak_all(r.folders),
             bios: Box::leak(bios.into_boxed_slice()),

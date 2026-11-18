@@ -16,6 +16,9 @@ pub struct Settings {
     /// Download cover art for named games (sends game names to the libretro-thumbnails server).
     #[serde(default)]
     pub fetch_art: bool,
+    /// ScreenScraper account of the user (stored as plain text in settings.json).
+    #[serde(default)]
+    pub screenscraper: Option<ScreenScraperLogin>,
     /// Core the user picked per system id (only values listed by the registry count).
     #[serde(default)]
     pub cores: BTreeMap<String, String>,
@@ -29,6 +32,13 @@ impl Settings {
             .and_then(|c| sys.all_cores().find(|k| *k == c.as_str()))
             .unwrap_or(sys.core)
     }
+}
+
+/// A ScreenScraper account.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ScreenScraperLogin {
+    pub user: String,
+    pub password: String,
 }
 
 /// What we remember about one game, keyed by its path.
@@ -290,6 +300,10 @@ pub struct Overview {
     /// Dumps known from the user's DAT files (0 = none added).
     pub dat_entries: usize,
     pub fetch_art: bool,
+    /// Cover art sources this build offers, in the order they are tried.
+    pub art_sources: Vec<&'static str>,
+    /// The ScreenScraper user name saved, if any (never the password).
+    pub screenscraper_user: Option<String>,
     /// Collection names in use, sorted.
     pub collections: Vec<String>,
 }

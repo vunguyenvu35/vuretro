@@ -828,7 +828,11 @@ struct FakeArt {
 }
 
 impl ArtSource for FakeArt {
-    fn boxart(&self, folder: &str, name: &str) -> Result<Option<Vec<u8>>, String> {
+    fn id(&self) -> &'static str {
+        "fake"
+    }
+    fn boxart(&self, q: &ArtQuery) -> Result<Option<Vec<u8>>, String> {
+        let (folder, name) = (q.thumbnails, q.name);
         self.f
             .0
             .lock()
@@ -938,4 +942,59 @@ fn image_types_are_told_by_their_first_bytes() {
     assert_eq!(image_mime(b"\x89PNG\r\n"), Some("image/png"));
     assert_eq!(image_mime(&[0xFF, 0xD8, 0xFF, 0xE0]), Some("image/jpeg"));
     assert_eq!(image_mime(b"GIF89a"), None);
+}
+
+struct Tagged {
+    f: Fake,
+    id: &'static str,
+    has: bool,
+}
+
+impl ArtSource for Tagged {
+    fn id(&self) -> &'static str {
+        self.id
+    }
+    fn boxart(&self, q: &ArtQuery) -> Result<Option<Vec<u8>>, String> {
+        self.f.0.lock().unwrap().art_calls.push((
+            self.id.to_string(),
+            format!("{}|{}|{:?}", q.name, q.screenscraper_id, q.login),
+        ));
+        Ok(self.has.then(|| vec![0xFF, 0xD8, 0xFF, 1]))
+    }
+}
+
+#[test]
+fn art_sources_are_tried_in_order_and_get_the_users_login() {
+    let f = art_world();
+    let a = app(&f)
+        .with_art_source(Box::new(Tagged {
+            f: f.clone(),
+            id: "first",
+            has: false,
+        }))
+        .with_art_source(Box::new(Tagged {
+            f: f.clone(),
+            id: "second",
+            has: true,
+        }));
+    a.set_fetch_art(true);
+    a.set_screenscraper("  me ".into(), "pw".into());
+    let ov = a.overview();
+    assert_eq!(ov.art_sources, vec!["first", "second"]);
+    assert_eq!(ov.screenscraper_user.as_deref(), Some("me"));
+
+    assert_eq!(a.fetch_art(|_| {}), 1);
+    let calls = f.0.lock().unwrap().art_calls.clone();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].0, "first");
+    assert!(
+        calls[1]
+            .1
+            .contains("Super A (USA)|4|Some((\"me\", \"pw\"))"),
+        "{calls:?}"
+    );
+
+    // an empty user name forgets the login
+    a.set_screenscraper(String::new(), String::new());
+    assert!(a.overview().screenscraper_user.is_none());
 }

@@ -26,6 +26,7 @@ export const api = {
   setCheats: (path, text) => call('set_cheats', { path, text }),
   fetchArt: () => call('fetch_art'),
   setCustomArt: (path, image) => call('set_custom_art', { path, image }),
+  setScreenscraper: (user, password) => call('set_screenscraper', { user, password }),
   clearArt: (path) => call('clear_art', { path }),
   async pickImage() {
     if (!inTauri) return null;

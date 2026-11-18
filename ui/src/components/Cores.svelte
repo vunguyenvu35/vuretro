@@ -43,6 +43,18 @@
     }
   }
 
+  let ssUser = $state('');
+  let ssPass = $state('');
+  $effect(() => {
+    ssUser = ov?.screenscraper_user ?? '';
+  });
+  async function saveSs() {
+    await api.setScreenscraper(ssUser, ssPass);
+    ssPass = '';
+    await refresh();
+    toast(ssUser ? 'ScreenScraper login saved' : 'ScreenScraper login removed');
+  }
+
   async function toggleArt() {
     await api.setFetchArt(!ov.fetch_art);
     await refresh();
@@ -151,6 +163,19 @@
     Download cover art for named games
     <span class="muted">(sends game names to thumbnails.libretro.com; needs DAT files)</span>
   </label>
+  {#if ov?.art_sources?.includes('screenscraper')}
+    <div class="ss">
+      <strong>ScreenScraper</strong>
+      <span class="muted">Used when libretro-thumbnails has no picture. Needs your free screenscraper.fr account; the password is stored as plain text in the app's settings file.</span>
+      <div class="ssrow">
+        <input placeholder="User name" bind:value={ssUser} aria-label="ScreenScraper user name" autocomplete="off" />
+        <input type="password" placeholder={ov.screenscraper_user ? '(password saved)' : 'Password'} bind:value={ssPass} aria-label="ScreenScraper password" autocomplete="off" />
+        <button class="btn" onclick={saveSs}>{ssUser ? 'Save' : 'Remove'}</button>
+      </div>
+    </div>
+  {:else}
+    <p class="note">ScreenScraper is not available in this build (it needs developer credentials from the project).</p>
+  {/if}
 </section>
 
 {#if optionsFor}
@@ -187,6 +212,9 @@
   .drop strong { color: var(--accent); font-size: 15px; }
   .drop:hover, .drop.over { background: color-mix(in srgb, var(--accent) 8%, transparent); }
   .dat { margin: 0 auto 12px; }
+  .ss { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
+  .ssrow { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ssrow input { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font: inherit; }
   .art { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
   .note { color: var(--faint); margin-top: 10px; }
 </style>

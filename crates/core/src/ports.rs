@@ -137,10 +137,23 @@ pub trait Launcher: Send + Sync {
     fn list_core_options(&self, runner: &Path, core: &Path) -> Result<Vec<CoreOptionDef>, String>;
 }
 
-/// Where cover art comes from (libretro-thumbnails).
+/// What to look up.
+pub struct ArtQuery<'a> {
+    /// Official game name (from a DAT file).
+    pub name: &'a str,
+    /// libretro-thumbnails folder of the system (empty: unknown).
+    pub thumbnails: &'a str,
+    /// ScreenScraper system id (0: unknown).
+    pub screenscraper_id: u32,
+    /// The user's ScreenScraper login, if they gave one.
+    pub login: Option<(&'a str, &'a str)>,
+}
+
+/// A place cover art can be downloaded from.
 pub trait ArtSource: Send + Sync {
-    /// Box art PNG for `name` on `system_folder`; `Ok(None)` when the server has none.
-    fn boxart(&self, system_folder: &str, name: &str) -> Result<Option<Vec<u8>>, String>;
+    fn id(&self) -> &'static str;
+    /// Box art (PNG or JPEG bytes); `Ok(None)` when this source has none or cannot be asked.
+    fn boxart(&self, q: &ArtQuery) -> Result<Option<Vec<u8>>, String>;
 }
 
 /// Downloads cores into the app's own cores folder.

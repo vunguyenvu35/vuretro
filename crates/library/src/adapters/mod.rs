@@ -5,6 +5,7 @@ mod catalog;
 mod installer;
 mod launcher;
 mod locator;
+mod screenscraper;
 mod store;
 
 pub use art::ThumbnailsArt;
@@ -12,4 +13,5 @@ pub use catalog::FsCatalog;
 pub use installer::BuildbotInstaller;
 pub use launcher::ProcessLauncher;
 pub use locator::FsLocator;
+pub use screenscraper::{DevLogin, ScreenScraperArt};
 pub use store::JsonStore;

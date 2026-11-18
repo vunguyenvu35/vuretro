@@ -17,13 +17,13 @@ use std::sync::{Arc, Mutex};
 use vuretro_core::paths::Paths;
 use vuretro_core::service::App;
 use vuretro_library::adapters::{
-    BuildbotInstaller, FsCatalog, FsLocator, JsonStore, ProcessLauncher, ThumbnailsArt,
+    BuildbotInstaller, FsCatalog, FsLocator, JsonStore, ProcessLauncher, DevLogin, ScreenScraperArt, ThumbnailsArt,
 };
 
 fn build_app() -> App {
     let paths =
         Paths::system_default().unwrap_or_else(|| Paths::new(PathBuf::from("vuretro-data")));
-    App::new(
+    let app = App::new(
         paths.clone(),
         Box::new(JsonStore::new(paths.clone())),
         Box::new(FsCatalog::new(paths.clone())),
@@ -31,7 +31,12 @@ fn build_app() -> App {
         Box::new(ProcessLauncher::new(paths.clone())),
     )
     .with_installer(Box::new(BuildbotInstaller::new(paths)))
-    .with_art_source(Box::new(ThumbnailsArt::new()))
+    .with_art_source(Box::new(ThumbnailsArt::new()));
+    // ScreenScraper needs developer credentials issued to the project; without them it is off.
+    match DevLogin::from_env() {
+        Some(dev) => app.with_art_source(Box::new(ScreenScraperArt::new(dev))),
+        None => app,
+    }
 }
 
 fn main() {
@@ -62,6 +67,7 @@ fn main() {
             import_dats,
             set_fetch_art,
             set_custom_art,
+            set_screenscraper,
             clear_art,
             fetch_art,
             identify_games,

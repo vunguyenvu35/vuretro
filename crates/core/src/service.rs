@@ -6,7 +6,8 @@ use crate::model::{game_views, GameMeta, Outcome, Overview, Settings, SystemView
 use crate::model::{CoreChoice, CoreOptionView, SlotInfo};
 use crate::paths::Paths;
 use crate::ports::{
-    ArtSource, Catalog, CoreInstaller, CoverJob, GameProcess, LaunchSpec, Launcher, Locator, Store,
+    ArtQuery, ArtSource, Catalog, CoreInstaller, CoverJob, GameProcess, LaunchSpec, Launcher,
+    Locator, Store,
 };
 use crate::registry::systems;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -43,7 +44,7 @@ pub struct App {
     locator: Box<dyn Locator>,
     launcher: Box<dyn Launcher>,
     installer: Option<Box<dyn CoreInstaller>>,
-    art: Option<Box<dyn ArtSource>>,
+    art: Vec<Box<dyn ArtSource>>,
     /// Games the art server had nothing for (not asked again until restart).
     art_missing: Mutex<HashSet<String>>,
     /// Cores being downloaded right now.
@@ -76,7 +77,7 @@ impl App {
             locator,
             launcher,
             installer: None,
-            art: None,
+            art: Vec::new(),
             art_missing: Mutex::new(HashSet::new()),
             installing: Mutex::new(HashSet::new()),
             launch_grace: LAUNCH_GRACE,
@@ -94,10 +95,18 @@ impl App {
         self
     }
 
-    /// Let the app download cover art.
+    /// Add a place to download cover art from; sources are tried in the order added.
     pub fn with_art_source(mut self, art: Box<dyn ArtSource>) -> Self {
-        self.art = Some(art);
+        self.art.push(art);
         self
+    }
+
+    /// Save the user's ScreenScraper login; an empty user name forgets it.
+    pub fn set_screenscraper(&self, user: String, password: String) {
+        let user = user.trim().to_string();
+        self.settings.lock().unwrap().screenscraper =
+            (!user.is_empty()).then_some(crate::model::ScreenScraperLogin { user, password });
+        self.save_settings();
     }
 
     pub fn set_fetch_art(&self, enabled: bool) {
@@ -109,9 +118,9 @@ impl App {
     /// switched it on. Slow: run it on a thread. `on_made` gets the key of each game that
     /// now has art; returns how many.
     pub fn fetch_art(&self, on_made: impl Fn(&str)) -> usize {
-        let Some(art) = self.art.as_ref() else {
+        if self.art.is_empty() {
             return 0;
-        };
+        }
         let settings = self.settings.lock().unwrap().clone();
         if !settings.fetch_art {
             return 0;
@@ -125,10 +134,10 @@ impl App {
                 .unwrap()
                 .get(&key)
                 .and_then(|m| m.name.clone());
-            let folder = crate::registry::by_id(&g.system)
-                .map(|s| s.thumbnails)
-                .unwrap_or("");
-            let (Some(name), false) = (name, folder.is_empty()) else {
+            let sys = crate::registry::by_id(&g.system);
+            let folder = sys.map(|s| s.thumbnails).unwrap_or("");
+            let ss_id = sys.map(|s| s.screenscraper).unwrap_or(0);
+            let (Some(name), false) = (name, folder.is_empty() && ss_id == 0) else {
                 continue;
             };
             if self.store.art_exists(&g.path)
@@ -136,13 +145,26 @@ impl App {
             {
                 continue;
             }
-            match art.boxart(folder, &name) {
-                Ok(Some(png)) if self.store.save_art(&g.path, &png).is_ok() => {
+            let query = ArtQuery {
+                name: &name,
+                thumbnails: folder,
+                screenscraper_id: ss_id,
+                login: settings
+                    .screenscraper
+                    .as_ref()
+                    .map(|l| (l.user.as_str(), l.password.as_str())),
+            };
+            // first source that has a picture wins
+            let found = self.art.iter().find_map(|src| match src.boxart(&query) {
+                Ok(Some(img)) if crate::model::image_mime(&img).is_some() => Some(img),
+                _ => None,
+            });
+            if let Some(img) = found {
+                if self.store.save_art(&g.path, &img).is_ok() {
                     self.art_missing.lock().unwrap().remove(&key);
                     on_made(&key);
                     made += 1;
                 }
-                _ => {}
             }
         }
         made
@@ -245,6 +267,8 @@ impl App {
             demo_available: self.locator.test_core().is_some(),
             dat_entries: self.catalog.dat_entries(),
             fetch_art: settings.fetch_art,
+            art_sources: self.art.iter().map(|a| a.id()).collect(),
+            screenscraper_user: settings.screenscraper.as_ref().map(|l| l.user.clone()),
             collections,
         }
     }
