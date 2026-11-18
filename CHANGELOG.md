@@ -1,8 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.1.3
 
-- The app is now named **Vuretro** (capital V) in its window title, menu, Dock and installer file names (for example `Vuretro.app`, `Vuretro_<version>_universal.dmg`). The release 0.1.2 packages keep the old lower-case names.
+Same features as 0.1.2 (see below); the app is now named **Vuretro** (capital V) in its window title, menu, Dock and installer file names. The 0.1.2 packages keep the old lower-case names.
+
+| System | File |
+|---|---|
+| macOS (Apple Silicon and Intel) | `Vuretro_0.1.3_universal.dmg` |
+| Windows | `Vuretro_0.1.3_x64-setup.exe` or `Vuretro_0.1.3_x64_en-US.msi` |
+| Linux | `Vuretro_0.1.3_amd64.AppImage`, `.deb` or `.rpm` (package names may stay lower-case) |
+
+Still an early release with unsigned packages; see the notes for 0.1.2 for what is and is not tried yet.
 
 ## 0.1.2
 
