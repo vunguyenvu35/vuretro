@@ -20,6 +20,8 @@ Try the current state: `make dev` (see [DEVELOPMENT.md](DEVELOPMENT.md)). Archit
 
 Phases 0 to 2 are the foundation. M1 to M5 are ordered by what gets vuretro to real users first (see [Gaps](#gaps-compared-with-other-frontends)).
 
+**Last updated 2026-11-18.** Built since the plan was written: data registry and 20 systems, per-system core choice, in-app core installer, core options screen, save slots with thumbnails, CRT scanlines, rewind, cheats, disc swap, DAT identification, collections, cover art (libretro-thumbnails, own images, ScreenScraper), gamepad navigation of the UI, release workflow and a local unsigned macOS `.dmg`. Almost all of it is verified by tests with fakes only; nothing has been played with real games except SNES and GBA with synthetic ROMs. Still open: real-game checks on 3 OS, signing, updater, Flatpak, `wgpu` renderer, rumble, per-game control overrides, hotkey rebinding, multi-disc grouping, Sega CD, DOS, and all of M5.
+
 ## Phase 0: Setup ✅
 
 - [x] Cargo workspace, 3-OS CI matrix (fmt, clippy, test, smoke test)
@@ -52,7 +54,7 @@ Phases 0 to 2 are the foundation. M1 to M5 are ordered by what gets vuretro to r
 - [x] Tauri commands calling `vuretro-library` (scan, BIOS check/import) and spawning `vuretro-runner`, reporting early failures from `runner.log`
 - [x] Metadata (play time, last played, favorites) in `library.json`; SQLite deferred until the library is big enough to need it
 - [x] Save-slot thumbnails and slot picker in the details panel (done in M2)
-- [ ] Verify the window on Windows and Linux; CI job `app` is added but not yet seen green (moved to M1)
+- [ ] Verify the window on Windows and Linux (moved to M1). CI first run on 2026-11-18: Windows `build` and `app` green, Linux `build` green; Linux `app` failed for a missing `libudev-dev` (fixed), `macos-14` is not a supported runner (switched to `macos-latest`). CI only compiles and runs tests, nobody has opened the window yet
 
 ## Gaps compared with other frontends
 
@@ -73,7 +75,7 @@ Compared with RetroArch, OpenEmu, ES-DE/Pegasus and Playnite/LaunchBox, what vur
 Goal: someone installs vuretro from a package, opens it, gets cores, adds a ROM and plays, with no terminal.
 
 - [ ] Real-game check on macOS, Windows and Linux (carried over from Phase 1)
-- [ ] Verify the app window on Windows and Linux; CI job `app` green (carried over from Phase 2)
+- [ ] Verify the app window on Windows and Linux; CI job `app` green on all 3 OS (Windows is green; Linux and macOS are re-running after the fixes above)
 - [x] **In-app core installer**: `CoreInstaller` port, `BuildbotInstaller` adapter (HTTPS download into `<data dir>/cores`, archive and native-library checks; the buildbot publishes no checksums), `install_core` command with `core-progress` events, Install button with progress on Cores & BIOS. Verified live with `cargo test -p vuretro-library -- --ignored`; the Install button itself is not yet clicked through on a clean machine
 - [ ] macOS: signed + notarized universal `.dmg`. Done so far: `make app-build` produces an unsigned arm64 `.dmg` (6 MB) with `vuretro-runner` bundled inside (checked on this Mac); `release.yml` builds universal and signs when the Apple secrets exist (not run yet)
 - [ ] Windows: signed MSI/NSIS (`release.yml` builds it; not run yet, signing needs a certificate)
