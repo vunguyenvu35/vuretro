@@ -19,6 +19,8 @@ pub struct Frontend {
     /// Interleaved stereo i16 samples at the core's sample rate.
     pub audio: Arc<Mutex<VecDeque<i16>>>,
     pub buttons: [[bool; JOYPAD_BUTTON_COUNT]; MAX_PORTS],
+    /// Rumble the core asked for, per port: `[strong, weak]` strength (0 = off).
+    pub rumble: [[u16; 2]; MAX_PORTS],
     pub system_dir: CString,
     pub save_dir: CString,
     /// User values for core options (`GET_VARIABLE`), kept alive for the core.
@@ -45,6 +47,7 @@ pub fn init(
         frame_dirty: false,
         audio,
         buttons: [[false; JOYPAD_BUTTON_COUNT]; MAX_PORTS],
+        rumble: [[0; 2]; MAX_PORTS],
         system_dir: CString::new(system_dir).unwrap_or_default(),
         save_dir: CString::new(save_dir).unwrap_or_default(),
         options: options
@@ -143,6 +146,10 @@ pub unsafe extern "C" fn environment_cb(cmd: c_uint, data: *mut c_void) -> bool 
             (*(data as *mut retro_log_callback)).log = Some(core_log);
             true
         }
+        RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE => {
+            (*(data as *mut retro_rumble_interface)).set_rumble_state = Some(core_rumble);
+            true
+        }
         RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE => {
             let cb = *(data as *const retro_disk_control_callback);
             with(|fe| fe.disk = Some(cb));
@@ -158,6 +165,16 @@ pub unsafe extern "C" fn environment_cb(cmd: c_uint, data: *mut c_void) -> bool 
             false
         }
     }
+}
+
+/// A core asks for a controller to rumble (or stop). Remembered here; the input code
+/// passes it on to the gamepad.
+unsafe extern "C" fn core_rumble(port: c_uint, effect: c_uint, strength: u16) -> bool {
+    if port as usize >= MAX_PORTS || effect > RETRO_RUMBLE_WEAK {
+        return false;
+    }
+    with(|fe| fe.rumble[port as usize][effect as usize] = strength);
+    true
 }
 
 /// What a core's log calls end up as. Levels follow libretro: 0 debug, 1 info, 2 warn, 3 error.
@@ -300,5 +317,38 @@ mod log_tests {
             unsafe { log(level, msg.as_ptr()) };
         }
         unsafe { log(1, std::ptr::null()) }; // a null format must not crash either
+    }
+
+    #[test]
+    fn a_core_can_ask_for_rumble_and_the_request_is_remembered() {
+        init(
+            "/s",
+            "/v",
+            Arc::new(Mutex::new(VecDeque::new())),
+            HashMap::new(),
+        );
+        let mut cb = retro_rumble_interface {
+            set_rumble_state: None,
+        };
+        let ok = unsafe {
+            environment_cb(
+                RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE,
+                &mut cb as *mut _ as *mut c_void,
+            )
+        };
+        assert!(ok);
+        let set = cb.set_rumble_state.expect("the function is filled in");
+        unsafe {
+            assert!(set(0, RETRO_RUMBLE_STRONG, 40_000));
+            assert!(set(0, RETRO_RUMBLE_WEAK, 100));
+            assert!(
+                !set(MAX_PORTS as c_uint, RETRO_RUMBLE_STRONG, 1),
+                "no such port"
+            );
+            assert!(!set(0, 7, 1), "no such effect");
+        }
+        assert_eq!(with(|fe| fe.rumble[0]), [40_000, 100]);
+        unsafe { set(0, RETRO_RUMBLE_STRONG, 0) };
+        assert_eq!(with(|fe| fe.rumble[0]), [0, 100]);
     }
 }

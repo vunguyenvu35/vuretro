@@ -88,6 +88,9 @@ pub trait Catalog: Send + Sync {
     fn import_rom(&self, src: &Path, system: Option<&str>) -> Result<ImportedRom, String>;
     /// Copy every recognised ROM of a folder into the library.
     fn import_folder(&self, dir: &Path) -> Vec<(PathBuf, Result<ImportedRom, String>)>;
+    /// Apply an IPS, UPS or BPS patch to a game and add the patched copy to the library.
+    /// The original file is never changed.
+    fn apply_patch(&self, rom: &Path, patch: &Path) -> Result<ImportedRom, String>;
     /// Official name of a ROM according to the user's DAT files, if they know it.
     fn identify(&self, path: &Path) -> Option<String>;
     /// Add a DAT file; returns how many dumps it lists.

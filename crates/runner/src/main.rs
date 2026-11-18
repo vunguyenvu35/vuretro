@@ -17,13 +17,18 @@ mod display;
 mod frontend;
 mod headless;
 mod input;
+mod lcd;
 mod options;
+mod padkeys;
 mod perf;
 mod ports;
 mod real;
 mod rewind;
+mod rumble;
+mod scale;
 mod screen;
 mod session;
+mod speed;
 mod window;
 
 use anyhow::{Context, Result};

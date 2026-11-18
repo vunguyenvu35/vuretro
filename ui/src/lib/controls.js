@@ -53,17 +53,39 @@ export const APP_SHORTCUTS = [
 /** Keys the game window uses itself (shown on the Controls and Settings screens). */
 export const HOTKEYS = [
   { keys: ['F10'], also: ['F9'], what: 'Bigger / smaller window', note: 'Remembered for next time' },
+  { keys: ['Alt', 'Enter'], what: 'Full screen on / off' },
   { keys: ['P'], also: ['F3'], what: 'Pause / resume', note: 'Dims the picture and mutes the sound' },
   { keys: ['F8'], what: 'Sound on / off' },
-  { keys: ['F5'], what: 'Save state' },
+  { keys: ['F5'], what: 'Save state', note: 'Into the current slot' },
   { keys: ['F7'], what: 'Load state' },
   { keys: ['F6'], what: 'Next save slot' },
   { keys: ['F2'], what: 'Reset game' },
-  { keys: ['Tab'], what: 'Fast-forward', note: 'Hold' },
+  { keys: ['Tab'], what: 'Fast-forward', note: 'Hold. The speed is set in Settings' },
+  { keys: ['F1'], what: 'Fast-forward on / off', note: 'Stays on until you press it again' },
+  { keys: ['Shift', 'F1'], what: 'Slow motion on / off', note: 'Half speed, without sound' },
+  { keys: ['Backspace'], what: 'Rewind', note: 'Hold. Switch it on in Settings' },
+  { keys: ['F4'], what: 'CRT scanlines on / off' },
+  { keys: ['Shift', 'F4'], what: 'LCD look on / off', note: 'A pixel grid, like a handheld' },
+  { keys: ['F11'], what: 'Change disc' },
+  { keys: ['F12'], what: 'Screenshot' },
   { keys: ['Esc'], what: 'Quit game' },
 ];
 
-export const RESERVED = ['Escape', 'Tab', 'KeyP', 'F2', 'F3', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10'];
+/** Hold Select on a gamepad and press another button. */
+export const PAD_HOTKEYS = [
+  { keys: ['Select', 'Start'], what: 'Quit game' },
+  { keys: ['Select', 'R1'], what: 'Save state' },
+  { keys: ['Select', 'L1'], what: 'Load state' },
+  { keys: ['Select', 'D-pad →'], also: ['D-pad ←'], what: 'Next / previous save slot' },
+  { keys: ['Select', 'R2'], what: 'Fast-forward', note: 'Hold' },
+  { keys: ['Select', 'L2'], what: 'Rewind', note: 'Hold' },
+  { keys: ['Select', '○'], what: 'Fast-forward on / off' },
+  { keys: ['Select', '△'], what: 'Pause / resume' },
+  { keys: ['Select', '□'], what: 'Screenshot' },
+  { keys: ['Select', '✕'], what: 'Sound on / off' },
+];
+
+export const RESERVED = ['Escape', 'Tab', 'Backspace', 'KeyP', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12'];
 
 /** KeyboardEvent.code -> runner key name, or null if it cannot be bound. */
 export function keyName(code) {

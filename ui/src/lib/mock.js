@@ -81,9 +81,13 @@ mock.default_controls = async () => mockControls().config;
 mock.set_controls = async ({ config }) => config;
 
 // ---- game settings ----
-const DEFAULT_GAME = { window_scale: 2, sound: true, volume: 100, sync_display: true, pause_on_blur: false, crt: false, rewind: false };
+const DEFAULT_GAME = {
+  window_scale: 2, sound: true, volume: 100, sync_display: true, pause_on_blur: false, crt: false, rewind: false,
+  fast_forward: 4, ff_sound: false, resume: false, lcd: false, integer_scale: false, fullscreen: false, rumble: true,
+};
 let mockGame = { ...DEFAULT_GAME };
 mock.import_roms = async () => [];
+mock.apply_patch = async ({ rom }) => ({ source: rom, ok: true, message: 'added to gba as Sample [patch].gba' });
 mock.remove_rom = async () => {};
 mock.remove_roms = async ({ paths }) => paths.map((p) => ({ source: p, ok: true, message: 'removed' }));
 mock.get_game_settings = async () => ({ ...mockGame });

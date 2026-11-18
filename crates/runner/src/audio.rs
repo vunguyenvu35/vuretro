@@ -24,10 +24,13 @@ pub struct AudioOut {
 }
 
 /// `gain` is the output level in percent (0 = muted); it can change while playing.
+/// `speed` is the game speed in percent (100 = normal): while fast-forwarding the core
+/// delivers more audio per second, so it is played that much faster (and higher).
 pub fn start(
     buffer: Arc<Mutex<VecDeque<i16>>>,
     core_rate: f64,
     gain: Arc<AtomicU32>,
+    speed: Arc<AtomicU32>,
 ) -> Result<AudioOut> {
     let host = cpal::default_host();
     let device = host
@@ -47,6 +50,7 @@ pub fn start(
         &config,
         move |out: &mut [f32], _| {
             let level = gain.load(Ordering::Relaxed) as f32 / 100.0;
+            let step = step * f64::from(speed.load(Ordering::Relaxed).max(1)) / 100.0;
             let mut q = buffer.lock().unwrap();
             let fill = (q.len() / 2) as f64;
             for frame in out.chunks_mut(channels) {

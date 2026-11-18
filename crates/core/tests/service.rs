@@ -216,6 +216,21 @@ impl Store for Fake {
 }
 
 impl Catalog for Fake {
+    fn apply_patch(&self, rom: &Path, patch: &Path) -> Result<ImportedRom, String> {
+        match patch.extension().and_then(|e| e.to_str()) {
+            Some("ips") if rom.starts_with("/data/roms") => Ok(ImportedRom {
+                system: "gba",
+                dest: rom.with_file_name("game [fix].gba"),
+                already_there: false,
+            }),
+            Some("ips") => Ok(ImportedRom {
+                system: "gba",
+                dest: rom.with_file_name("game [fix].gba"),
+                already_there: true,
+            }),
+            _ => Err("not a patch file (expected IPS, UPS or BPS)".into()),
+        }
+    }
     fn identify(&self, path: &Path) -> Option<String> {
         self.0.lock().unwrap().names.get(path).cloned()
     }
@@ -1139,7 +1154,7 @@ fn a_system_can_override_window_crt_and_rewind_while_the_rest_stays_general() {
             Override {
                 window_scale: Some(5),
                 crt: Some(true),
-                rewind: None,
+                ..Override::default()
             },
         )
         .unwrap();
@@ -1248,7 +1263,7 @@ fn one_game_can_override_on_top_of_its_system_and_other_games_are_untouched() {
             Override {
                 window_scale: Some(6),
                 crt: Some(true),
-                rewind: None,
+                ..Override::default()
             },
         )
         .unwrap();
@@ -1517,4 +1532,21 @@ fn previews_can_be_made_again_and_failed_ones_are_retried() {
     assert_eq!(a.regenerate_previews(), 2);
     assert!(f.0.lock().unwrap().covers.is_empty());
     assert_eq!(a.regenerate_previews(), 0);
+}
+
+#[test]
+fn applying_a_patch_reports_the_new_file_or_why_not() {
+    let f = ready_world();
+    let a = app(&f);
+    let ok = a.apply_patch("/data/roms/gba/game.gba".into(), "/p/fix.ips".into());
+    assert!(ok.ok);
+    assert_eq!(ok.message, "added to gba as game [fix].gba");
+    assert_eq!(ok.source, "/data/roms/gba/game.gba");
+
+    let again = a.apply_patch("/elsewhere/game.gba".into(), "/p/fix.ips".into());
+    assert!(again.ok && again.message == "already in the library");
+
+    let bad = a.apply_patch("/data/roms/gba/game.gba".into(), "/p/notes.txt".into());
+    assert!(!bad.ok);
+    assert!(bad.message.contains("not a patch"));
 }

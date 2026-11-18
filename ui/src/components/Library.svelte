@@ -1,7 +1,7 @@
 <script>
   import { chooseCover, resetCover, regenerateCovers } from '../lib/store.svelte.js';
 import { gameScope } from '../lib/scope.js';
-import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, covers, setLayout, pickRomFiles, pickRomFolder } from '../lib/store.svelte.js';
+import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, applyPatch, covers, setLayout, pickRomFiles, pickRomFolder } from '../lib/store.svelte.js';
   import { openMenu, confirmDialog } from '../lib/ui.svelte.js';
   import { visibleGames, lastPlayed, headingFor, pickRange, formatSize } from '../lib/library.js';
   import Welcome from "./Welcome.svelte";
@@ -199,6 +199,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
       { label: g.favorite ? 'Remove from favorites' : 'Add to favorites', hint: 'F', action: () => fav(g) },
       SEP,
       { label: 'Show in folder', action: () => api.reveal(g.path) },
+      { label: 'Apply patch…', action: () => applyPatch(g) },
       { label: 'Select…', disabled: !g.imported, action: () => pick(g) },
       SEP,
       { label: 'Remove from library…', danger: true, disabled: !g.imported, hint: g.imported ? '⌫' : '', action: () => remove(g) },

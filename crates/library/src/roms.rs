@@ -67,6 +67,11 @@ pub fn import_file(src: &Path, library: &Path, hint: Option<&str>) -> Result<Imp
     if is_bios_file(name) {
         return Err("this is a BIOS file, add it in Cores & BIOS".into());
     }
+    if vuretro_core::patch::is_patch_name(name) {
+        return Err(
+            "this is a patch, not a game: right-click a game and choose Apply patch…".into(),
+        );
+    }
     let ext = src
         .extension()
         .and_then(|e| e.to_str())
@@ -90,6 +95,66 @@ pub fn import_file(src: &Path, library: &Path, hint: Option<&str>) -> Result<Imp
         system: sys.id,
         dest,
         already_there,
+    })
+}
+
+/// Cartridge-sized files only: a patch is applied in memory, and discs are not patched.
+const MAX_PATCHABLE: u64 = 64 * 1024 * 1024;
+const NOT_PATCHABLE: [&str; 9] = ["zip", "7z", "rar", "chd", "cue", "m3u", "iso", "img", "pbp"];
+
+/// Apply an IPS, UPS or BPS `patch` to `rom` and put the patched copy into `library`, named
+/// `<game> [<patch>].<ext>` next to the other games of that system. The original is never
+/// changed. Running it again with the same files finds the copy already there.
+pub fn apply_patch(rom: &Path, patch: &Path, library: &Path) -> Result<Imported, String> {
+    let name = rom
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or("not a file")?;
+    let ext = rom
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_string();
+    if NOT_PATCHABLE.contains(&ext.to_ascii_lowercase().as_str()) {
+        return Err(format!(
+            "cannot patch .{ext} files: patch the game file inside it first"
+        ));
+    }
+    let sys = detect_system(rom.parent().unwrap_or(Path::new("")), rom)
+        .ok_or("cannot tell which system this game is for")?;
+    let size = std::fs::metadata(rom)
+        .map_err(|e| format!("cannot read {name}: {e}"))?
+        .len();
+    if size > MAX_PATCHABLE {
+        return Err("this file is too large to patch".into());
+    }
+    let rom_bytes = std::fs::read(rom).map_err(|e| format!("cannot read {name}: {e}"))?;
+    let patch_bytes = std::fs::read(patch).map_err(|e| format!("cannot read the patch: {e}"))?;
+    let patched = vuretro_core::patch::apply(&rom_bytes, &patch_bytes)?;
+
+    let stem = rom.file_stem().and_then(|s| s.to_str()).unwrap_or("game");
+    let patch_stem = patch
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("patched");
+    let dir = library.join(sys.folders[0]);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let dest = dir.join(format!("{stem} [{patch_stem}].{ext}"));
+    if std::fs::read(&dest).is_ok_and(|existing| existing == patched) {
+        return Ok(Imported {
+            system: sys.id,
+            dest,
+            already_there: true,
+        });
+    }
+    // under a temporary name, so an interrupted write never leaves a broken ROM
+    let tmp = dir.join(format!(".{stem}.patch.part"));
+    std::fs::write(&tmp, &patched).map_err(|e| format!("cannot write the patched game: {e}"))?;
+    std::fs::rename(&tmp, &dest).map_err(|e| format!("cannot finish the patched game: {e}"))?;
+    Ok(Imported {
+        system: sys.id,
+        dest,
+        already_there: false,
     })
 }
 
@@ -181,5 +246,90 @@ mod tests {
         // cannot delete things outside the library
         assert!(remove(lib.path(), &disc.join("g.bin")).is_err());
         assert!(disc.join("g.bin").is_file());
+    }
+
+    fn ips_patch(offset: usize, bytes: &[u8]) -> Vec<u8> {
+        let mut p = b"PATCH".to_vec();
+        p.extend_from_slice(&(offset as u32).to_be_bytes()[1..]);
+        p.extend_from_slice(&(bytes.len() as u16).to_be_bytes());
+        p.extend_from_slice(bytes);
+        p.extend_from_slice(b"EOF");
+        p
+    }
+
+    #[test]
+    fn a_patched_copy_goes_into_the_library_and_the_original_is_untouched() {
+        let src = tempfile::tempdir().unwrap();
+        let lib = tempfile::tempdir().unwrap();
+        let rom = src.path().join("metroid.gba");
+        fs::write(&rom, vec![1u8; 16]).unwrap();
+        let patch = src.path().join("Easy Mode.ips");
+        fs::write(&patch, ips_patch(4, &[9, 9])).unwrap();
+
+        let r = apply_patch(&rom, &patch, lib.path()).unwrap();
+        assert_eq!(r.system, "gba");
+        assert!(!r.already_there);
+        assert_eq!(r.dest, lib.path().join("gba/metroid [Easy Mode].gba"));
+        let out = fs::read(&r.dest).unwrap();
+        assert_eq!(&out[3..7], &[1, 9, 9, 1]);
+        assert_eq!(
+            fs::read(&rom).unwrap(),
+            vec![1u8; 16],
+            "the original stays as it was"
+        );
+
+        // the same files again: nothing is rewritten
+        assert!(apply_patch(&rom, &patch, lib.path()).unwrap().already_there);
+        // no temporary file is left behind
+        let names: Vec<_> = fs::read_dir(lib.path().join("gba"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert_eq!(names, vec!["metroid [Easy Mode].gba"]);
+    }
+
+    #[test]
+    fn patching_refuses_archives_discs_unknown_systems_and_broken_patches() {
+        let src = tempfile::tempdir().unwrap();
+        let lib = tempfile::tempdir().unwrap();
+        let patch = src.path().join("p.ips");
+        fs::write(&patch, ips_patch(0, &[1])).unwrap();
+
+        for name in ["game.zip", "game.chd", "game.cue"] {
+            let f = src.path().join(name);
+            fs::write(&f, b"x").unwrap();
+            let e = apply_patch(&f, &patch, lib.path()).unwrap_err();
+            assert!(e.contains("cannot patch"), "{name}: {e}");
+        }
+        let unknown = src.path().join("notes.txt");
+        fs::write(&unknown, b"x").unwrap();
+        assert!(apply_patch(&unknown, &patch, lib.path())
+            .unwrap_err()
+            .contains("which system"));
+
+        let rom = src.path().join("zelda.sfc");
+        fs::write(&rom, b"0123456789").unwrap();
+        let not_a_patch = src.path().join("readme.ips");
+        fs::write(&not_a_patch, b"hello").unwrap();
+        assert!(apply_patch(&rom, &not_a_patch, lib.path())
+            .unwrap_err()
+            .contains("not a patch"));
+        assert!(
+            !lib.path().join("snes").exists()
+                || fs::read_dir(lib.path().join("snes"))
+                    .unwrap()
+                    .next()
+                    .is_none()
+        );
+    }
+
+    #[test]
+    fn a_patch_file_is_not_imported_as_a_game_and_the_message_says_what_to_do() {
+        let src = tempfile::tempdir().unwrap();
+        let lib = tempfile::tempdir().unwrap();
+        let patch = src.path().join("Translation.bps");
+        fs::write(&patch, b"BPS1").unwrap();
+        let e = import_file(&patch, lib.path(), Some("gba")).unwrap_err();
+        assert!(e.contains("Apply patch"), "{e}");
     }
 }

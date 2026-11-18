@@ -21,8 +21,13 @@ fn dim(p: u32, level: u32) -> u32 {
 
 /// Returns the enlarged picture with its new width and height.
 pub fn apply(buf: &[u32], w: usize, h: usize) -> (Vec<u32>, usize, usize) {
-    let k = factor_for(h);
-    if k == 1 || buf.len() < w * h || w == 0 {
+    apply_with(buf, w, h, factor_for(h))
+}
+
+/// Like [`apply`], enlarging by a whole factor `k` chosen by the caller (the window
+/// scaling it fits). With `k` below 2 there is no room for a gap, so nothing changes.
+pub fn apply_with(buf: &[u32], w: usize, h: usize, k: usize) -> (Vec<u32>, usize, usize) {
+    if k < 2 || buf.len() < w * h || w == 0 {
         return (buf.to_vec(), w, h);
     }
     let (ow, oh) = (w * k, h * k);
@@ -70,6 +75,16 @@ mod tests {
         assert_eq!(gap & 0xff, 0x95, "150/256 of 255");
         assert_eq!(out[15] & 0xff00, 0, "dimming keeps a red pixel red");
         assert!(out[15] >> 16 > 0);
+    }
+
+    #[test]
+    fn the_caller_can_choose_the_factor() {
+        let buf = vec![0x00FF_FFFF; 4];
+        let (out, w, h) = apply_with(&buf, 2, 2, 2);
+        assert_eq!((w, h), (4, 4));
+        assert_eq!(out[0], 0xFFFFFF); // first row of a group: full
+        assert!(out[4] < 0xFFFFFF); // last row of a group: the gap
+        assert_eq!(apply_with(&buf, 2, 2, 1).0, buf, "1x: nothing to do");
     }
 
     #[test]

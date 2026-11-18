@@ -66,7 +66,7 @@ The screenshot uses sample data. Details and the other screens: [docs/UI.md](doc
 | `Right Shift` or `5` | Select | Coin |
 | `Q` / `E` / `W` / `R` | L / R / L2 / R2 | |
 
-Hotkeys: `Esc` quit · `F5` save state · `F7` load state · `F6` change slot · hold `Tab` to fast-forward · `F2` reset.
+Hotkeys: `Esc` quit · `F5` save state · `F7` load state · `F6` change slot · hold `Tab` to fast-forward (`F1` to leave it on) · `F2` reset. On a gamepad hold `Select` plus another button. Full list: [docs/USAGE.md](docs/USAGE.md#5-in-the-game-window).
 Gamepads (Xbox, DualSense, Switch Pro…) are detected automatically; the second pad is player 2.
 
 ## Layout

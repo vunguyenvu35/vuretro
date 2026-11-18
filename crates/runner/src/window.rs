@@ -40,7 +40,16 @@ pub enum Act {
     Size(u8),
     Screenshot,
     Crt,
+    Lcd,
     NextDisc,
+    /// Fast-forward stays on until pressed again.
+    FastForwardToggle,
+    SlowMotion,
+    /// Choose the fast-forward multiple (2, 3, 4 or 8).
+    Speed(u8),
+    Fullscreen,
+    /// One slot back (the gamepad shortcut for the previous slot).
+    PrevSlot,
     Quit,
 }
 
@@ -60,6 +69,12 @@ pub fn act_id(a: Act) -> usize {
         Act::Screenshot => 9,
         Act::Crt => 40,
         Act::NextDisc => 41,
+        Act::FastForwardToggle => 42,
+        Act::SlowMotion => 43,
+        Act::Fullscreen => 44,
+        Act::Lcd => 45,
+        Act::PrevSlot => 46,
+        Act::Speed(n) => 50 + n as usize,
         Act::Quit => 30,
     }
 }
@@ -76,12 +91,22 @@ pub fn act_from_id(id: usize) -> Option<Act> {
         Act::SizeStep(1),
         Act::Screenshot,
         Act::Crt,
+        Act::Lcd,
         Act::NextDisc,
+        Act::FastForwardToggle,
+        Act::SlowMotion,
+        Act::Fullscreen,
+        Act::PrevSlot,
         Act::Quit,
     ];
     all.into_iter()
         .chain((1..=SLOTS).map(Act::Slot))
         .chain((1..=4).map(Act::Size))
+        .chain(
+            vuretro_settings::FAST_FORWARD_SPEEDS
+                .into_iter()
+                .map(Act::Speed),
+        )
         .find(|a| act_id(*a) == id)
 }
 
@@ -90,9 +115,13 @@ pub fn window_title(
     base: &str,
     holding: bool,
     slow_fps: Option<u32>,
+    speed: Option<&str>,
     notice: &Option<(String, std::time::Instant)>,
 ) -> String {
     let mut t = base.to_string();
+    if let Some(speed) = speed {
+        t.push_str(&format!(" ({speed})"));
+    }
     if let Some(fps) = slow_fps {
         t.push_str(&format!(" (slow: about {fps} fps)"));
     }
@@ -135,6 +164,55 @@ pub fn pace(deadline: &mut std::time::Instant, frame_time: std::time::Duration) 
 #[cfg(test)]
 mod pause_tests {
     use super::*;
+
+    #[test]
+    fn every_action_has_its_own_menu_id_and_maps_back() {
+        let mut acts = vec![
+            Act::SaveState,
+            Act::LoadState,
+            Act::NextSlot,
+            Act::Reset,
+            Act::Pause,
+            Act::Mute,
+            Act::SizeStep(-1),
+            Act::SizeStep(1),
+            Act::Screenshot,
+            Act::Crt,
+            Act::Lcd,
+            Act::NextDisc,
+            Act::FastForwardToggle,
+            Act::SlowMotion,
+            Act::Fullscreen,
+            Act::PrevSlot,
+            Act::Quit,
+        ];
+        acts.extend((1..=SLOTS).map(Act::Slot));
+        acts.extend((1..=4).map(Act::Size));
+        acts.extend(
+            vuretro_settings::FAST_FORWARD_SPEEDS
+                .into_iter()
+                .map(Act::Speed),
+        );
+        let mut ids = std::collections::HashSet::new();
+        for a in acts {
+            assert!(
+                ids.insert(act_id(a)),
+                "{a:?} shares its id with another action"
+            );
+            assert_eq!(act_from_id(act_id(a)), Some(a), "{a:?}");
+        }
+    }
+
+    #[test]
+    fn title_shows_speed_pause_and_notice() {
+        let none: Option<(String, std::time::Instant)> = None;
+        assert_eq!(window_title("G", false, None, None, &none), "G");
+        assert_eq!(
+            window_title("G", false, None, Some("fast-forward 4×"), &none),
+            "G (fast-forward 4×)"
+        );
+        assert!(window_title("G", true, None, None, &none).contains("paused"));
+    }
 
     #[test]
     fn gain_is_zero_when_muted_or_paused() {

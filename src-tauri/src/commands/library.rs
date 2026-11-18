@@ -20,6 +20,17 @@ pub async fn import_roms(
     blocking(move || app.import_roms(paths, system)).await
 }
 
+/// Make a patched copy of a game (IPS, UPS or BPS patch) in the library.
+#[tauri::command]
+pub async fn apply_patch(
+    shell: State<'_, Shell>,
+    rom: String,
+    patch: String,
+) -> Result<Outcome, String> {
+    let app = shell.app.clone();
+    blocking(move || app.apply_patch(rom, patch)).await
+}
+
 #[tauri::command]
 pub fn import_bios(shell: State<'_, Shell>, paths: Vec<String>) -> Vec<Outcome> {
     shell.app.import_bios(paths)

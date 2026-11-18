@@ -7,7 +7,7 @@
   import Select from './Select.svelte';
   import ScopeBar from './ScopeBar.svelte';
   import { parseScope } from '../lib/scope.js';
-  import { ACTIONS, HOTKEYS, RESERVED, keyName, keyLabel, padLabel, deviceValue, parseDevice } from '../lib/controls.js';
+  import { ACTIONS, HOTKEYS, PAD_HOTKEYS, RESERVED, keyName, keyLabel, padLabel, deviceValue, parseDevice } from '../lib/controls.js';
 
   let cfg = $state(null);
   /** this system has key bindings of its own (otherwise it uses the general ones) */
@@ -276,10 +276,18 @@
     <h2 class="sec">Hotkeys in a game</h2>
     <div class="keys">
       {#each HOTKEYS as h (h.what)}
-        <div class="key"><kbd>{h.keys[0]}</kbd>{#if h.also}<kbd>{h.also[0]}</kbd>{/if}<span>{h.what}</span></div>
+        <div class="key">{#each h.keys as k (k)}<kbd>{k}</kbd>{/each}{#if h.also}<span class="or">or</span>{#each h.also as k (k)}<kbd>{k}</kbd>{/each}{/if}<span>{h.what}</span></div>
       {/each}
     </div>
     <p class="foot">These keys are fixed and cannot be used as buttons. Library search: <kbd>{modKey}</kbd> <kbd>K</kbd>.</p>
+
+    <h2 class="sec">Gamepad shortcuts in a game</h2>
+    <div class="keys">
+      {#each PAD_HOTKEYS as h (h.what)}
+        <div class="key">{#each h.keys as k (k)}<kbd>{k}</kbd>{/each}{#if h.also}<span class="or">or</span>{#each h.also as k (k)}<kbd>{k}</kbd>{/each}{/if}<span>{h.what}</span></div>
+      {/each}
+    </div>
+    <p class="foot">Hold <kbd>Select</kbd> and press the other button. While you do, the game does not see those presses.</p>
   {/if}
 </section>
 
@@ -354,8 +362,9 @@
   .add:hover { border-color: var(--accent); color: var(--accent); }
   @keyframes pulse { 50% { background: color-mix(in srgb, var(--accent) 14%, var(--surface-2)); } }
 
-  .keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+  .keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 10px; }
   .key { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
+  .key .or { color: var(--muted); font-size: 12px; }
   kbd { font: 12px var(--font-mono); background: var(--surface-2); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 2px 8px; }
   .foot { color: var(--faint); margin-top: 12px; }
   @media (max-width: 980px) { .players { grid-template-columns: 1fr; } }

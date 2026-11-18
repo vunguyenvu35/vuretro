@@ -13,12 +13,17 @@ pub const RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: c_uint = 9;
 pub const RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: c_uint = 10;
 pub const RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS: c_uint = 11;
 pub const RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE: c_uint = 13;
+pub const RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE: c_uint = 23;
 pub const RETRO_ENVIRONMENT_GET_VARIABLE: c_uint = 15;
 pub const RETRO_ENVIRONMENT_SET_VARIABLES: c_uint = 16;
 pub const RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: c_uint = 17;
 pub const RETRO_ENVIRONMENT_GET_LOG_INTERFACE: c_uint = 27;
 pub const RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY: c_uint = 30;
 pub const RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: c_uint = 31;
+
+// Rumble effects (`retro_rumble_interface::set_rumble_state`)
+pub const RETRO_RUMBLE_STRONG: c_uint = 0;
+pub const RETRO_RUMBLE_WEAK: c_uint = 1;
 
 // Pixel formats
 // Memory regions
@@ -127,4 +132,12 @@ pub type retro_input_state_t =
 #[repr(C)]
 pub struct retro_log_callback {
     pub log: Option<unsafe extern "C" fn(level: c_int, fmt: *const c_char)>,
+}
+
+/// The rumble function a core asks the frontend for (`GET_RUMBLE_INTERFACE`).
+/// `effect` is [`RETRO_RUMBLE_STRONG`] or [`RETRO_RUMBLE_WEAK`]; `strength` 0 stops it.
+#[repr(C)]
+pub struct retro_rumble_interface {
+    pub set_rumble_state:
+        Option<unsafe extern "C" fn(port: c_uint, effect: c_uint, strength: u16) -> bool>,
 }

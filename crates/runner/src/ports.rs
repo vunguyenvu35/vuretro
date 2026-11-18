@@ -2,6 +2,7 @@
 //! emulator, a controller and a source of frames. The real ones are in `screen.rs` and
 //! `real.rs`; the session tests use fakes.
 
+use crate::window::Act;
 use anyhow::Result;
 use minifb::Key;
 use std::path::Path;
@@ -12,6 +13,15 @@ pub type Frame = (Vec<u32>, usize, usize);
 /// Keyboard state, as the controller polls it.
 pub trait Keyboard {
     fn key_down(&self, key: Key) -> bool;
+}
+
+/// How the picture sits in the window.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct View {
+    /// A borderless window the size of the display.
+    pub fullscreen: bool,
+    /// Whole-number scaling with black borders; the session prepares the enlarged picture.
+    pub integer: bool,
 }
 
 /// The game window.
@@ -26,8 +36,24 @@ pub trait Screen: Keyboard {
     /// Keep the window alive without a new picture.
     fn idle(&mut self);
     fn set_title(&mut self, title: &str);
-    /// Replace the window by one of another size, at the same place.
-    fn reopen(&mut self, title: &str, base_w: usize, base_h: usize, factor: usize) -> Result<()>;
+    /// Replace the window by one of another size or view, at the same place (a full-screen
+    /// window covers the display instead).
+    fn reopen(
+        &mut self,
+        title: &str,
+        base_w: usize,
+        base_h: usize,
+        factor: usize,
+        view: View,
+    ) -> Result<()>;
+    /// Size of the area the picture is drawn in, in pixels.
+    fn size(&self) -> (usize, usize);
+    /// The view the window really has (a full screen that could not be made is not one).
+    fn view(&self) -> View;
+    /// Whether this system can show a full-screen window.
+    fn can_fullscreen(&self) -> bool {
+        true
+    }
 }
 
 /// The libretro core.
@@ -44,9 +70,24 @@ pub trait Emulator {
     }
 }
 
+/// Frontend actions asked for from a gamepad (a chord on the Select button).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Hotkeys {
+    /// Actions asked for since the last call (one per press).
+    pub acts: Vec<Act>,
+    /// Fast-forward is held.
+    pub fast_forward: bool,
+    /// Rewind is held.
+    pub rewind: bool,
+}
+
 /// Turns keyboard and gamepads into the game's buttons.
 pub trait Controller {
     fn poll(&mut self, screen: &dyn Screen);
+    /// Gamepad hotkeys. Called every frame, also while the game is paused.
+    fn hotkeys(&mut self, _screen: &dyn Screen) -> Hotkeys {
+        Hotkeys::default()
+    }
 }
 
 /// Video frames the core has produced.

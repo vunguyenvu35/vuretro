@@ -3,10 +3,14 @@
 //! screen: arrows = D-pad, Z/X/A/S = B/A/Y/X, Enter = Start, RShift = Select.
 
 use crate::frontend::{self, MAX_PORTS};
-use crate::ports::Keyboard;
-use gilrs::{Button, Gilrs};
+use crate::padkeys::{self, PadKeys};
+use crate::ports::{Hotkeys, Keyboard};
+use crate::rumble;
+use gilrs::ff::{BaseEffect, BaseEffectType, EffectBuilder, Repeat, Replay, Ticks};
+use gilrs::{Button, GamepadId, Gilrs};
 use libretro_sys::*;
 use minifb::Key;
+use std::collections::HashMap;
 use vuretro_controls::macros::{Engine, Macro};
 use vuretro_controls::{assign, ControlsConfig, PadInfo, PortSource, ACTIONS};
 
@@ -75,7 +79,6 @@ const KEYS: &[(&str, Key)] = &[
     ("Right", Key::Right),
     ("Enter", Key::Enter),
     ("Space", Key::Space),
-    ("Backspace", Key::Backspace),
     ("LeftShift", Key::LeftShift),
     ("RightShift", Key::RightShift),
     ("LeftCtrl", Key::LeftCtrl),
@@ -191,6 +194,13 @@ pub struct Input {
     engine: Engine,
     triggers: Vec<(Option<Key>, Option<Button>)>,
     last: [[bool; JOYPAD_BUTTON_COUNT]; MAX_PORTS],
+    /// Frontend hotkeys (Select + button), told apart per gamepad.
+    pad_keys: HashMap<GamepadId, PadKeys>,
+    /// Vibrate gamepads when the game asks for it.
+    rumble_on: bool,
+    rumble: rumble::Tracker,
+    /// The vibration running on each port; dropping one stops it.
+    effects: [Option<gilrs::ff::Effect>; MAX_PORTS],
 }
 
 impl Input {
@@ -223,6 +233,93 @@ impl Input {
                 .collect(),
             engine: Engine::new(macros, fps),
             last: [[false; JOYPAD_BUTTON_COUNT]; MAX_PORTS],
+            pad_keys: HashMap::new(),
+            rumble_on: true,
+            rumble: rumble::Tracker::default(),
+            effects: Default::default(),
+        }
+    }
+
+    /// Switch gamepad vibration on or off (the `rumble` setting).
+    pub fn with_rumble(mut self, on: bool) -> Self {
+        self.rumble_on = on;
+        self
+    }
+
+    /// Gamepad hotkeys: Select held together with another button (see `padkeys`).
+    pub fn hotkeys(&mut self) -> Hotkeys {
+        let Some(g) = self.gilrs.as_mut() else {
+            return Hotkeys::default();
+        };
+        while g.next_event().is_some() {} // keep cached state fresh
+        let mut out = Hotkeys::default();
+        let ids: Vec<GamepadId> = g
+            .gamepads()
+            .filter(|(_, p)| p.is_connected())
+            .map(|(id, _)| id)
+            .collect();
+        self.pad_keys.retain(|id, _| ids.contains(id));
+        for id in ids {
+            let pad = g.gamepad(id);
+            let hk = self
+                .pad_keys
+                .entry(id)
+                .or_default()
+                .read(|b| pad.is_pressed(b));
+            out.acts.extend(hk.acts);
+            out.fast_forward |= hk.fast_forward;
+            out.rewind |= hk.rewind;
+        }
+        out
+    }
+
+    /// Pass the core's rumble requests on to the gamepad of each port. Does nothing on
+    /// systems or pads without force feedback.
+    fn drive_rumble(&mut self, pads: &[(GamepadId, PadInfo)], sources: &[PortSource; MAX_PORTS]) {
+        let wanted = if self.rumble_on {
+            frontend::with(|fe| fe.rumble)
+        } else {
+            [[0; 2]; MAX_PORTS]
+        };
+        for (port, r) in self.rumble.changes(wanted) {
+            self.effects[port] = None; // stops the old one
+            if !rumble::is_on(r) {
+                continue;
+            }
+            let (Some(idx), Some(g)) = (sources[port].pad, self.gilrs.as_mut()) else {
+                self.rumble.forget(port); // no pad now: try again when there is one
+                continue;
+            };
+            let id = pads[idx].0;
+            if !g.gamepad(id).is_ff_supported() {
+                continue;
+            }
+            let forever = Replay {
+                play_for: Ticks::from_ms(1000),
+                ..Default::default()
+            };
+            let effect = EffectBuilder::new()
+                .add_effect(BaseEffect {
+                    kind: BaseEffectType::Strong { magnitude: r[0] },
+                    scheduling: forever,
+                    envelope: Default::default(),
+                })
+                .add_effect(BaseEffect {
+                    kind: BaseEffectType::Weak { magnitude: r[1] },
+                    scheduling: forever,
+                    envelope: Default::default(),
+                })
+                .repeat(Repeat::Infinitely)
+                .gamepads(&[id])
+                .finish(g);
+            match effect {
+                Ok(e) => {
+                    if e.play().is_ok() {
+                        self.effects[port] = Some(e);
+                    }
+                }
+                Err(e) => log::debug!("rumble not available: {e}"),
+            }
         }
     }
 
@@ -254,6 +351,15 @@ impl Input {
         let pads = self.pads();
         let infos: Vec<PadInfo> = pads.iter().map(|(_, i)| i.clone()).collect();
         let sources: [PortSource; MAX_PORTS] = assign(&self.cfg, &infos);
+        // a pad whose Select is held with a hotkey button is talking to the frontend
+        let chording: Vec<bool> = pads
+            .iter()
+            .map(|(id, _)| {
+                self.gilrs
+                    .as_ref()
+                    .is_some_and(|g| padkeys::chord_active(|b| g.gamepad(*id).is_pressed(b)))
+            })
+            .collect();
 
         for (port, src) in sources.iter().enumerate() {
             let Some(b) = self.bindings.get(port) else {
@@ -266,7 +372,7 @@ impl Input {
                     }
                 }
             }
-            if let (Some(idx), Some(g)) = (src.pad, self.gilrs.as_ref()) {
+            if let (Some(idx), Some(g)) = (src.pad.filter(|i| !chording[*i]), self.gilrs.as_ref()) {
                 let pad = g.gamepad(pads[idx].0);
                 for &(btn, id) in &b.buttons {
                     if pad.is_pressed(btn) {
@@ -319,6 +425,7 @@ impl Input {
             self.last = state;
         }
         frontend::with(|fe| fe.buttons = state);
+        self.drive_rumble(&pads, &sources);
     }
 }
 
@@ -347,7 +454,21 @@ mod tests {
 
     #[test]
     fn reserved_keys_are_not_bindable() {
-        for reserved in ["Escape", "Tab", "P", "F2", "F3", "F5", "F6", "F7"] {
+        // Backspace rewinds, F1 and F4 are fast-forward and the picture look, F11 changes discs
+        for reserved in [
+            "Escape",
+            "Tab",
+            "P",
+            "Backspace",
+            "F1",
+            "F2",
+            "F3",
+            "F4",
+            "F5",
+            "F6",
+            "F7",
+            "F11",
+        ] {
             assert!(parse_key(reserved).is_none(), "{reserved}");
         }
     }

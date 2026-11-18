@@ -2,15 +2,15 @@
 //! Built from ports (see `ports.rs`), so it runs against fakes in tests; `real::open`
 //! builds the real one. [`Session::run`] plays until the window closes.
 
-use crate::cover;
-use crate::crt;
 use crate::perf::{self, PerfMonitor, Status};
-use crate::ports::{Controller, Emulator, Frame, FrameSource, Screen};
+use crate::ports::{Controller, Emulator, Frame, FrameSource, Screen, View};
 use crate::rewind::Rewind;
+use crate::speed::{self, Mode};
 use crate::window::{self, clamp_scale, gain_for, pace, paused_overlay, window_title, Act, SLOTS};
+use crate::{cover, crt, lcd, scale};
 use anyhow::Result;
 use minifb::Key;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -20,7 +20,6 @@ use vuretro_settings::GameSettings;
 /// Rewind keeps a state every this many frames, up to this much memory.
 const REWIND_EVERY: u64 = 2;
 const REWIND_BYTES: usize = 64 * 1024 * 1024;
-const FAST_FORWARD_FRAMES: usize = 4;
 const SRAM_AUTOSAVE: Duration = Duration::from_secs(30);
 
 /// What a session needs, built either from the real machine (`real::open`) or from fakes.
@@ -31,6 +30,8 @@ pub struct Parts {
     pub frames: Box<dyn FrameSource>,
     /// Output level in percent, read by the audio thread.
     pub gain: Arc<AtomicU32>,
+    /// Game speed in percent (100 = normal), read by the audio thread.
+    pub speed: Arc<AtomicU32>,
     /// Held for as long as the session lives (the audio stream).
     pub keep_alive: Box<dyn std::any::Any>,
 }
@@ -58,12 +59,20 @@ pub struct Config {
     pub start_slot: Option<u8>,
 }
 
+/// How loading a saved state went.
+enum Loaded {
+    Yes,
+    Rejected,
+    Missing,
+}
+
 pub struct Session {
     screen: Box<dyn Screen>,
     emulator: Box<dyn Emulator>,
     controller: Box<dyn Controller>,
     frames: Box<dyn FrameSource>,
     gain: Arc<AtomicU32>,
+    speed_percent: Arc<AtomicU32>,
     _keep_alive: Box<dyn std::any::Any>,
     settings: GameSettings,
     settings_path: PathBuf,
@@ -80,6 +89,7 @@ pub struct Session {
     base_w: usize,
     base_h: usize,
     factor: usize,
+    view: View,
 
     frame_time: Duration,
     deadline: Instant,
@@ -91,6 +101,16 @@ pub struct Session {
     slow_fps: Option<u32>,
     frames_run: u64,
     crt: bool,
+    lcd: bool,
+    /// Fast-forward key (or pad chord) is down right now.
+    ff_held: bool,
+    /// Fast-forward was switched on and stays on.
+    ff_latched: bool,
+    slow_motion: bool,
+    rewind_held: bool,
+    mode: Mode,
+    /// What the loop does at the current speed.
+    plan: speed::Plan,
     slot: u8,
     start_slot: Option<u8>,
     sound_on: bool,
@@ -108,13 +128,16 @@ impl Session {
     pub fn new(parts: Parts, cfg: Config) -> Self {
         let title = format!("Vuretro — {}", cfg.rom_name);
         let crt = cfg.settings.crt;
+        let lcd = cfg.settings.lcd;
         let rewind = cfg.settings.rewind.then(|| Rewind::new(REWIND_BYTES));
+        let view = parts.screen.view();
         Session {
             screen: parts.screen,
             emulator: parts.emulator,
             controller: parts.controller,
             frames: parts.frames,
             gain: parts.gain,
+            speed_percent: parts.speed,
             _keep_alive: parts.keep_alive,
             sound_on: cfg.settings.sound,
             settings: cfg.settings,
@@ -131,6 +154,7 @@ impl Session {
             base_w: cfg.base_w,
             base_h: cfg.base_h,
             factor: cfg.factor,
+            view,
             // Frame pacing is done against absolute deadlines: minifb's own limiter
             // sleeps a fixed amount per frame, so it drifts (57 fps instead of 59.18)
             // and the audio then underruns.
@@ -142,6 +166,13 @@ impl Session {
             perf: PerfMonitor::new(Duration::from_secs_f64(1.0 / cfg.fps), perf::WINDOW),
             slow_fps: None,
             crt,
+            lcd,
+            ff_held: false,
+            ff_latched: false,
+            slow_motion: false,
+            rewind_held: false,
+            mode: Mode::Normal,
+            plan: speed::plan(100),
             slot: 1,
             start_slot: cfg.start_slot.filter(|n| (1..=SLOTS).contains(n)),
             paused: false,
@@ -153,12 +184,24 @@ impl Session {
         }
     }
 
+    /// Where the game is saved when the window closes, to carry on from there.
+    fn auto_state_path(&self) -> PathBuf {
+        self.save_dir.join(format!("{}.stateauto", self.rom_name))
+    }
+
     /// Play until the window closes, then save.
     pub fn run(mut self) -> Result<()> {
         if let Some(n) = self.start_slot.take() {
             self.slot = n;
             let note = self.apply(Act::LoadState)?;
             self.notice = note.map(|t| (t, Instant::now()));
+        } else if self.settings.resume && self.auto_state_path().is_file() {
+            let path = self.auto_state_path();
+            let note = match self.load_state_file(&path) {
+                Loaded::Yes => "carried on from where you left off",
+                _ => "could not carry on from the last game: starting over",
+            };
+            self.notice = Some((note.to_string(), Instant::now()));
         }
         while self.screen.is_open() && !self.quit && !self.screen.key_down(Key::Escape) {
             self.frame()?;
@@ -169,12 +212,18 @@ impl Session {
 
     /// One pass of the loop: handle input, then either show the paused picture or run the core.
     fn frame(&mut self) -> Result<()> {
-        for act in self.pending_actions() {
+        let hotkeys = self.controller.hotkeys(&*self.screen);
+        let mut acts = self.pending_actions();
+        acts.extend(hotkeys.acts);
+        for act in acts {
             if let Some(msg) = self.apply(act)? {
                 log::info!("{msg}");
                 self.notice = Some((msg, Instant::now()));
             }
         }
+        self.ff_held = self.screen.key_down(Key::Tab) || hotkeys.fast_forward;
+        self.rewind_held = self.screen.key_down(Key::Backspace) || hotkeys.rewind;
+        self.update_speed();
         self.update_hold();
         self.update_title();
 
@@ -187,16 +236,19 @@ impl Session {
                 }
                 _ => self.screen.idle(),
             }
+            pace(&mut self.deadline, self.frame_time);
         } else {
             self.autosave_sram();
             self.run_core()?;
+            pace(&mut self.deadline, self.frame_time * self.plan.stretch);
         }
-        pace(&mut self.deadline, self.frame_time);
         Ok(())
     }
 
     /// Hotkeys and menu choices end up as the same list of actions.
     fn pending_actions(&mut self) -> Vec<Act> {
+        let shift = self.screen.key_down(Key::LeftShift) || self.screen.key_down(Key::RightShift);
+        let alt = self.screen.key_down(Key::LeftAlt) || self.screen.key_down(Key::RightAlt);
         let mut acts: Vec<Act> = [
             (Key::F5, Act::SaveState),
             (Key::F7, Act::LoadState),
@@ -208,13 +260,24 @@ impl Session {
             (Key::F3, Act::Pause),
             (Key::P, Act::Pause), // no Fn needed on a laptop keyboard
             (Key::F12, Act::Screenshot),
-            (Key::F4, Act::Crt),
+            (Key::F4, if shift { Act::Lcd } else { Act::Crt }),
+            (
+                Key::F1,
+                if shift {
+                    Act::SlowMotion
+                } else {
+                    Act::FastForwardToggle
+                },
+            ),
             (Key::F11, Act::NextDisc),
         ]
         .into_iter()
         .filter(|(k, _)| self.screen.key_pressed(*k))
         .map(|(_, a)| a)
         .collect();
+        if alt && self.screen.key_pressed(Key::Enter) {
+            acts.push(Act::Fullscreen);
+        }
         while let Some(id) = self.screen.menu_pressed() {
             acts.extend(window::act_from_id(id));
         }
@@ -236,6 +299,19 @@ impl Session {
         }
     }
 
+    /// Hand a saved state to the core.
+    fn load_state_file(&mut self, path: &Path) -> Loaded {
+        // older states belong to a timeline that no longer exists
+        if let Some(r) = self.rewind.as_mut() {
+            r.clear();
+        }
+        match std::fs::read(path) {
+            Ok(data) if self.emulator.load_state(&data) => Loaded::Yes,
+            Ok(_) => Loaded::Rejected,
+            Err(_) => Loaded::Missing,
+        }
+    }
+
     /// Carry out one action; the returned text is shown in the title bar for a moment.
     fn apply(&mut self, act: Act) -> Result<Option<String>> {
         Ok(match act {
@@ -250,20 +326,20 @@ impl Session {
                 None => "this core has no save states".to_string(),
             }),
             Act::LoadState => {
-                // older states belong to a timeline that no longer exists
-                if let Some(r) = self.rewind.as_mut() {
-                    r.clear();
-                }
-                Some(match std::fs::read(self.state_path(self.slot)) {
-                    Ok(data) if self.emulator.load_state(&data) => {
-                        format!("loaded slot {}", self.slot)
-                    }
-                    Ok(_) => format!("slot {} was rejected by the core", self.slot),
-                    Err(_) => format!("slot {} is empty", self.slot),
+                let slot = self.slot;
+                let path = self.state_path(slot);
+                Some(match self.load_state_file(&path) {
+                    Loaded::Yes => format!("loaded slot {slot}"),
+                    Loaded::Rejected => format!("slot {slot} was rejected by the core"),
+                    Loaded::Missing => format!("slot {slot} is empty"),
                 })
             }
             Act::NextSlot => {
                 self.slot = self.slot % SLOTS + 1;
+                Some(format!("slot {}", self.slot))
+            }
+            Act::PrevSlot => {
+                self.slot = (self.slot + SLOTS - 2) % SLOTS + 1;
                 Some(format!("slot {}", self.slot))
             }
             Act::Slot(n) => {
@@ -280,9 +356,7 @@ impl Session {
             }
             Act::Mute => {
                 self.sound_on = !self.sound_on;
-                if !self.holding {
-                    self.set_gain();
-                }
+                self.set_gain();
                 Some(format!(
                     "sound {}",
                     if self.sound_on { "on" } else { "off" }
@@ -294,7 +368,11 @@ impl Session {
                     Act::SizeStep(d) => clamp_scale((self.factor as i32 + d).max(1) as u8),
                     _ => self.factor,
                 };
-                if wanted != self.factor {
+                if wanted != self.factor || self.view.fullscreen {
+                    // a new size means a window again, not the full screen
+                    self.view.fullscreen = false;
+                    self.settings.fullscreen = false;
+                    self.persist(Change::Fullscreen(false));
                     self.resize(wanted)?;
                 }
                 Some(format!("size {}×", self.factor))
@@ -303,10 +381,64 @@ impl Session {
                 self.crt = !self.crt;
                 self.settings.crt = self.crt;
                 self.persist(Change::Crt(self.crt));
+                if self.crt && self.lcd {
+                    self.lcd = false;
+                    self.settings.lcd = false;
+                    self.persist(Change::Lcd(false));
+                }
                 Some(format!(
                     "CRT effect {}",
                     if self.crt { "on" } else { "off" }
                 ))
+            }
+            Act::Lcd => {
+                self.lcd = !self.lcd;
+                self.settings.lcd = self.lcd;
+                self.persist(Change::Lcd(self.lcd));
+                if self.lcd && self.crt {
+                    self.crt = false;
+                    self.settings.crt = false;
+                    self.persist(Change::Crt(false));
+                }
+                Some(format!(
+                    "LCD effect {}",
+                    if self.lcd { "on" } else { "off" }
+                ))
+            }
+            Act::FastForwardToggle => {
+                self.ff_latched = !self.ff_latched;
+                Some(if self.ff_latched {
+                    format!("fast-forward {}× on", self.settings.fast_forward)
+                } else {
+                    "fast-forward off".to_string()
+                })
+            }
+            Act::SlowMotion => {
+                self.slow_motion = !self.slow_motion;
+                Some(format!(
+                    "slow motion {}",
+                    if self.slow_motion { "on" } else { "off" }
+                ))
+            }
+            Act::Speed(n) => {
+                let n = vuretro_settings::snap_fast_forward(n);
+                self.settings.fast_forward = n;
+                self.persist(Change::FastForward(n));
+                Some(format!("fast-forward speed {n}×"))
+            }
+            Act::Fullscreen => {
+                if !self.screen.can_fullscreen() {
+                    Some("full screen is not available on this system yet".to_string())
+                } else {
+                    self.view.fullscreen = !self.view.fullscreen;
+                    self.settings.fullscreen = self.view.fullscreen;
+                    self.persist(Change::Fullscreen(self.view.fullscreen));
+                    self.resize(self.factor)?;
+                    Some(format!(
+                        "full screen {}",
+                        if self.view.fullscreen { "on" } else { "off" }
+                    ))
+                }
             }
             Act::NextDisc => Some(
                 self.emulator
@@ -321,16 +453,31 @@ impl Session {
         })
     }
 
+    /// Output level: muted while paused, in slow motion, and (by choice) while fast-forwarding.
     fn set_gain(&self) {
+        let silent = self.holding || speed::silent(self.mode, self.settings.ff_sound);
         self.gain.store(
-            gain_for(self.sound_on, self.settings.volume, self.holding),
+            gain_for(self.sound_on, self.settings.volume, silent),
             Ordering::Relaxed,
         );
     }
 
+    /// Work out the speed for this pass of the loop and tell the audio about it.
+    fn update_speed(&mut self) {
+        let mode = speed::mode(self.ff_held || self.ff_latched, self.slow_motion);
+        let percent = speed::percent(mode, self.settings.fast_forward);
+        self.plan = speed::plan(percent);
+        self.speed_percent.store(percent, Ordering::Relaxed);
+        if mode != self.mode {
+            self.mode = mode;
+            self.set_gain();
+        }
+    }
+
     fn resize(&mut self, wanted: usize) -> Result<()> {
         self.screen
-            .reopen(&self.title, self.base_w, self.base_h, wanted)?;
+            .reopen(&self.title, self.base_w, self.base_h, wanted, self.view)?;
+        self.view = self.screen.view();
         self.shown_title.clear();
         self.factor = wanted;
         self.settings.window_scale = wanted as u8;
@@ -391,7 +538,15 @@ impl Session {
     }
 
     fn update_title(&mut self) {
-        let wanted = window_title(&self.title, self.holding, self.slow_fps, &self.notice);
+        let label = (self.mode != Mode::Normal)
+            .then(|| speed::label(self.mode, self.settings.fast_forward));
+        let wanted = window_title(
+            &self.title,
+            self.holding,
+            self.slow_fps,
+            label.as_deref(),
+            &self.notice,
+        );
         if wanted != self.shown_title {
             self.screen.set_title(&wanted);
             self.shown_title = wanted;
@@ -407,13 +562,35 @@ impl Session {
         }
     }
 
-    /// Put a picture on the screen, with the CRT look when it is on.
+    /// Put a picture on the screen: the CRT or LCD look when one is on, enlarged by whole
+    /// numbers when the view asks for it.
     fn show(&mut self, buf: &[u32], w: usize, h: usize) -> Result<()> {
+        let (out, ow, oh) = self.compose(buf, w, h);
+        self.screen.present(&out, ow, oh)
+    }
+
+    /// The picture as it is sent to the window.
+    fn compose(&self, buf: &[u32], w: usize, h: usize) -> Frame {
+        let effect = self.crt || self.lcd;
+        if self.view.integer {
+            let (win_w, win_h) = self.screen.size();
+            let k = scale::integer_factor(w, h, win_w, win_h);
+            return if effect && k >= 2 {
+                if self.crt {
+                    crt::apply_with(buf, w, h, k)
+                } else {
+                    lcd::apply_with(buf, w, h, k)
+                }
+            } else {
+                scale::enlarge(buf, w, h, k)
+            };
+        }
         if self.crt {
-            let (out, ow, oh) = crt::apply(buf, w, h);
-            self.screen.present(&out, ow, oh)
+            crt::apply(buf, w, h)
+        } else if self.lcd {
+            lcd::apply(buf, w, h)
         } else {
-            self.screen.present(buf, w, h)
+            (buf.to_vec(), w, h)
         }
     }
 
@@ -465,20 +642,15 @@ impl Session {
     /// Feed input, run the core (several times when fast-forwarding) and show its frame.
     fn run_core(&mut self) -> Result<()> {
         let started = Instant::now();
-        // fast-forward and rewind do more or less than one frame of work: not judged
+        // fast-forward, slow motion and rewind do more or less than one frame of work: not judged
         let mut normal = true;
         self.controller.poll(&*self.screen);
-        if self.rewind.is_some() && self.screen.key_down(Key::Backspace) {
+        if self.rewind.is_some() && self.rewind_held {
             self.step_back();
             normal = false;
         } else {
-            let runs = if self.screen.key_down(Key::Tab) {
-                FAST_FORWARD_FRAMES
-            } else {
-                1
-            };
-            normal &= runs == 1;
-            for _ in 0..runs {
+            normal &= self.plan.runs == 1 && self.plan.stretch == 1;
+            for _ in 0..self.plan.runs {
                 self.emulator.run();
                 self.remember_for_rewind();
             }
@@ -497,7 +669,7 @@ impl Session {
         Ok(())
     }
 
-    /// Save the preview image and the save RAM.
+    /// Save the preview image, the save RAM and, when asked, the place to carry on from.
     fn finish(&self) {
         if let Some(path) = &self.cover {
             let mut best = cover::Best::default();
@@ -512,13 +684,22 @@ impl Session {
             Ok(n) => log::info!("saved {n} bytes of save RAM"),
             Err(e) => log::error!("cannot save save RAM: {e}"),
         }
+        if self.settings.resume {
+            match self.emulator.save_state() {
+                Some(state) => match std::fs::write(self.auto_state_path(), state) {
+                    Ok(_) => log::info!("saved the game to carry on from it next time"),
+                    Err(e) => log::warn!("cannot save the resume state: {e}"),
+                },
+                None => log::info!("this core has no save states: cannot resume next time"),
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ports::Keyboard;
+    use crate::ports::{Hotkeys, Keyboard};
     use std::cell::RefCell;
     use std::collections::{HashSet, VecDeque};
     use std::rc::Rc;
@@ -536,8 +717,19 @@ mod tests {
         active: bool,
         titles: Vec<String>,
         presented: usize,
+        /// Size of each picture sent to the window.
+        presented_dims: Vec<(usize, usize)>,
         idled: usize,
         reopened: Vec<usize>,
+        /// The view of each window opened, and the one the window has now.
+        reopened_views: Vec<View>,
+        view: View,
+        win_size: (usize, usize),
+        no_fullscreen: bool,
+        /// What the fake gamepad asks for.
+        pad_acts: Vec<Act>,
+        pad_ff: bool,
+        pad_rewind: bool,
         ran: usize,
         resets: usize,
         state: Option<Vec<u8>>,
@@ -571,8 +763,10 @@ mod tests {
         fn is_active(&mut self) -> bool {
             self.0.borrow().active
         }
-        fn present(&mut self, _: &[u32], _: usize, _: usize) -> Result<()> {
-            self.0.borrow_mut().presented += 1;
+        fn present(&mut self, _: &[u32], w: usize, h: usize) -> Result<()> {
+            let mut l = self.0.borrow_mut();
+            l.presented += 1;
+            l.presented_dims.push((w, h));
             Ok(())
         }
         fn idle(&mut self) {
@@ -581,9 +775,21 @@ mod tests {
         fn set_title(&mut self, t: &str) {
             self.0.borrow_mut().titles.push(t.to_string());
         }
-        fn reopen(&mut self, _: &str, _: usize, _: usize, factor: usize) -> Result<()> {
-            self.0.borrow_mut().reopened.push(factor);
+        fn reopen(&mut self, _: &str, _: usize, _: usize, factor: usize, view: View) -> Result<()> {
+            let mut l = self.0.borrow_mut();
+            l.reopened.push(factor);
+            l.reopened_views.push(view);
+            l.view = view;
             Ok(())
+        }
+        fn size(&self) -> (usize, usize) {
+            self.0.borrow().win_size
+        }
+        fn view(&self) -> View {
+            self.0.borrow().view
+        }
+        fn can_fullscreen(&self) -> bool {
+            !self.0.borrow().no_fullscreen
         }
     }
 
@@ -618,6 +824,14 @@ mod tests {
         fn poll(&mut self, _: &dyn Screen) {
             self.0.borrow_mut().polls += 1;
         }
+        fn hotkeys(&mut self, _: &dyn Screen) -> Hotkeys {
+            let mut l = self.0.borrow_mut();
+            Hotkeys {
+                acts: std::mem::take(&mut l.pad_acts),
+                fast_forward: l.pad_ff,
+                rewind: l.pad_rewind,
+            }
+        }
     }
 
     struct FakeFrames(Shared);
@@ -642,17 +856,34 @@ mod tests {
     struct Rig {
         log: Shared,
         gain: Arc<AtomicU32>,
+        speed: Arc<AtomicU32>,
         dir: tempfile::TempDir,
     }
 
     fn rig(open_frames: u32) -> (Session, Rig) {
+        rig_with(open_frames, GameSettings::default())
+    }
+
+    fn rig_with(open_frames: u32, settings: GameSettings) -> (Session, Rig) {
         let dir = tempfile::tempdir().unwrap();
+        rig_in(dir, open_frames, settings, View::default())
+    }
+
+    fn rig_in(
+        dir: tempfile::TempDir,
+        open_frames: u32,
+        settings: GameSettings,
+        view: View,
+    ) -> (Session, Rig) {
         let log: Shared = Rc::new(RefCell::new(Log {
             open_frames,
             active: true,
+            view,
+            win_size: (6, 4),
             ..Default::default()
         }));
         let gain = Arc::new(AtomicU32::new(100));
+        let speed = Arc::new(AtomicU32::new(100));
         let session = Session::new(
             Parts {
                 screen: Box::new(FakeScreen(log.clone())),
@@ -660,6 +891,7 @@ mod tests {
                 controller: Box::new(FakePad(log.clone())),
                 frames: Box::new(FakeFrames(log.clone())),
                 gain: gain.clone(),
+                speed: speed.clone(),
                 keep_alive: Box::new(()),
             },
             Config {
@@ -667,7 +899,7 @@ mod tests {
                 save_dir: dir.path().to_path_buf(),
                 sram_path: dir.path().join("game.srm"),
                 shots_dir: dir.path().join("shots"),
-                settings: GameSettings::default(),
+                settings,
                 settings_path: dir.path().join("game.json"),
                 overrides_path: dir.path().join("overrides.json"),
                 system: "snes".into(),
@@ -679,7 +911,15 @@ mod tests {
                 start_slot: None,
             },
         );
-        (session, Rig { log, gain, dir })
+        (
+            session,
+            Rig {
+                log,
+                gain,
+                speed,
+                dir,
+            },
+        )
     }
 
     #[test]
@@ -714,7 +954,7 @@ mod tests {
         let (s, r) = rig(2);
         r.log.borrow_mut().down.insert(Key::Tab);
         s.run().unwrap();
-        assert_eq!(r.log.borrow().ran, 2 * FAST_FORWARD_FRAMES);
+        assert_eq!(r.log.borrow().ran, 2 * 4, "4x is the default speed");
     }
 
     #[test]
@@ -937,5 +1177,332 @@ mod tests {
         s.run().unwrap();
         // the fake's frame is colourful, so a preview is written
         assert!(cover.exists());
+    }
+
+    // ---------- speed ----------
+
+    fn settings_with(f: impl FnOnce(&mut GameSettings)) -> GameSettings {
+        let mut s = GameSettings::default();
+        f(&mut s);
+        s
+    }
+
+    #[test]
+    fn the_chosen_fast_forward_speed_sets_how_many_frames_run() {
+        for speed in [2u8, 3, 8] {
+            let (s, r) = rig_with(2, settings_with(|s| s.fast_forward = speed));
+            r.log.borrow_mut().down.insert(Key::Tab);
+            s.run().unwrap();
+            assert_eq!(r.log.borrow().ran, 2 * speed as usize, "{speed}x");
+        }
+    }
+
+    #[test]
+    fn f1_switches_fast_forward_on_and_off_without_holding_a_key() {
+        let (mut s, r) = rig(100);
+        r.log.borrow_mut().pressed.insert(Key::F1);
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().ran, 4);
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().ran, 8, "still on");
+        assert_eq!(
+            r.speed.load(Ordering::Relaxed),
+            400,
+            "the audio plays 4x too"
+        );
+        assert!(r
+            .log
+            .borrow()
+            .titles
+            .last()
+            .unwrap()
+            .contains("fast-forward 4×"));
+
+        r.log.borrow_mut().pressed.insert(Key::F1);
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().ran, 9, "back to one frame");
+        assert_eq!(r.speed.load(Ordering::Relaxed), 100);
+    }
+
+    #[test]
+    fn fast_forward_is_silent_unless_the_player_wants_to_hear_it() {
+        let (mut s, r) = rig(100);
+        r.log.borrow_mut().down.insert(Key::Tab);
+        s.frame().unwrap();
+        assert_eq!(r.gain.load(Ordering::Relaxed), 0, "muted by default");
+        r.log.borrow_mut().down.remove(&Key::Tab);
+        s.frame().unwrap();
+        assert_eq!(
+            r.gain.load(Ordering::Relaxed),
+            100,
+            "sound is back at normal speed"
+        );
+
+        let (mut s, r) = rig_with(100, settings_with(|s| s.ff_sound = true));
+        r.log.borrow_mut().down.insert(Key::Tab);
+        s.frame().unwrap();
+        assert_eq!(r.gain.load(Ordering::Relaxed), 100);
+        assert_eq!(r.speed.load(Ordering::Relaxed), 400);
+    }
+
+    #[test]
+    fn slow_motion_runs_one_frame_per_pass_and_is_always_silent() {
+        let (mut s, r) = rig_with(100, settings_with(|s| s.ff_sound = true));
+        {
+            let mut l = r.log.borrow_mut();
+            l.down.insert(Key::LeftShift);
+            l.pressed.insert(Key::F1);
+        }
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().ran, 1);
+        assert_eq!(r.speed.load(Ordering::Relaxed), 50);
+        assert_eq!(r.gain.load(Ordering::Relaxed), 0);
+        assert_eq!(s.plan.stretch, 2, "each pass lasts two normal frames");
+        assert!(r
+            .log
+            .borrow()
+            .titles
+            .last()
+            .unwrap()
+            .contains("slow motion"));
+
+        // holding fast-forward wins over slow motion
+        r.log.borrow_mut().down.insert(Key::Tab);
+        s.frame().unwrap();
+        assert_eq!(r.speed.load(Ordering::Relaxed), 400);
+    }
+
+    #[test]
+    fn picking_a_speed_applies_at_once_and_is_remembered() {
+        let (mut s, r) = rig(100);
+        assert_eq!(
+            s.apply(Act::Speed(2)).unwrap().unwrap(),
+            "fast-forward speed 2×"
+        );
+        r.log.borrow_mut().down.insert(Key::Tab);
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().ran, 2);
+        let saved = vuretro_settings::load(&r.dir.path().join("game.json"));
+        assert_eq!(saved.fast_forward, 2);
+        // a speed that is not offered snaps to one that is
+        s.apply(Act::Speed(7)).unwrap();
+        assert_eq!(s.settings.fast_forward, 4);
+    }
+
+    // ---------- carrying on ----------
+
+    #[test]
+    fn a_game_with_resume_saves_on_exit_and_carries_on_next_time() {
+        let on = settings_with(|s| s.resume = true);
+        let (s, r) = rig_with(1, on.clone());
+        s.run().unwrap();
+        let auto = r.dir.path().join("game.stateauto");
+        assert_eq!(std::fs::read(&auto).unwrap(), vec![7, 7]);
+
+        // next time: a new session finds that file and loads it before the first frame
+        let (s2, r2) = rig_with(1, on);
+        std::fs::write(r2.dir.path().join("game.stateauto"), [9u8, 9]).unwrap();
+        s2.run().unwrap();
+        assert_eq!(r2.log.borrow().state, Some(vec![9, 9]));
+    }
+
+    #[test]
+    fn without_resume_nothing_is_saved_or_loaded() {
+        let (s, r) = rig(1);
+        std::fs::write(r.dir.path().join("game.stateauto"), [9u8, 9]).unwrap();
+        s.run().unwrap();
+        assert_eq!(r.log.borrow().state, None, "an old auto state is ignored");
+        assert_eq!(
+            std::fs::read(r.dir.path().join("game.stateauto")).unwrap(),
+            vec![9, 9],
+            "and left alone"
+        );
+    }
+
+    #[test]
+    fn starting_from_a_chosen_slot_wins_over_carrying_on() {
+        let (mut s, r) = rig_with(1, settings_with(|s| s.resume = true));
+        std::fs::write(r.dir.path().join("game.stateauto"), [1u8]).unwrap();
+        std::fs::write(r.dir.path().join("game.state3"), [3u8]).unwrap();
+        s.start_slot = Some(3);
+        s.run().unwrap();
+        // the slot was loaded first; on exit the resume state is written over the old one
+        assert_eq!(
+            std::fs::read(r.dir.path().join("game.stateauto")).unwrap(),
+            vec![7, 7]
+        );
+        assert_eq!(r.log.borrow().state, Some(vec![3]));
+    }
+
+    // ---------- gamepad hotkeys ----------
+
+    #[test]
+    fn gamepad_hotkeys_run_the_same_actions_as_the_keyboard() {
+        let (mut s, r) = rig(100);
+        r.log.borrow_mut().pad_acts = vec![Act::Reset, Act::NextSlot];
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().resets, 1);
+        assert_eq!(s.slot, 2);
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().resets, 1, "an act is delivered once");
+
+        r.log.borrow_mut().pad_acts = vec![Act::PrevSlot, Act::PrevSlot];
+        s.frame().unwrap();
+        assert_eq!(s.slot, SLOTS, "backwards past slot 1 wraps to the last");
+    }
+
+    #[test]
+    fn a_gamepad_chord_can_quit_the_game() {
+        let (s, r) = rig(100);
+        r.log.borrow_mut().pad_acts = vec![Act::Quit];
+        s.run().unwrap();
+        assert!(r.log.borrow().ran <= 1);
+    }
+
+    #[test]
+    fn holding_the_gamepad_fast_forward_chord_speeds_the_game_up() {
+        let (mut s, r) = rig(100);
+        r.log.borrow_mut().pad_ff = true;
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().ran, 4);
+        r.log.borrow_mut().pad_ff = false;
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().ran, 5);
+    }
+
+    #[test]
+    fn gamepad_hotkeys_still_work_while_paused() {
+        let (mut s, r) = rig(100);
+        s.apply(Act::Pause).unwrap();
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().ran, 0);
+        r.log.borrow_mut().pad_acts = vec![Act::Pause];
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().ran, 1, "unpaused from the gamepad");
+    }
+
+    #[test]
+    fn the_pad_rewind_chord_rewinds_like_backspace() {
+        let (mut s, r) = rig_with(100, settings_with(|s| s.rewind = true));
+        for _ in 0..6 {
+            s.frame().unwrap();
+        }
+        let ran = r.log.borrow().ran;
+        r.log.borrow_mut().pad_rewind = true;
+        s.frame().unwrap();
+        // stepping back loads a remembered state and draws one frame of it
+        assert!(r.log.borrow().state.is_some());
+        assert_eq!(r.log.borrow().ran, ran + 1);
+    }
+
+    // ---------- picture: full screen, whole-number scaling, looks ----------
+
+    #[test]
+    fn alt_enter_toggles_full_screen_and_remembers_it() {
+        let (mut s, r) = rig(100);
+        {
+            let mut l = r.log.borrow_mut();
+            l.down.insert(Key::LeftAlt);
+            l.pressed.insert(Key::Enter);
+        }
+        s.frame().unwrap();
+        assert!(r.log.borrow().reopened_views.last().unwrap().fullscreen);
+        assert!(vuretro_settings::load(&r.dir.path().join("game.json")).fullscreen);
+
+        r.log.borrow_mut().pressed.insert(Key::Enter);
+        s.frame().unwrap();
+        assert!(!r.log.borrow().reopened_views.last().unwrap().fullscreen);
+        assert!(!vuretro_settings::load(&r.dir.path().join("game.json")).fullscreen);
+    }
+
+    #[test]
+    fn full_screen_is_refused_politely_where_it_cannot_be_made() {
+        let (mut s, r) = rig(100);
+        r.log.borrow_mut().no_fullscreen = true;
+        let msg = s.apply(Act::Fullscreen).unwrap().unwrap();
+        assert!(msg.contains("not available"), "{msg}");
+        assert!(
+            r.log.borrow().reopened.is_empty(),
+            "the window is left alone"
+        );
+    }
+
+    #[test]
+    fn choosing_a_window_size_leaves_full_screen() {
+        let (mut s, r) = rig(100);
+        s.apply(Act::Fullscreen).unwrap();
+        s.apply(Act::Size(3)).unwrap();
+        let l = r.log.borrow();
+        assert!(!l.reopened_views.last().unwrap().fullscreen);
+        assert_eq!(*l.reopened.last().unwrap(), 3);
+    }
+
+    #[test]
+    fn whole_number_scaling_enlarges_the_picture_to_fit_the_window() {
+        let view = View {
+            integer: true,
+            fullscreen: false,
+        };
+        let (mut s, r) = rig_in(
+            tempfile::tempdir().unwrap(),
+            100,
+            GameSettings::default(),
+            view,
+        );
+        // window 6x4, picture 2x2: the largest whole factor is 2
+        r.log.borrow_mut().new_frame = Some((vec![5; 4], 2, 2));
+        s.frame().unwrap();
+        assert_eq!(*r.log.borrow().presented_dims.last().unwrap(), (4, 4));
+
+        // without the option the picture goes to the window as it is
+        let (mut s, r) = rig(100);
+        r.log.borrow_mut().new_frame = Some((vec![5; 4], 2, 2));
+        s.frame().unwrap();
+        assert_eq!(*r.log.borrow().presented_dims.last().unwrap(), (2, 2));
+    }
+
+    #[test]
+    fn whole_number_scaling_with_a_look_draws_the_look_at_that_factor() {
+        let view = View {
+            integer: true,
+            fullscreen: false,
+        };
+        let (mut s, r) = rig_in(
+            tempfile::tempdir().unwrap(),
+            100,
+            settings_with(|s| s.lcd = true),
+            view,
+        );
+        r.log.borrow_mut().new_frame = Some((vec![0x00FF_FFFF; 4], 2, 2));
+        s.frame().unwrap();
+        assert_eq!(*r.log.borrow().presented_dims.last().unwrap(), (4, 4));
+    }
+
+    #[test]
+    fn crt_and_lcd_looks_exclude_each_other_and_are_remembered() {
+        let (mut s, r) = rig(100);
+        s.apply(Act::Lcd).unwrap();
+        assert!(s.lcd && !s.crt);
+        s.apply(Act::Crt).unwrap();
+        assert!(s.crt && !s.lcd, "turning CRT on turns LCD off");
+        let saved = vuretro_settings::load(&r.dir.path().join("game.json"));
+        assert!(saved.crt && !saved.lcd);
+        s.apply(Act::Lcd).unwrap();
+        assert!(s.lcd && !s.crt);
+    }
+
+    #[test]
+    fn shift_f4_is_the_lcd_look_and_f4_the_crt_look() {
+        let (mut s, r) = rig(100);
+        r.log.borrow_mut().pressed.insert(Key::F4);
+        s.frame().unwrap();
+        assert!(s.crt);
+        {
+            let mut l = r.log.borrow_mut();
+            l.down.insert(Key::RightShift);
+            l.pressed.insert(Key::F4);
+        }
+        s.frame().unwrap();
+        assert!(s.lcd && !s.crt);
     }
 }

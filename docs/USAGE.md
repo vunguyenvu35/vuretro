@@ -30,6 +30,10 @@ How vuretro decides which system a file is for:
 2. Otherwise a file extension that belongs to only one system decides (`.chd` is PlayStation, `.gba` is Game Boy Advance).
 3. **`.zip` and `.7z` can hold games for any system.** Select the system in the sidebar before importing, or keep the file in a system-named folder.
 
+### Patches (translations and ROM hacks)
+
+Fan translations and ROM hacks come as small **IPS**, **UPS** or **BPS** patch files. **Right-click a game ▸ Apply patch…**, pick the patch, and vuretro adds a patched copy to the library next to the game, named `<game> [<patch>].<ext>`. **The original game is not changed**, and the patched copy is a game like any other. Patches check that they fit your copy of the game; if they do not, you are told and nothing is added. Cartridge games only: a game inside a `.zip`, or a disc image, has to be unpacked and patched outside vuretro. Applying the same patch twice does not add a second copy.
+
 `.cue` and `.m3u` files bring the `.bin` / disc files they point to. If one is missing, the import is refused and nothing is copied. If a BIOS file is among what you import (a file you picked, or one inside a folder), vuretro installs it as a BIOS and says so, so a whole collection can be imported in one go. You can also add BIOS files yourself as described next.
 
 ## 3. Add BIOS files
@@ -82,16 +86,44 @@ On Windows and Linux use `Ctrl` in place of `⌘`.
 |---|---|
 | `Esc` | Quit the game |
 | `P` or `F3` | Pause / resume (dims the picture and mutes the sound) |
-| `F5` / `F7` | Save state / load state |
+| `F5` / `F7` | Save state / load state, in the current slot |
 | `F6` | Next save slot (there are 4) |
 | `F2` | Reset |
-| Hold `Tab` | Fast-forward |
+| Hold `Tab` | Fast-forward (2×, 3×, 4× or 8×, set in Settings) |
+| `F1` | Fast-forward on / off: it stays on until you press it again |
+| `Shift`+`F1` | Slow motion on / off (half speed, no sound) |
+| `Backspace` (hold) | Rewind, when switched on in Settings |
 | `F8` | Sound on / off |
 | `F9` / `F10` | Smaller / bigger window (remembered for next time) |
+| `Alt`+`Enter` | Full screen on / off |
 | `F4` | CRT scanlines on or off (remembered) |
+| `Shift`+`F4` | LCD pixel grid on or off (remembered). It replaces CRT scanlines, and the other way round |
 | `F11` | Change disc (multi-disc games, e.g. a PlayStation `.m3u`) |
-| `Backspace` (hold) | Rewind, when switched on in Settings |
 | `F12` | Screenshot |
+
+**Speed.** While fast-forwarding, the sound is muted by default; turn on **Sound while fast-forwarding** in Settings to hear it faster and higher. The **Speed** menu of the game window (macOS and Windows) changes the fast-forward speed for next time.
+
+**Carry on where I left off.** Switch it on in Settings and vuretro saves the game when you close it, and loads it again the next time you start that game. Press `F2` to start over, or start from a save slot in the game's details. It needs a core with save states.
+
+**Full screen** is a borderless window the size of your display. It is available on macOS and Windows; on Linux the game stays in a window for now. **Whole-number scaling** (Settings) enlarges the picture by 2×, 3× … only, with black borders, so pixels stay sharp.
+
+### Gamepad shortcuts
+
+Hold **Select** and press another button. While you do, the game does not see those presses.
+
+| With Select held | Action |
+|---|---|
+| Start | Quit the game |
+| R1 / L1 | Save state / load state |
+| D-pad → / ← | Next / previous save slot |
+| R2 (hold) | Fast-forward |
+| L2 (hold) | Rewind |
+| ○ (East) | Fast-forward on / off |
+| △ (North) | Pause / resume |
+| □ (West) | Screenshot |
+| ✕ (South) | Sound on / off |
+
+**Vibration.** Games that ask for rumble make your gamepad vibrate (Settings ▸ **Gamepad vibration**). It works on Windows and Linux with gamepads that support it; macOS does not offer it to apps yet.
 
 On macOS and Windows the game window also has **Game**, **State** and **Size** menus with the same actions. A short message about what just happened appears in the title bar.
 
@@ -101,7 +133,7 @@ The default button layout is in the [README](../README.md#default-controls). Gam
 
 Open **Controls** to choose the device for Player 1 and Player 2 (automatic, keyboard only, one specific gamepad, or off), swap players, see which gamepad is which (press a button and its row lights up), and remap every button. Click **+ Set** / **+ Add**, then press the key or pad button. You can bind several keys or buttons to one action. You can also set the stick dead zone and whether the left stick acts as the D-pad.
 
-Changes save at once and apply the next time a game starts. `Esc`, `Tab`, `P` and `F2`–`F10` are game hotkeys and cannot be used as buttons.
+Changes save at once and apply the next time a game starts. `Esc`, `Tab`, `Backspace`, `P` and `F1`–`F12` are game hotkeys and cannot be used as buttons.
 
 ## 7. Macros
 
@@ -119,7 +151,9 @@ Settings apply the next time a game starts.
 
 - **Window size**: a multiple of the game's own resolution (1× to 8×).
 - **Smooth motion**: match your screen's refresh rate. This removes the small periodic stutter on 60 Hz displays; the game may run up to 5% faster than the original.
+- **Start in full screen**, **Whole-number scaling**, **CRT scanlines**, **LCD pixel grid**.
 - **Pause when the window loses focus**: stops the game while you are in another app.
+- **Rewind**, **Fast-forward speed**, **Sound while fast-forwarding**, **Carry on where I left off**, **Gamepad vibration**.
 - **Game sound** and **Volume**.
 
 ## 9. Where things are stored
@@ -179,11 +213,11 @@ For PS2 you also need a PS2 BIOS inside the `system/pcsx2/bios` folder of the vu
 
 On **Settings** and **Controls**, the **Applies to** box at the top chooses what you are editing: **All games** or one system.
 
-- **Settings per system:** window size, CRT scanlines and rewind can be set for one system (a Game Boy wants a bigger window than a PlayStation). A customised row is tagged **customised** and has a **Use general** link. Anything you do not change follows **All games**, even if you change it there later. Sound and the other settings stay general.
+- **Settings per system:** window size, CRT scanlines, LCD grid, whole-number scaling, rewind, fast-forward speed and carrying on can be set for one system (a Game Boy wants a bigger window than a PlayStation). A customised row is tagged **customised** and has a **Use general** link. Anything you do not change follows **All games**, even if you change it there later. Sound and the other settings stay general.
 - **Controls per system:** a system uses the general key bindings until you change a button while that system is selected; from then on it has bindings of its own. **Use the general ones** removes them again.
 - **Controls per game:** select a game and press **Key bindings for this game…** in its details (or pick the game in **Applies to** on Controls). Changing a button gives that game its own bindings. Order of use: the game's own, then its system's, then the general ones; **Use … ones** removes the game's own bindings again.
-- **In a game:** the hotkeys for window size (F9 / F10) and CRT (F4) save to the place that already owns that setting: the system if it customised it, otherwise the general settings.
-- **Settings per game:** select a game and open **Settings for this game** in its details. The same three settings can be set for that one game; it overrides its system, which overrides All games. A game is told apart by its file name, so two copies with the same name share their settings.
+- **In a game:** the hotkeys for window size (F9 / F10), CRT (F4), LCD (Shift+F4) and fast-forward speed save to the place that already owns that setting: the system if it customised it, otherwise the general settings.
+- **Settings per game:** select a game and open **Settings for this game** in its details. The same settings can be set for that one game; it overrides its system, which overrides All games. A game is told apart by its file name, so two copies with the same name share their settings.
 
 The files are `config/overrides.json` and `config/controls/<system>.json` and `config/controls/games/<game>.json` in the data folder.
 

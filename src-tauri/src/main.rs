@@ -97,6 +97,7 @@ fn main() {
             toggle_favorite,
             import_bios,
             import_roms,
+            apply_patch,
             remove_rom,
             reveal_path,
             remove_roms,

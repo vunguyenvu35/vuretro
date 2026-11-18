@@ -75,6 +75,10 @@ impl Catalog for FsCatalog {
         roms::remove(&self.paths.roms_dir(), path)
     }
 
+    fn apply_patch(&self, rom: &Path, patch: &Path) -> Result<ImportedRom, String> {
+        roms::apply_patch(rom, patch, &self.paths.roms_dir())
+    }
+
     fn identify(&self, path: &Path) -> Option<String> {
         let bytes = dat::read_rom_bytes(path)?;
         self.with_index(|idx| idx.identify(&bytes).map(str::to_string))

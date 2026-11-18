@@ -54,6 +54,7 @@ export const api = {
   toggleFavorite: (path) => call('toggle_favorite', { path }),
   importBios: (paths) => call('import_bios', { paths }),
   importRoms: (paths, system = null) => call('import_roms', { paths, system }),
+  applyPatch: (rom, patch) => call('apply_patch', { rom, patch }),
   removeRom: (path) => call('remove_rom', { path }),
   removeRoms: (paths) => call('remove_roms', { paths }),
   reveal: (path) => call('reveal_path', { path }),

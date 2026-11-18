@@ -865,6 +865,23 @@ impl App {
         out
     }
 
+    /// Make a patched copy of a game (a translation or ROM hack shared as an IPS, UPS or
+    /// BPS file) in the library. The original game is left as it is.
+    pub fn apply_patch(&self, rom: String, patch: String) -> Outcome {
+        match self.catalog.apply_patch(Path::new(&rom), Path::new(&patch)) {
+            Ok(i) if i.already_there => Outcome::ok(rom, "already in the library"),
+            Ok(i) => {
+                let file = i
+                    .dest
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                Outcome::ok(rom, format!("added to {} as {file}", i.system))
+            }
+            Err(message) => Outcome::failed(rom, message),
+        }
+    }
+
     /// Delete an imported ROM together with its bookkeeping and preview.
     fn remove_one(&self, path: &str) -> Result<(), String> {
         self.catalog.remove_rom(Path::new(path))?;

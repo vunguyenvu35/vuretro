@@ -1,6 +1,6 @@
 //! The real implementations of the session's ports.
 
-use crate::ports::{Controller, Emulator, Frame, FrameSource, Screen};
+use crate::ports::{Controller, Emulator, Frame, FrameSource, Hotkeys, Screen, View};
 use crate::screen::MiniFbScreen;
 use crate::session::{Config, Parts, Session};
 use crate::window::clamp_scale;
@@ -39,6 +39,9 @@ impl Emulator for core::Core {
 impl Controller for input::Input {
     fn poll(&mut self, screen: &dyn Screen) {
         input::Input::poll(self, screen)
+    }
+    fn hotkeys(&mut self, _screen: &dyn Screen) -> Hotkeys {
+        input::Input::hotkeys(self)
     }
 }
 
@@ -86,6 +89,7 @@ pub struct Params {
 pub fn open(p: Params) -> Result<Session> {
     let av = p.av;
     let gain = Arc::new(AtomicU32::new(p.settings.gain_percent()));
+    let speed = Arc::new(AtomicU32::new(100));
     // Pace video to the screen when its refresh rate is close to the core's. The game
     // then runs a little faster or slower than the original (up to 5 %); audio is
     // resampled to follow, so it stays in sync.
@@ -104,6 +108,7 @@ pub fn open(p: Params) -> Result<Session> {
         p.audio_buf,
         av.timing.sample_rate * fps / core_fps,
         gain.clone(),
+        speed.clone(),
     ) {
         Ok(a) => Some(a),
         Err(e) => {
@@ -118,7 +123,11 @@ pub fn open(p: Params) -> Result<Session> {
     );
     let factor = clamp_scale(p.scale.unwrap_or(p.settings.window_scale));
     let title = format!("Vuretro — {}", p.rom_name);
-    let screen = MiniFbScreen::open(&title, base_w, base_h, factor)?;
+    let view = View {
+        fullscreen: p.settings.fullscreen,
+        integer: p.settings.integer_scale,
+    };
+    let screen = MiniFbScreen::open(&title, base_w, base_h, factor, view)?;
     appicon::apply();
 
     if !p.macros.is_empty() {
@@ -127,9 +136,12 @@ pub fn open(p: Params) -> Result<Session> {
     let parts = Parts {
         screen: Box::new(screen),
         emulator: Box::new(p.core),
-        controller: Box::new(input::Input::new(p.controls, p.macros, fps)),
+        controller: Box::new(
+            input::Input::new(p.controls, p.macros, fps).with_rumble(p.settings.rumble),
+        ),
         frames: Box::new(CoreFrames),
         gain,
+        speed,
         keep_alive: Box::new(audio),
     };
     Ok(Session::new(

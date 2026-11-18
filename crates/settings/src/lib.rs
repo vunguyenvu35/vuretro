@@ -11,6 +11,20 @@ use std::path::Path;
 pub const MIN_SCALE: u8 = 1;
 pub const MAX_SCALE: u8 = 8;
 
+/// Fast-forward speeds the player can choose, as multiples of normal speed.
+pub const FAST_FORWARD_SPEEDS: [u8; 4] = [2, 3, 4, 8];
+pub const DEFAULT_FAST_FORWARD: u8 = 4;
+
+/// The allowed speed closest to `n` that is not faster than asked (at least the slowest).
+pub fn snap_fast_forward(n: u8) -> u8 {
+    FAST_FORWARD_SPEEDS
+        .iter()
+        .copied()
+        .filter(|s| *s <= n)
+        .max()
+        .unwrap_or(FAST_FORWARD_SPEEDS[0])
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GameSettings {
@@ -29,6 +43,20 @@ pub struct GameSettings {
     pub crt: bool,
     /// Keep recent states so a game can be rewound (hold Backspace). Costs memory and CPU.
     pub rewind: bool,
+    /// Speed while the fast-forward key is held (or toggled): 2, 3, 4 or 8 times normal.
+    pub fast_forward: u8,
+    /// Keep the sound on while fast-forwarding (it plays faster and higher). Off: muted.
+    pub ff_sound: bool,
+    /// Save the game when the window closes and carry on from there next time.
+    pub resume: bool,
+    /// Handheld LCD look: a pixel grid. CRT wins when both are on.
+    pub lcd: bool,
+    /// Scale the picture by whole numbers only, with black borders instead of blur.
+    pub integer_scale: bool,
+    /// Start in a full-screen window.
+    pub fullscreen: bool,
+    /// Make the gamepad rumble when the game asks for it (not supported on every OS).
+    pub rumble: bool,
 }
 
 impl Default for GameSettings {
@@ -41,6 +69,13 @@ impl Default for GameSettings {
             pause_on_blur: false,
             crt: false,
             rewind: false,
+            fast_forward: DEFAULT_FAST_FORWARD,
+            ff_sound: false,
+            resume: false,
+            lcd: false,
+            integer_scale: false,
+            fullscreen: false,
+            rumble: true,
         }
     }
 }
@@ -49,6 +84,7 @@ impl GameSettings {
     pub fn sanitized(mut self) -> Self {
         self.window_scale = self.window_scale.clamp(MIN_SCALE, MAX_SCALE);
         self.volume = self.volume.min(100);
+        self.fast_forward = snap_fast_forward(self.fast_forward);
         self
     }
 
@@ -93,11 +129,12 @@ mod tests {
             volume: 250,
             sync_display: true,
             pause_on_blur: false,
-            crt: false,
-            rewind: false,
+            fast_forward: 7,
+            ..GameSettings::default()
         }
         .sanitized();
         assert_eq!((s.window_scale, s.volume), (MAX_SCALE, 100));
+        assert_eq!(s.fast_forward, 4, "7x is not offered: the next lower one");
         assert_eq!(
             GameSettings {
                 window_scale: 0,
@@ -107,6 +144,15 @@ mod tests {
             .window_scale,
             1
         );
+    }
+
+    #[test]
+    fn fast_forward_snaps_to_an_offered_speed() {
+        assert_eq!(snap_fast_forward(0), 2);
+        assert_eq!(snap_fast_forward(2), 2);
+        assert_eq!(snap_fast_forward(3), 3);
+        assert_eq!(snap_fast_forward(5), 4);
+        assert_eq!(snap_fast_forward(200), 8);
     }
 
     #[test]
@@ -133,6 +179,13 @@ mod tests {
             pause_on_blur: true,
             crt: true,
             rewind: true,
+            fast_forward: 8,
+            ff_sound: true,
+            resume: true,
+            lcd: true,
+            integer_scale: true,
+            fullscreen: true,
+            rumble: false,
         };
         save(&path, &s).unwrap();
         assert_eq!(load(&path), s);
@@ -141,6 +194,9 @@ mod tests {
         let p = load(&path);
         assert_eq!((p.window_scale, p.sound, p.volume), (4, true, 100));
         assert!(p.sync_display && !p.pause_on_blur);
+        // settings added later fall back to their defaults
+        assert_eq!((p.fast_forward, p.ff_sound, p.resume), (4, false, false));
+        assert!(p.rumble && !p.fullscreen && !p.lcd && !p.integer_scale);
         std::fs::write(&path, "{ not json").unwrap();
         assert_eq!(load(&path), GameSettings::default());
     }

@@ -8,6 +8,7 @@
 pub mod backup;
 pub mod detect;
 pub mod model;
+pub mod patch;
 pub mod paths;
 pub mod ports;
 pub mod registry;

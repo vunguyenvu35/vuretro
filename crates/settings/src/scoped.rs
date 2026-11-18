@@ -3,7 +3,8 @@
 //! settings still reaches every system that did not override it.
 //!
 //! Only the settings that differ in a useful way between systems can be overridden: window
-//! size (a Game Boy needs a bigger window than a PlayStation), the CRT look and rewind.
+//! size (a Game Boy needs a bigger window than a PlayStation), the picture look (CRT, LCD,
+//! whole-number scaling), rewind, fast-forward speed and resuming.
 //! Sound and focus behaviour are habits of the player, not of a system, so they stay general.
 
 use crate::GameSettings;
@@ -18,6 +19,10 @@ pub struct Override {
     pub window_scale: Option<u8>,
     pub crt: Option<bool>,
     pub rewind: Option<bool>,
+    pub fast_forward: Option<u8>,
+    pub lcd: Option<bool>,
+    pub integer_scale: Option<bool>,
+    pub resume: Option<bool>,
 }
 
 impl Override {
@@ -36,6 +41,18 @@ impl Override {
         if let Some(v) = self.rewind {
             base.rewind = v;
         }
+        if let Some(v) = self.fast_forward {
+            base.fast_forward = v;
+        }
+        if let Some(v) = self.lcd {
+            base.lcd = v;
+        }
+        if let Some(v) = self.integer_scale {
+            base.integer_scale = v;
+        }
+        if let Some(v) = self.resume {
+            base.resume = v;
+        }
         base.sanitized()
     }
 
@@ -43,6 +60,7 @@ impl Override {
         self.window_scale = self
             .window_scale
             .map(|v| v.clamp(crate::MIN_SCALE, crate::MAX_SCALE));
+        self.fast_forward = self.fast_forward.map(crate::snap_fast_forward);
         self
     }
 }
@@ -59,6 +77,10 @@ pub struct Scope<'a> {
 pub enum Change {
     WindowScale(u8),
     Crt(bool),
+    Lcd(bool),
+    FastForward(u8),
+    /// Full screen is a habit of the player, not of a system: always the general setting.
+    Fullscreen(bool),
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -107,10 +129,16 @@ impl Overrides {
         let owns = |o: Option<&Override>| match change {
             Change::WindowScale(_) => o.is_some_and(|o| o.window_scale.is_some()),
             Change::Crt(_) => o.is_some_and(|o| o.crt.is_some()),
+            Change::Lcd(_) => o.is_some_and(|o| o.lcd.is_some()),
+            Change::FastForward(_) => o.is_some_and(|o| o.fast_forward.is_some()),
+            Change::Fullscreen(_) => false,
         };
         let set = |o: &mut Override| match change {
             Change::WindowScale(v) => o.window_scale = Some(v),
             Change::Crt(v) => o.crt = Some(v),
+            Change::Lcd(v) => o.lcd = Some(v),
+            Change::FastForward(v) => o.fast_forward = Some(crate::snap_fast_forward(v)),
+            Change::Fullscreen(_) => {}
         };
         if owns(self.games.get(scope.game)) {
             set(self.games.get_mut(scope.game).unwrap());
@@ -120,6 +148,9 @@ impl Overrides {
             match change {
                 Change::WindowScale(v) => base.window_scale = v,
                 Change::Crt(v) => base.crt = v,
+                Change::Lcd(v) => base.lcd = v,
+                Change::FastForward(v) => base.fast_forward = crate::snap_fast_forward(v),
+                Change::Fullscreen(v) => base.fullscreen = v,
             }
         }
     }
@@ -162,7 +193,7 @@ mod tests {
         Override {
             window_scale: scale,
             crt,
-            rewind: None,
+            ..Override::default()
         }
     }
 
@@ -194,6 +225,67 @@ mod tests {
         o.set_game("mario", ov(Some(6), None));
         let s = o.resolve(&base, SNES);
         assert_eq!((s.window_scale, s.crt), (6, true));
+    }
+
+    #[test]
+    fn new_fields_stack_like_the_old_ones() {
+        let base = GameSettings::default();
+        let mut o = Overrides::default();
+        o.set_system(
+            "gb",
+            Override {
+                fast_forward: Some(8),
+                lcd: Some(true),
+                integer_scale: Some(true),
+                resume: Some(true),
+                ..Override::default()
+            },
+        );
+        let gb = Scope {
+            system: "gb",
+            game: "tetris",
+        };
+        let s = o.resolve(&base, gb);
+        assert_eq!(
+            (s.fast_forward, s.lcd, s.integer_scale, s.resume),
+            (8, true, true, true)
+        );
+        assert_eq!(o.resolve(&base, SNES), base);
+        // an offered speed is enforced even on a hand-edited file
+        o.set_system(
+            "gb",
+            Override {
+                fast_forward: Some(5),
+                ..Override::default()
+            },
+        );
+        assert_eq!(o.systems["gb"].fast_forward, Some(4));
+    }
+
+    #[test]
+    fn hotkey_changes_to_speed_and_lcd_follow_ownership_and_fullscreen_stays_general() {
+        let mut base = GameSettings::default();
+        let mut o = Overrides::default();
+        o.record_change(&mut base, SNES, Change::FastForward(2));
+        o.record_change(&mut base, SNES, Change::Lcd(true));
+        assert_eq!((base.fast_forward, base.lcd), (2, true));
+
+        o.set_system(
+            "snes",
+            Override {
+                fast_forward: Some(3),
+                ..Override::default()
+            },
+        );
+        o.record_change(&mut base, SNES, Change::FastForward(8));
+        assert_eq!(
+            (base.fast_forward, o.systems["snes"].fast_forward),
+            (2, Some(8))
+        );
+
+        // even with a system override of something else, fullscreen is the general setting
+        o.record_change(&mut base, SNES, Change::Fullscreen(true));
+        assert!(base.fullscreen);
     }
 
     #[test]

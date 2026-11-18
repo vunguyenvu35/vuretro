@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { api } from '../lib/api.js';
   import { toast } from '../lib/ui.svelte.js';
-  import { HOTKEYS, APP_SHORTCUTS } from '../lib/controls.js';
+  import { HOTKEYS, PAD_HOTKEYS, APP_SHORTCUTS } from '../lib/controls.js';
   import { app } from '../lib/store.svelte.js';
   import Backup from './Backup.svelte';
   import ScopeBar from './ScopeBar.svelte';
@@ -27,7 +27,11 @@
   const STAGE_MAX = 290;
 
   // Whatever the backend sends, fill in anything missing so a switch never gets stuck.
-  const DEFAULTS = { window_scale: 2, sound: true, volume: 100, sync_display: true, pause_on_blur: false, crt: false, rewind: false };
+  const DEFAULTS = {
+    window_scale: 2, sound: true, volume: 100, sync_display: true, pause_on_blur: false, crt: false, rewind: false,
+    fast_forward: 4, ff_sound: false, resume: false, lcd: false, integer_scale: false, fullscreen: false, rumble: true,
+  };
+  const SPEEDS = [2, 3, 4, 8];
   const withDefaults = (v) => ({ ...DEFAULTS, ...v });
 
   onMount(async () => {
@@ -68,6 +72,15 @@
     s.pause_on_blur = !s.pause_on_blur;
     save();
   }
+  /** Flip a yes/no setting by name and save. */
+  function flip(field) {
+    s[field] = !s[field];
+    save();
+  }
+  function setSpeed(n) {
+    s.fast_forward = n;
+    save();
+  }
   async function reset() {
     s = withDefaults(await api.setGameSettings(await api.defaultGameSettings()));
     toast('Settings reset to defaults');
@@ -90,7 +103,7 @@
       </span>
     </header>
 
-    <ScopeBar hint="Window size, CRT and rewind can differ per system." />
+    <ScopeBar hint="Window size, picture look, rewind, fast-forward speed and carrying on can differ per system." />
 
     {#if scope.kind === 'system'}
       {#key app.scope}
@@ -163,6 +176,28 @@
           <button class="switch" role="switch" aria-checked={s.sync_display} aria-label="Smooth motion" class:on={s.sync_display} onclick={toggleSync}><span></span></button>
         </div>
 
+        <div class="row">
+          <span class="tile blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+          </span>
+          <div class="txt">
+            <div class="t">Start in full screen</div>
+            <div class="d">Games open in a window that fills the display. Press <kbd>Alt</kbd> + <kbd>Enter</kbd> in a game to switch. Not available on every system yet.</div>
+          </div>
+          <button class="switch" role="switch" aria-checked={s.fullscreen} aria-label="Start in full screen" class:on={s.fullscreen} onclick={() => flip('fullscreen')}><span></span></button>
+        </div>
+
+        <div class="row">
+          <span class="tile blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M5 5h6v6H5zM13 13h6v6h-6z" fill="none" stroke="currentColor" stroke-width="1.8" /></svg>
+          </span>
+          <div class="txt">
+            <div class="t">Whole-number scaling</div>
+            <div class="d">Enlarges the picture by 2×, 3×, 4× … only, with black borders instead of a blurry stretch. Pixels stay sharp.</div>
+          </div>
+          <button class="switch" role="switch" aria-checked={s.integer_scale} aria-label="Whole-number scaling" class:on={s.integer_scale} onclick={() => flip('integer_scale')}><span></span></button>
+        </div>
+
         <div class="sizes">
           <div class="shead">Resulting window size</div>
           <ul>
@@ -209,6 +244,60 @@
           </div>
           <button class="switch" role="switch" aria-checked={s.rewind} aria-label="Rewind" class:on={s.rewind} onclick={toggleRewind}><span></span></button>
         </div>
+        <div class="row">
+          <span class="tile green" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 5h16v14H4zM9.3 5v14M14.7 5v14M4 9.7h16M4 14.3h16" fill="none" stroke="currentColor" stroke-width="1.4" /></svg>
+          </span>
+          <div class="txt">
+            <div class="t">LCD pixel grid</div>
+            <div class="d">A handheld look: a fine grid between the pixels, for Game Boy and similar systems. Press <kbd>Shift</kbd> + <kbd>F4</kbd> in a game. If CRT scanlines are on too, only one is used.</div>
+          </div>
+          <button class="switch" role="switch" aria-checked={s.lcd} aria-label="LCD pixel grid" class:on={s.lcd} onclick={() => flip('lcd')}><span></span></button>
+        </div>
+        <div class="row">
+          <span class="tile green" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 6l7 6-7 6V6zM13 6l7 6-7 6V6z" fill="currentColor" /></svg>
+          </span>
+          <div class="txt">
+            <div class="t">Fast-forward speed</div>
+            <div class="d">How fast the game runs while you hold <kbd>Tab</kbd> (or press <kbd>F1</kbd> to leave it on). <kbd>Shift</kbd> + <kbd>F1</kbd> plays in slow motion.</div>
+          </div>
+          <div class="seg" role="radiogroup" aria-label="Fast-forward speed">
+            {#each SPEEDS as n (n)}
+              <button role="radio" aria-checked={s.fast_forward === n} class:on={s.fast_forward === n} onclick={() => setSpeed(n)}>{n}×</button>
+            {/each}
+          </div>
+        </div>
+        <div class="row">
+          <span class="tile green" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4z" fill="currentColor" /><path d="M15.5 9a4 4 0 010 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+          </span>
+          <div class="txt">
+            <div class="t">Sound while fast-forwarding</div>
+            <div class="d">Off: the game is silent while it runs faster. On: the sound plays faster and higher, like a tape. Slow motion is always silent.</div>
+          </div>
+          <button class="switch" role="switch" aria-checked={s.ff_sound} aria-label="Sound while fast-forwarding" class:on={s.ff_sound} onclick={() => flip('ff_sound')}><span></span></button>
+        </div>
+        <div class="row">
+          <span class="tile green" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 4v16M6 5l11 3.5L6 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+          </span>
+          <div class="txt">
+            <div class="t">Carry on where I left off</div>
+            <div class="d">Saves the game when you close it and loads it again the next time you start that game. Press <kbd>F2</kbd> to start over. Works only with cores that support save states.</div>
+          </div>
+          <button class="switch" role="switch" aria-checked={s.resume} aria-label="Carry on where I left off" class:on={s.resume} onclick={() => flip('resume')}><span></span></button>
+        </div>
+        <div class="row">
+          <span class="tile green" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M8 3h8v18H8zM4 8v8M20 8v8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+          </span>
+          <div class="txt">
+            <div class="t">Gamepad vibration</div>
+            <div class="d">Rumble when the game asks for it. Needs a gamepad that supports it, and works on Windows and Linux; macOS does not offer it to apps yet.</div>
+          </div>
+          <button class="switch" role="switch" aria-checked={s.rumble} aria-label="Gamepad vibration" class:on={s.rumble} onclick={() => flip('rumble')}><span></span></button>
+        </div>
       </div>
 
       <!-- ================= SOUND ================= -->
@@ -243,7 +332,7 @@
       <Backup />
 
       <!-- ================= SHORTCUTS ================= -->
-      {#each [['Shortcuts in the app', APP_SHORTCUTS, 'Press these anywhere in the app window.'], ['Shortcuts in a game', HOTKEYS, 'Button keys for each player are set on the Controls screen. These keys are fixed and cannot be used as buttons.']] as [title, list, foot] (title)}
+      {#each [['Shortcuts in the app', APP_SHORTCUTS, 'Press these anywhere in the app window.'], ['Shortcuts in a game', HOTKEYS, 'Button keys for each player are set on the Controls screen. These keys are fixed and cannot be used as buttons.'], ['Gamepad shortcuts in a game', PAD_HOTKEYS, 'Hold Select and press the other button. The game does not see those presses.']] as [title, list, foot] (title)}
         <h2 class="group">{title}</h2>
         <div class="panel">
           <ul class="keys">

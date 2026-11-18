@@ -1,9 +1,10 @@
 //! The real window: a minifb window behind the [`Screen`] trait.
 
-use crate::ports::{Keyboard, Screen};
+use crate::display;
+use crate::ports::{Keyboard, Screen, View};
 use crate::window::{act_id, Act, SLOTS};
 use anyhow::Result;
-use minifb::{Key, KeyRepeat, Menu, Scale, Window, WindowOptions};
+use minifb::{Key, KeyRepeat, Menu, Scale, ScaleMode, Window, WindowOptions};
 
 const MENU_MOD: usize = if cfg!(target_os = "macos") {
     minifb::MENU_KEY_COMMAND
@@ -36,11 +37,23 @@ pub fn install_menus(window: &mut Window) {
         m.add_item("Fast Forward: hold Tab", 0)
             .enabled(false)
             .build();
+        item(
+            m,
+            "Fast Forward On / Off (F1)",
+            Act::FastForwardToggle,
+            None,
+        );
+        item(m, "Slow Motion On / Off (Shift+F1)", Act::SlowMotion, None);
         m.add_separator();
         item(m, "Screenshot (F12)", Act::Screenshot, Some(Key::T));
         item(m, "Sound On / Off (F8)", Act::Mute, Some(Key::M));
         m.add_separator();
         item(m, "Close Game (Esc)", Act::Quit, None);
+    });
+    add("Speed", &|m| {
+        for n in vuretro_settings::FAST_FORWARD_SPEEDS {
+            item(m, &format!("Fast Forward at {n}×"), Act::Speed(n), None);
+        }
     });
     add("State", &|m| {
         item(m, "Save State (F5)", Act::SaveState, Some(Key::S));
@@ -55,6 +68,8 @@ pub fn install_menus(window: &mut Window) {
         item(m, "Smaller (F9)", Act::SizeStep(-1), Some(Key::Minus));
         item(m, "Bigger (F10)", Act::SizeStep(1), Some(Key::Equal));
         item(m, "CRT Effect (F4)", Act::Crt, None);
+        item(m, "LCD Effect (Shift+F4)", Act::Lcd, None);
+        item(m, "Full Screen (Alt+Enter)", Act::Fullscreen, Some(Key::F));
         m.add_separator();
         for n in 1..=4u8 {
             item(m, &format!("{n}×"), Act::Size(n), None);
@@ -62,9 +77,57 @@ pub fn install_menus(window: &mut Window) {
     });
 }
 
-/// minifb's own scaling only does 1, 2, 4, 8 and 16; for other sizes the window is
-/// made that many times bigger and the frame is stretched to fit it.
-fn open_window(title: &str, base_w: usize, base_h: usize, factor: usize) -> Result<Window> {
+/// Full-screen windows are made from a borderless window the size of the display.
+fn open_window(
+    title: &str,
+    base_w: usize,
+    base_h: usize,
+    factor: usize,
+    view: View,
+) -> Result<(Window, View)> {
+    if view.fullscreen {
+        if let Some((sw, sh)) = display::screen_size() {
+            let mut window = Window::new(
+                title,
+                sw,
+                sh,
+                WindowOptions {
+                    borderless: true,
+                    scale: Scale::X1,
+                    scale_mode: if view.integer {
+                        ScaleMode::Center
+                    } else {
+                        ScaleMode::AspectRatioStretch
+                    },
+                    ..WindowOptions::default()
+                },
+            )?;
+            window.set_position(0, 0);
+            return Ok((window, view));
+        }
+        log::warn!("full screen is not available here; using a window");
+    }
+    let view = View {
+        fullscreen: false,
+        ..view
+    };
+    if view.integer {
+        // the session enlarges the picture by whole numbers; the window shows it as it is
+        let window = Window::new(
+            title,
+            base_w * factor,
+            base_h * factor,
+            WindowOptions {
+                resize: true,
+                scale: Scale::X1,
+                scale_mode: ScaleMode::Center,
+                ..WindowOptions::default()
+            },
+        )?;
+        return Ok((window, view));
+    }
+    // minifb's own scaling only does 1, 2, 4, 8 and 16; for other sizes the window is
+    // made that many times bigger and the frame is stretched to fit it.
     let (scale, stretch) = match factor {
         1 => (Scale::X1, 1),
         2 => (Scale::X2, 1),
@@ -72,7 +135,7 @@ fn open_window(title: &str, base_w: usize, base_h: usize, factor: usize) -> Resu
         8 => (Scale::X8, 1),
         n => (Scale::X1, n),
     };
-    Ok(Window::new(
+    let window = Window::new(
         title,
         base_w * stretch,
         base_h * stretch,
@@ -81,18 +144,26 @@ fn open_window(title: &str, base_w: usize, base_h: usize, factor: usize) -> Resu
             scale,
             ..WindowOptions::default()
         },
-    )?)
+    )?;
+    Ok((window, view))
 }
 
 pub struct MiniFbScreen {
     window: Window,
+    view: View,
 }
 
 impl MiniFbScreen {
-    pub fn open(title: &str, base_w: usize, base_h: usize, factor: usize) -> Result<Self> {
-        let mut window = open_window(title, base_w, base_h, factor)?;
+    pub fn open(
+        title: &str,
+        base_w: usize,
+        base_h: usize,
+        factor: usize,
+        view: View,
+    ) -> Result<Self> {
+        let (mut window, view) = open_window(title, base_w, base_h, factor, view)?;
         install_menus(&mut window);
-        Ok(MiniFbScreen { window })
+        Ok(MiniFbScreen { window, view })
     }
 }
 
@@ -124,13 +195,32 @@ impl Screen for MiniFbScreen {
     fn set_title(&mut self, title: &str) {
         self.window.set_title(title);
     }
-    fn reopen(&mut self, title: &str, base_w: usize, base_h: usize, factor: usize) -> Result<()> {
+    fn reopen(
+        &mut self,
+        title: &str,
+        base_w: usize,
+        base_h: usize,
+        factor: usize,
+        view: View,
+    ) -> Result<()> {
         let at = self.window.get_position();
         // Open the new window before the old one closes so the app never has none.
-        let mut window = open_window(title, base_w, base_h, factor)?;
-        window.set_position(at.0, at.1);
+        let (mut window, view) = open_window(title, base_w, base_h, factor, view)?;
+        if !view.fullscreen {
+            window.set_position(at.0, at.1);
+        }
         install_menus(&mut window);
         self.window = window;
+        self.view = view;
         Ok(())
+    }
+    fn size(&self) -> (usize, usize) {
+        self.window.get_size()
+    }
+    fn view(&self) -> View {
+        self.view
+    }
+    fn can_fullscreen(&self) -> bool {
+        display::screen_size().is_some()
     }
 }

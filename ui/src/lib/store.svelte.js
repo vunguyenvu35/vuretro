@@ -183,6 +183,21 @@ export async function removeMany(games) {
   await refresh();
 }
 
+/** Make a patched copy of a game from an IPS, UPS or BPS patch the user picks. */
+export async function applyPatch(game) {
+  const files = await api.pickFiles('Choose a patch (.ips, .ups or .bps)');
+  const patch = files?.[0];
+  if (!patch) return;
+  app.busy = true;
+  try {
+    report([await api.applyPatch(game.path, patch)]);
+  } catch (e) {
+    toast(String(e), 'error');
+  }
+  await refresh();
+  app.busy = false;
+}
+
 export async function toggleFavorite(game) {
   await api.toggleFavorite(game.path);
   refresh();
