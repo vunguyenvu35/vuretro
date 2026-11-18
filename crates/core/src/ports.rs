@@ -78,6 +78,9 @@ pub trait Catalog: Send + Sync {
     fn bios_status(&self, system: &'static System) -> Vec<BiosStatus>;
     fn import_bios(&self, src: &Path) -> Result<ImportedBios, String>;
     fn is_folder(&self, path: &Path) -> bool;
+    /// BIOS files of known systems found in a folder (subfolders included), so an import of a
+    /// whole collection can install them too.
+    fn find_bios(&self, dir: &Path) -> Vec<PathBuf>;
     /// Copy one ROM into the app's library. `system` settles ambiguous archives.
     fn import_rom(&self, src: &Path, system: Option<&str>) -> Result<ImportedRom, String>;
     /// Copy every recognised ROM of a folder into the library.

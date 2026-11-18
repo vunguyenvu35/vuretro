@@ -57,9 +57,11 @@ export function summarizeImport(results) {
   const ok = results.filter((r) => r.ok);
   const bad = results.filter((r) => !r.ok);
   const added = ok.filter((r) => r.message.startsWith('added')).length;
+  const bios = ok.filter((r) => r.message.startsWith('BIOS installed'));
   const lines = [];
   if (added) lines.push(`✓ ${plural(added, 'game')} added`);
-  const same = ok.length - added;
+  lines.push(...bios.map((r) => `✓ ${r.message}`));
+  const same = ok.length - added - bios.length;
   if (same) lines.push(`${same} already in the library`);
   lines.push(...bad.slice(0, 4).map((r) => `✕ ${fileName(r)}: ${r.message}`));
   if (bad.length > 4) lines.push(`… and ${bad.length - 4} more`);

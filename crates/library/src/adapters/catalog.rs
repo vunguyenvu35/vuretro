@@ -43,6 +43,19 @@ impl Catalog for FsCatalog {
     fn scan(&self, dir: &Path) -> Vec<GameEntry> {
         scan::scan(dir)
     }
+    fn find_bios(&self, dir: &Path) -> Vec<PathBuf> {
+        walkdir::WalkDir::new(dir)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|e| e.file_type().is_file())
+            .filter(|e| {
+                e.file_name()
+                    .to_str()
+                    .is_some_and(vuretro_core::detect::is_bios_file)
+            })
+            .map(|e| e.into_path())
+            .collect()
+    }
     fn bios_status(&self, system: &'static System) -> Vec<BiosStatus> {
         bios::check(system, &self.paths.system_dir())
     }
@@ -94,6 +107,24 @@ impl Catalog for FsCatalog {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bios_files_are_found_inside_a_collection_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        std::fs::write(root.join("neogeo.zip"), b"b").unwrap();
+        std::fs::write(root.join("sub/scph5501.bin"), b"b").unwrap();
+        std::fs::write(root.join("mslug.zip"), b"g").unwrap();
+        let cat = FsCatalog::new(Paths::new(root.join("data")));
+        let mut names: Vec<_> = cat
+            .find_bios(root)
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["neogeo.zip", "scph5501.bin"]);
+    }
 
     #[test]
     fn a_dat_names_games_by_hash_and_empty_ones_are_refused() {

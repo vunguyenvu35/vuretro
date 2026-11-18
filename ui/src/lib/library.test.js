@@ -111,3 +111,13 @@ test('a scope string tells all games, a system and a game apart', () => {
   assert.deepEqual(parseScope('snes'), { kind: 'system', id: 'snes' });
   assert.deepEqual(parseScope(gameScope('/roms/snes/Zelda: Link.sfc')), { kind: 'game', id: '/roms/snes/Zelda: Link.sfc' });
 });
+
+test('an import reports installed BIOS files by name and does not count them as duplicates', () => {
+  const { text, failed } = summarizeImport([
+    { source: '/x/a.zip', ok: true, message: 'added to neogeo' },
+    { source: '/x/neogeo.zip', ok: true, message: 'BIOS installed: neogeo.zip' },
+    { source: '/x/b.zip', ok: true, message: 'already in the library' },
+  ]);
+  assert.equal(failed, 0);
+  assert.equal(text, '✓ 1 game added\n✓ BIOS installed: neogeo.zip\n1 already in the library');
+});

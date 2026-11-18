@@ -30,7 +30,7 @@ How vuretro decides which system a file is for:
 2. Otherwise a file extension that belongs to only one system decides (`.chd` is PlayStation, `.gba` is Game Boy Advance).
 3. **`.zip` and `.7z` can hold games for any system.** Select the system in the sidebar before importing, or keep the file in a system-named folder.
 
-`.cue` and `.m3u` files bring the `.bin` / disc files they point to. If one is missing, the import is refused and nothing is copied. BIOS files are recognised and refused here; add them as described next.
+`.cue` and `.m3u` files bring the `.bin` / disc files they point to. If one is missing, the import is refused and nothing is copied. If a BIOS file is among what you import (a file you picked, or one inside a folder), vuretro installs it as a BIOS and says so, so a whole collection can be imported in one go. You can also add BIOS files yourself as described next.
 
 ## 3. Add BIOS files
 

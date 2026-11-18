@@ -40,6 +40,9 @@ struct World {
     overrides: Overrides,
     system_controls: HashMap<String, ControlsConfig>,
     game_controls: HashMap<PathBuf, ControlsConfig>,
+    /// What the fake finds when a folder is imported.
+    folder_games: Vec<(PathBuf, Result<ImportedRom, String>)>,
+    folder_bios: Vec<PathBuf>,
     art_calls: Vec<(String, String)>,
     dat_entries: usize,
 }
@@ -265,8 +268,11 @@ impl Catalog for Fake {
             already_there: src.ends_with("dup.sfc"),
         })
     }
+    fn find_bios(&self, _dir: &Path) -> Vec<PathBuf> {
+        self.0.lock().unwrap().folder_bios.clone()
+    }
     fn import_folder(&self, _dir: &Path) -> Vec<(PathBuf, Result<ImportedRom, String>)> {
-        Vec::new()
+        self.0.lock().unwrap().folder_games.clone()
     }
     fn remove_rom(&self, path: &Path) -> Result<(), String> {
         if path.starts_with("/data/roms") {
@@ -1310,4 +1316,45 @@ fn key_bindings_resolve_game_then_system_then_general() {
 
     // dropping the game's bindings falls back to the system's
     assert_eq!(dz(a.reset_controls_for_game(zelda).unwrap()), (0.3, false));
+}
+
+#[test]
+fn importing_a_collection_also_installs_the_bios_files_inside_it() {
+    let f = ready_world();
+    {
+        let mut w = f.0.lock().unwrap();
+        w.folder_games = vec![(
+            PathBuf::from("/dl/Neo-Geo/mslug.zip"),
+            Ok(ImportedRom {
+                system: "neogeo",
+                dest: "/data/roms/neogeo/mslug.zip".into(),
+                already_there: false,
+            }),
+        )];
+        w.folder_bios = vec![PathBuf::from("/dl/Neo-Geo/neogeo.zip")];
+    }
+    let out = app(&f).import_roms(vec!["/dl/Neo-Geo".into()], None);
+    assert_eq!(out.len(), 2);
+    assert!(out[0].ok && out[0].message.starts_with("added"));
+    assert!(out[1].ok, "{out:?}");
+    assert_eq!(out[1].message, "BIOS installed: neogeo.zip");
+
+    // a folder that holds nothing but a BIOS is not an error
+    f.0.lock().unwrap().folder_games.clear();
+    let out = app(&f).import_roms(vec!["/dl/Neo-Geo".into()], None);
+    assert_eq!(out.len(), 1);
+    assert!(out[0].ok);
+
+    // a folder with neither still says so
+    f.0.lock().unwrap().folder_bios.clear();
+    let out = app(&f).import_roms(vec!["/dl/Empty".into()], None);
+    assert!(!out[0].ok && out[0].message.contains("no games"));
+}
+
+#[test]
+fn a_bios_file_chosen_as_a_game_is_installed_as_a_bios_instead_of_refused() {
+    let f = ready_world();
+    let out = app(&f).import_roms(vec!["/dl/Neo-Geo/neogeo.zip".into()], None);
+    assert!(out[0].ok, "{out:?}");
+    assert_eq!(out[0].message, "BIOS installed: neogeo.zip");
 }

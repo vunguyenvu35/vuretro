@@ -667,6 +667,15 @@ impl App {
             .collect()
     }
 
+    /// Install one BIOS file; the message starts with "BIOS installed" so the page can tell.
+    fn install_bios(&self, file: &Path) -> Outcome {
+        let source = file.to_string_lossy().into_owned();
+        match self.catalog.import_bios(file) {
+            Ok(r) => Outcome::ok(source, format!("BIOS installed: {}", r.file)),
+            Err(message) => Outcome::failed(source, message),
+        }
+    }
+
     /// Add DAT files (No-Intro, Redump style XML) so games get their official names.
     pub fn import_dats(&self, paths: Vec<String>) -> Vec<Outcome> {
         let out = paths
@@ -738,12 +747,24 @@ impl App {
             let path = PathBuf::from(&p);
             if self.catalog.is_folder(&path) {
                 let results = self.catalog.import_folder(&path);
-                if results.is_empty() {
+                // BIOS files in the collection are not games: install them where cores look
+                let bios = self.catalog.find_bios(&path);
+                if results.is_empty() && bios.is_empty() {
                     out.push(Outcome::failed(p, "no games it recognizes in that folder"));
                 }
                 for (src, r) in results {
                     out.push(describe(r, src.to_string_lossy().into_owned()));
                 }
+                for file in bios {
+                    out.push(self.install_bios(&file));
+                }
+            } else if path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(detect::is_bios_file)
+            {
+                // chosen by mistake as a game: it is a BIOS, so treat it as one
+                out.push(self.install_bios(&path));
             } else {
                 out.push(describe(
                     self.catalog.import_rom(&path, system.as_deref()),
