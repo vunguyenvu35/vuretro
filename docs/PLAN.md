@@ -74,7 +74,7 @@ Goal: someone installs vuretro from a package, opens it, gets cores, adds a ROM 
 
 - [ ] Real-game check on macOS, Windows and Linux (carried over from Phase 1)
 - [ ] Verify the app window on Windows and Linux; CI job `app` green (carried over from Phase 2)
-- [x] **In-app core installer**: `CoreInstaller` port, `BuildbotInstaller` adapter (HTTPS download into `<data dir>/cores`, archive and native-library checks; the buildbot publishes no checksums), `install_core` command with `core-progress` events, Install button with progress on Cores & BIOS. Not yet run against the live buildbot from the app UI
+- [x] **In-app core installer**: `CoreInstaller` port, `BuildbotInstaller` adapter (HTTPS download into `<data dir>/cores`, archive and native-library checks; the buildbot publishes no checksums), `install_core` command with `core-progress` events, Install button with progress on Cores & BIOS. Verified live with `cargo test -p vuretro-library -- --ignored`; the Install button itself is not yet clicked through on a clean machine
 - [ ] macOS: signed + notarized `.dmg` (universal arm64/x86_64)
 - [ ] Windows: signed MSI/NSIS
 - [ ] Linux: AppImage, Flatpak

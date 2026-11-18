@@ -193,6 +193,16 @@ mod tests {
         )
     }
 
+    /// Hits the real buildbot: `cargo test -p vuretro-library -- --ignored`.
+    #[test]
+    #[ignore]
+    fn live_download_from_the_buildbot() {
+        let dir = tempfile::tempdir().unwrap();
+        let inst = BuildbotInstaller::new(Paths::new(dir.path()));
+        let path = inst.install("gambatte_libretro", &|_| {}).unwrap();
+        assert!(std::fs::metadata(path).unwrap().len() > 100_000);
+    }
+
     #[test]
     fn installs_the_core_into_the_cores_folder() {
         let dir = tempfile::tempdir().unwrap();
