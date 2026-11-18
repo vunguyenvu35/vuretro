@@ -92,7 +92,7 @@
   .intro p { margin: 0; flex: 1 1 360px; }
   .saved { color: var(--ok); font-size: 12px; opacity: 0; transition: opacity .2s; }
   .saved.show { opacity: 1; }
-  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; } container-type: inline-size; 
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; container-type: inline-size; }
   .row { display: flex; align-items: center; gap: 16px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
   .row:last-child { border-bottom: 0; }
   .row.own { background: color-mix(in srgb, var(--accent) 6%, transparent); }
