@@ -25,6 +25,8 @@ pub struct GameSettings {
     pub pause_on_blur: bool,
     /// Scanline look (CRT effect).
     pub crt: bool,
+    /// Keep recent states so a game can be rewound (hold Backspace). Costs memory and CPU.
+    pub rewind: bool,
 }
 
 impl Default for GameSettings {
@@ -36,6 +38,7 @@ impl Default for GameSettings {
             sync_display: true,
             pause_on_blur: false,
             crt: false,
+            rewind: false,
         }
     }
 }
@@ -89,6 +92,7 @@ mod tests {
             sync_display: true,
             pause_on_blur: false,
             crt: false,
+            rewind: false,
         }
         .sanitized();
         assert_eq!((s.window_scale, s.volume), (MAX_SCALE, 100));
@@ -126,6 +130,7 @@ mod tests {
             sync_display: false,
             pause_on_blur: true,
             crt: true,
+            rewind: true,
         };
         save(&path, &s).unwrap();
         assert_eq!(load(&path), s);

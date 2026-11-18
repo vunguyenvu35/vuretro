@@ -21,7 +21,7 @@
   const STAGE_MAX = 290;
 
   // Whatever the backend sends, fill in anything missing so a switch never gets stuck.
-  const DEFAULTS = { window_scale: 2, sound: true, volume: 100, sync_display: true, pause_on_blur: false, crt: false };
+  const DEFAULTS = { window_scale: 2, sound: true, volume: 100, sync_display: true, pause_on_blur: false, crt: false, rewind: false };
   const withDefaults = (v) => ({ ...DEFAULTS, ...v });
 
   onMount(async () => {
@@ -48,6 +48,10 @@
   }
   function toggleSync() {
     s.sync_display = !s.sync_display;
+    save();
+  }
+  function toggleRewind() {
+    s.rewind = !s.rewind;
     save();
   }
   function toggleCrt() {
@@ -168,6 +172,16 @@
             <div class="d">Draws dark lines between the rows of the picture, like an old TV. Press <kbd>F4</kbd> in a game to switch it on or off.</div>
           </div>
           <button class="switch" role="switch" aria-checked={s.crt} aria-label="CRT scanlines" class:on={s.crt} onclick={toggleCrt}><span></span></button>
+        </div>
+        <div class="row">
+          <span class="tile green" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M11 6L4 12l7 6V6zM20 6l-7 6 7 6V6z" fill="currentColor" /></svg>
+          </span>
+          <div class="txt">
+            <div class="t">Rewind</div>
+            <div class="d">Keeps recent moments in memory (up to 64 MB) so you can hold <kbd>Backspace</kbd> to go back in time. Uses some extra CPU and works only with cores that support save states.</div>
+          </div>
+          <button class="switch" role="switch" aria-checked={s.rewind} aria-label="Rewind" class:on={s.rewind} onclick={toggleRewind}><span></span></button>
         </div>
       </div>
 

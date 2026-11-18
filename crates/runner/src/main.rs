@@ -19,6 +19,7 @@ mod input;
 mod options;
 mod ports;
 mod real;
+mod rewind;
 mod screen;
 mod session;
 mod window;

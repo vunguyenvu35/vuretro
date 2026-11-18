@@ -5,6 +5,7 @@
 use crate::cover;
 use crate::crt;
 use crate::ports::{Controller, Emulator, Frame, FrameSource, Screen};
+use crate::rewind::Rewind;
 use crate::window::{self, clamp_scale, gain_for, pace, paused_overlay, window_title, Act, SLOTS};
 use anyhow::Result;
 use minifb::Key;
@@ -14,6 +15,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use vuretro_settings::GameSettings;
 
+/// Rewind keeps a state every this many frames, up to this much memory.
+const REWIND_EVERY: u64 = 2;
+const REWIND_BYTES: usize = 64 * 1024 * 1024;
 const FAST_FORWARD_FRAMES: usize = 4;
 const SRAM_AUTOSAVE: Duration = Duration::from_secs(30);
 
@@ -73,6 +77,8 @@ pub struct Session {
     deadline: Instant,
     last_sram_save: Instant,
 
+    rewind: Option<Rewind>,
+    frames_run: u64,
     crt: bool,
     slot: u8,
     start_slot: Option<u8>,
@@ -91,6 +97,7 @@ impl Session {
     pub fn new(parts: Parts, cfg: Config) -> Self {
         let title = format!("vuretro — {}", cfg.rom_name);
         let crt = cfg.settings.crt;
+        let rewind = cfg.settings.rewind.then(|| Rewind::new(REWIND_BYTES));
         Session {
             screen: parts.screen,
             emulator: parts.emulator,
@@ -117,6 +124,8 @@ impl Session {
             frame_time: Duration::from_secs_f64(1.0 / cfg.fps),
             deadline: Instant::now(),
             last_sram_save: Instant::now(),
+            rewind,
+            frames_run: 0,
             crt,
             slot: 1,
             start_slot: cfg.start_slot.filter(|n| (1..=SLOTS).contains(n)),
@@ -365,16 +374,45 @@ impl Session {
         }
     }
 
+    /// Keep a state every few frames so the game can be rewound.
+    fn remember_for_rewind(&mut self) {
+        let Some(rewind) = self.rewind.as_mut() else {
+            return;
+        };
+        self.frames_run += 1;
+        if self.frames_run % REWIND_EVERY == 0 {
+            if let Some(state) = self.emulator.save_state() {
+                rewind.push(state);
+            }
+        }
+    }
+
+    /// Go back one step: load the newest remembered state and draw one frame of it.
+    fn step_back(&mut self) {
+        let Some(state) = self.rewind.as_mut().and_then(Rewind::pop) else {
+            return; // nothing older is left: the picture stays
+        };
+        if self.emulator.load_state(&state) {
+            self.emulator.run();
+        }
+        self.notice = Some(("rewinding".to_string(), Instant::now()));
+    }
+
     /// Feed input, run the core (several times when fast-forwarding) and show its frame.
     fn run_core(&mut self) -> Result<()> {
         self.controller.poll(&*self.screen);
-        let runs = if self.screen.key_down(Key::Tab) {
-            FAST_FORWARD_FRAMES
+        if self.rewind.is_some() && self.screen.key_down(Key::Backspace) {
+            self.step_back();
         } else {
-            1
-        };
-        for _ in 0..runs {
-            self.emulator.run();
+            let runs = if self.screen.key_down(Key::Tab) {
+                FAST_FORWARD_FRAMES
+            } else {
+                1
+            };
+            for _ in 0..runs {
+                self.emulator.run();
+                self.remember_for_rewind();
+            }
         }
 
         match self.frames.take_new() {
@@ -667,6 +705,42 @@ mod tests {
         assert!(vuretro_settings::load(&r.dir.path().join("game.json")).crt);
         assert_eq!(s.apply(Act::Crt).unwrap().unwrap(), "CRT effect off");
         assert!(!vuretro_settings::load(&r.dir.path().join("game.json")).crt);
+    }
+
+    #[test]
+    fn holding_backspace_rewinds_through_remembered_states() {
+        let (mut s, r) = rig(100);
+        s.rewind = Some(Rewind::new(1000));
+        for _ in 0..4 {
+            s.frame().unwrap();
+        }
+        assert_eq!(
+            s.rewind.as_ref().unwrap().len(),
+            2,
+            "one state every 2 frames"
+        );
+        assert_eq!(r.log.borrow().state, None);
+
+        r.log.borrow_mut().down.insert(Key::Backspace);
+        s.frame().unwrap();
+        assert_eq!(
+            r.log.borrow().state,
+            Some(vec![7, 7]),
+            "an old state was loaded"
+        );
+        assert_eq!(s.rewind.as_ref().unwrap().len(), 1);
+        s.frame().unwrap();
+        s.frame().unwrap(); // nothing older left: no crash, no new states
+        assert_eq!(s.rewind.as_ref().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn rewind_is_off_unless_the_setting_is_on() {
+        let (mut s, r) = rig(100);
+        assert!(s.rewind.is_none());
+        r.log.borrow_mut().down.insert(Key::Backspace);
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().state, None);
     }
 
     #[test]
