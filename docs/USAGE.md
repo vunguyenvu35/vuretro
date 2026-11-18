@@ -89,6 +89,7 @@ On Windows and Linux use `Ctrl` in place of `⌘`.
 | `F8` | Sound on / off |
 | `F9` / `F10` | Smaller / bigger window (remembered for next time) |
 | `F4` | CRT scanlines on or off (remembered) |
+| `F11` | Change disc (multi-disc games, e.g. a PlayStation `.m3u`) |
 | `Backspace` (hold) | Rewind, when switched on in Settings |
 | `F12` | Screenshot |
 

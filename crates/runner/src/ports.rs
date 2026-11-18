@@ -37,6 +37,11 @@ pub trait Emulator {
     fn save_state(&self) -> Option<Vec<u8>>;
     fn load_state(&self, data: &[u8]) -> bool;
     fn save_sram(&self, path: &Path) -> Result<usize>;
+    /// Insert the next disc of a multi-disc game; the text says what happened.
+    /// `None` when the core has no disc control.
+    fn next_disc(&self) -> Option<String> {
+        None
+    }
 }
 
 /// Turns keyboard and gamepads into the game's buttons.

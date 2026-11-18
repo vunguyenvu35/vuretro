@@ -12,6 +12,7 @@ pub const RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL: c_uint = 8;
 pub const RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: c_uint = 9;
 pub const RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: c_uint = 10;
 pub const RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS: c_uint = 11;
+pub const RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE: c_uint = 13;
 pub const RETRO_ENVIRONMENT_GET_VARIABLE: c_uint = 15;
 pub const RETRO_ENVIRONMENT_SET_VARIABLES: c_uint = 16;
 pub const RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: c_uint = 17;
@@ -94,6 +95,20 @@ pub struct retro_system_av_info {
 pub struct retro_variable {
     pub key: *const c_char,
     pub value: *const c_char,
+}
+
+/// Disc swapping, announced by multi-disc cores (`SET_DISK_CONTROL_INTERFACE`).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct retro_disk_control_callback {
+    pub set_eject_state: Option<unsafe extern "C" fn(ejected: bool) -> bool>,
+    pub get_eject_state: Option<unsafe extern "C" fn() -> bool>,
+    pub get_image_index: Option<unsafe extern "C" fn() -> c_uint>,
+    pub set_image_index: Option<unsafe extern "C" fn(index: c_uint) -> bool>,
+    pub get_num_images: Option<unsafe extern "C" fn() -> c_uint>,
+    pub replace_image_index:
+        Option<unsafe extern "C" fn(index: c_uint, info: *const c_void) -> bool>,
+    pub add_image_index: Option<unsafe extern "C" fn() -> bool>,
 }
 
 pub type retro_environment_t = unsafe extern "C" fn(cmd: c_uint, data: *mut c_void) -> bool;

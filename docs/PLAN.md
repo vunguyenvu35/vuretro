@@ -126,7 +126,7 @@ Order of work: registry as data first, then systems one by one (each is a data e
 | Arcade (MAME) | `mame2003_plus` | romset versions must match the core |
 | DOS | `dosbox_pure` | folder or `.zip`, keyboard and mouse input |
 
-- [ ] Multi-disc PS1 via `.m3u` + disc swap (`SET_DISK_CONTROL_INTERFACE`); reused by Sega CD and PC Engine CD
+- [x] Disc swap: the runner handles `SET_DISK_CONTROL_INTERFACE` (`disc.rs`, tested with a fake core) and F11 / Game menu changes disc; `.m3u` playlists are already accepted. Not yet tried with a real multi-disc game. Grouping discs of one game in the library is still open
 - [ ] Each system must have: a registry entry, a core download entry, a documented BIOS list, a synthetic-ROM or fake-core test, and a line in [USAGE.md](USAGE.md)
 
 ## M4: Rich library

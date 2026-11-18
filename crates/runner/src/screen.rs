@@ -31,6 +31,7 @@ pub fn install_menus(window: &mut Window) {
     add("Game", &|m| {
         item(m, "Pause / Resume (P or F3)", Act::Pause, Some(Key::P));
         item(m, "Reset (F2)", Act::Reset, Some(Key::R));
+        item(m, "Change Disc (F11)", Act::NextDisc, None);
         m.add_separator();
         m.add_item("Fast Forward: hold Tab", 0)
             .enabled(false)

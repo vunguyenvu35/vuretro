@@ -12,6 +12,7 @@ mod audio;
 mod core;
 mod cover;
 mod crt;
+mod disc;
 mod display;
 mod frontend;
 mod headless;

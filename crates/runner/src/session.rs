@@ -194,6 +194,7 @@ impl Session {
             (Key::P, Act::Pause), // no Fn needed on a laptop keyboard
             (Key::F12, Act::Screenshot),
             (Key::F4, Act::Crt),
+            (Key::F11, Act::NextDisc),
         ]
         .into_iter()
         .filter(|(k, _)| self.screen.key_pressed(*k))
@@ -294,6 +295,11 @@ impl Session {
                     if self.crt { "on" } else { "off" }
                 ))
             }
+            Act::NextDisc => Some(
+                self.emulator
+                    .next_disc()
+                    .unwrap_or_else(|| "this core cannot change discs".to_string()),
+            ),
             Act::Screenshot => Some(self.screenshot()),
             Act::Quit => {
                 self.quit = true;
@@ -462,6 +468,7 @@ mod tests {
     /// Everything the fakes record, shared with the test.
     #[derive(Default)]
     struct Log {
+        disc_swaps: u32,
         /// Keys held down, and keys that count as freshly pressed on the next frame.
         down: HashSet<Key>,
         pressed: HashSet<Key>,
@@ -524,6 +531,11 @@ mod tests {
 
     struct FakeEmu(Shared);
     impl Emulator for FakeEmu {
+        fn next_disc(&self) -> Option<String> {
+            let mut log = self.0.borrow_mut();
+            log.disc_swaps += 1;
+            Some(format!("disc {} of 2", log.disc_swaps % 2 + 1))
+        }
         fn run(&self) {
             self.0.borrow_mut().ran += 1;
         }
@@ -704,6 +716,15 @@ mod tests {
         s.start_slot = Some(3);
         s.run().unwrap();
         assert_eq!(r.log.borrow().state, Some(vec![9, 9]));
+    }
+
+    #[test]
+    fn f11_changes_the_disc_and_says_so() {
+        let (mut s, r) = rig(100);
+        r.log.borrow_mut().pressed.insert(Key::F11);
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().disc_swaps, 1);
+        assert_eq!(s.notice.as_ref().unwrap().0, "disc 2 of 2");
     }
 
     #[test]

@@ -25,6 +25,8 @@ pub struct Frontend {
     pub options: HashMap<String, CString>,
     /// Options announced by the core (`SET_VARIABLES`).
     pub definitions: Vec<crate::options::OptionDef>,
+    /// Disc control of a multi-disc core, if it announced one.
+    pub disk: Option<retro_disk_control_callback>,
 }
 
 static FRONTEND: OnceLock<Mutex<Frontend>> = OnceLock::new();
@@ -50,6 +52,7 @@ pub fn init(
             .filter_map(|(k, v)| Some((k, CString::new(v).ok()?)))
             .collect(),
         definitions: Vec::new(),
+        disk: None,
     };
     let _ = FRONTEND.set(Mutex::new(fe));
 }
@@ -132,6 +135,11 @@ pub unsafe extern "C" fn environment_cb(cmd: c_uint, data: *mut c_void) -> bool 
                 p = p.add(1);
             }
             with(|fe| fe.definitions = defs);
+            true
+        }
+        RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE => {
+            let cb = *(data as *const retro_disk_control_callback);
+            with(|fe| fe.disk = Some(cb));
             true
         }
         RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE => {

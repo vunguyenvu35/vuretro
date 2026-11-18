@@ -30,6 +30,10 @@ impl Emulator for core::Core {
     fn save_sram(&self, path: &Path) -> Result<usize> {
         core::Core::save_sram(self, path)
     }
+    fn next_disc(&self) -> Option<String> {
+        let cb = crate::frontend::with(|fe| fe.disk)?;
+        Some(crate::disc::swap_to_next(&cb))
+    }
 }
 
 impl Controller for input::Input {

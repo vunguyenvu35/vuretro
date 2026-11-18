@@ -40,6 +40,7 @@ pub enum Act {
     Size(u8),
     Screenshot,
     Crt,
+    NextDisc,
     Quit,
 }
 
@@ -58,6 +59,7 @@ pub fn act_id(a: Act) -> usize {
         Act::Size(n) => 20 + n as usize,
         Act::Screenshot => 9,
         Act::Crt => 40,
+        Act::NextDisc => 41,
         Act::Quit => 30,
     }
 }
@@ -74,6 +76,7 @@ pub fn act_from_id(id: usize) -> Option<Act> {
         Act::SizeStep(1),
         Act::Screenshot,
         Act::Crt,
+        Act::NextDisc,
         Act::Quit,
     ];
     all.into_iter()
