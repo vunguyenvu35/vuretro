@@ -2,6 +2,7 @@
 //! only through the ports in `ports`, so everything here runs in tests with fakes.
 
 use crate::detect;
+use crate::model::CoreChoice;
 use crate::model::{game_views, GameMeta, Outcome, Overview, Settings, SystemView};
 use crate::paths::Paths;
 use crate::ports::{Catalog, CoverJob, GameProcess, LaunchSpec, Launcher, Locator, Store};
@@ -115,7 +116,13 @@ impl App {
                 SystemView::new(
                     s,
                     &settings,
-                    self.locator.core(s.core).is_some(),
+                    self.locator.core(settings.core_for(s)).is_some(),
+                    s.all_cores()
+                        .map(|c| CoreChoice {
+                            name: c,
+                            installed: self.locator.core(c).is_some(),
+                        })
+                        .collect(),
                     self.catalog.bios_status(s),
                     scanned.iter().filter(|g| g.system == s.id).count(),
                 )
@@ -139,6 +146,24 @@ impl App {
     pub fn set_rom_dir(&self, path: Option<String>) {
         self.settings.lock().unwrap().rom_dir = path;
         self.save_settings();
+    }
+
+    /// Pick which core runs a system. Only cores the registry lists for it are accepted.
+    pub fn set_system_core(&self, id: &str, core: &str) -> Result<(), String> {
+        let sys = crate::registry::by_id(id).ok_or("unknown system")?;
+        if !sys.all_cores().any(|c| c == core) {
+            return Err(format!("{core} cannot run {}", sys.name));
+        }
+        {
+            let mut s = self.settings.lock().unwrap();
+            if core == sys.core {
+                s.cores.remove(id);
+            } else {
+                s.cores.insert(id.to_string(), core.to_string());
+            }
+        }
+        self.save_settings();
+        Ok(())
     }
 
     pub fn set_system_enabled(&self, id: String, enabled: bool) {
@@ -307,10 +332,11 @@ impl App {
         for (path, system) in games {
             let rom = PathBuf::from(&path);
             let failed = self.cover_failed.lock().unwrap().contains(&path);
+            let chosen = self.settings.lock().unwrap().clone();
             let core = systems()
                 .iter()
                 .find(|s| s.id == system)
-                .and_then(|s| self.locator.core(s.core));
+                .and_then(|s| self.locator.core(chosen.core_for(s)));
             if let (false, false, Some(core)) = (failed, self.store.cover_exists(&rom), core) {
                 jobs.push(CoverJob {
                     key: path,
@@ -357,10 +383,11 @@ impl App {
         if !crate::model::bios_ready(&self.catalog.bios_status(sys)) {
             return Err("BIOS missing: add it in Cores & BIOS".into());
         }
+        let chosen = self.settings.lock().unwrap().core_for(sys);
         let core = self
             .locator
-            .core(sys.core)
-            .ok_or_else(|| format!("core {} not installed (run: make cores)", sys.core))?;
+            .core(chosen)
+            .ok_or_else(|| format!("core {chosen} not installed (run: make cores)"))?;
         self.start(&core, &rom, Some(path))
     }
 

@@ -99,6 +99,7 @@ mod tests {
         let s = Settings {
             rom_dir: Some("/roms".into()),
             disabled: vec!["psx".into()],
+            cores: [("nes".to_string(), "mesen_libretro".to_string())].into(),
         };
         store.save_settings(&s);
         assert_eq!(store.load_settings(), s);

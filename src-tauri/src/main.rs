@@ -51,6 +51,7 @@ fn main() {
             get_overview,
             set_rom_dir,
             set_system_enabled,
+            set_system_core,
             toggle_favorite,
             import_bios,
             import_roms,

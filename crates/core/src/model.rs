@@ -2,7 +2,7 @@
 
 use crate::registry::System;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 /// App settings the user changes.
@@ -13,6 +13,19 @@ pub struct Settings {
     /// System ids the user switched off.
     #[serde(default)]
     pub disabled: Vec<String>,
+    /// Core the user picked per system id (only values listed by the registry count).
+    #[serde(default)]
+    pub cores: BTreeMap<String, String>,
+}
+
+impl Settings {
+    /// The core that runs `sys`: the user's pick if the registry lists it, else the default.
+    pub fn core_for(&self, sys: &System) -> &'static str {
+        self.cores
+            .get(sys.id)
+            .and_then(|c| sys.all_cores().find(|k| *k == c.as_str()))
+            .unwrap_or(sys.core)
+    }
 }
 
 /// What we remember about one game, keyed by its path.
@@ -105,10 +118,18 @@ impl Outcome {
 // ---------- what the UI shows ----------
 
 #[derive(Debug, Clone, Serialize)]
+pub struct CoreChoice {
+    pub name: &'static str,
+    pub installed: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct SystemView {
     pub id: &'static str,
     pub name: &'static str,
     pub core: &'static str,
+    /// Every core that can run this system, with whether it is installed.
+    pub core_choices: Vec<CoreChoice>,
     pub extensions: &'static [&'static str],
     /// Switched on by the user (Cores & BIOS screen).
     pub enabled: bool,
@@ -123,13 +144,15 @@ impl SystemView {
         sys: &'static System,
         settings: &Settings,
         core_installed: bool,
+        core_choices: Vec<CoreChoice>,
         bios: Vec<BiosStatus>,
         game_count: usize,
     ) -> Self {
         SystemView {
             id: sys.id,
             name: sys.name,
-            core: sys.core,
+            core: settings.core_for(sys),
+            core_choices,
             extensions: sys.extensions,
             enabled: !settings.disabled.iter().any(|d| d == sys.id),
             core_installed,
@@ -233,7 +256,7 @@ mod tests {
                 },
             })
             .collect();
-        SystemView::new(sys, settings, core, bios, n)
+        SystemView::new(sys, settings, core, Vec::new(), bios, n)
     }
 
     #[test]

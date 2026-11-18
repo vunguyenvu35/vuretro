@@ -17,6 +17,7 @@ export const api = {
   overview: () => call('get_overview'),
   setRomDir: (path) => call('set_rom_dir', { path }),
   setSystemEnabled: (id, enabled) => call('set_system_enabled', { id, enabled }),
+  setSystemCore: (id, core) => call('set_system_core', { id, core }),
   toggleFavorite: (path) => call('toggle_favorite', { path }),
   importBios: (paths) => call('import_bios', { paths }),
   importRoms: (paths, system = null) => call('import_roms', { paths, system }),

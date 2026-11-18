@@ -46,6 +46,11 @@ pub fn set_system_enabled(shell: State<'_, Shell>, id: String, enabled: bool) {
 }
 
 #[tauri::command]
+pub fn set_system_core(shell: State<'_, Shell>, id: String, core: String) -> Result<(), String> {
+    shell.app.set_system_core(&id, &core)
+}
+
+#[tauri::command]
 pub fn toggle_favorite(shell: State<'_, Shell>, path: String) -> bool {
     shell.app.toggle_favorite(path)
 }

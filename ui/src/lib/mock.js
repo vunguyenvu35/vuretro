@@ -11,10 +11,10 @@ const fullMock = () => ({
   runner_found: true,
   demo_available: true,
   systems: [
-    { id: 'neogeo', name: 'Neo Geo', core: 'fbneo_libretro', extensions: ['zip', '7z'], enabled: true, core_installed: true, bios_ready: true, game_count: 2, bios: [mockBios('neogeo', 'neogeo.zip', true, 'MVS / AES BIOS set', 'ok')] },
-    { id: 'psx', name: 'PlayStation', core: 'pcsx_rearmed_libretro', extensions: ['chd', 'cue', 'pbp'], enabled: true, core_installed: true, bios_ready: false, game_count: 1, bios: [mockBios('psx', 'scph5501.bin', true, 'NTSC-U'), mockBios('psx', 'scph5500.bin', false, 'NTSC-J'), mockBios('psx', 'scph5502.bin', false, 'PAL')] },
-    { id: 'snes', name: 'Super Nintendo', core: 'snes9x_libretro', extensions: ['sfc', 'smc'], enabled: true, core_installed: true, bios_ready: true, game_count: 1, bios: [] },
-    { id: 'gba', name: 'Game Boy Advance', core: 'mgba_libretro', extensions: ['gba'], enabled: true, core_installed: true, bios_ready: true, game_count: 1, bios: [mockBios('gba', 'gba_bios.bin', false, 'optional')] },
+    { id: 'neogeo', name: 'Neo Geo', core: 'fbneo_libretro', core_choices: [{ name: 'fbneo_libretro', installed: true }], extensions: ['zip', '7z'], enabled: true, core_installed: true, bios_ready: true, game_count: 2, bios: [mockBios('neogeo', 'neogeo.zip', true, 'MVS / AES BIOS set', 'ok')] },
+    { id: 'psx', name: 'PlayStation', core: 'pcsx_rearmed_libretro', core_choices: [{ name: 'pcsx_rearmed_libretro', installed: true }], extensions: ['chd', 'cue', 'pbp'], enabled: true, core_installed: true, bios_ready: false, game_count: 1, bios: [mockBios('psx', 'scph5501.bin', true, 'NTSC-U'), mockBios('psx', 'scph5500.bin', false, 'NTSC-J'), mockBios('psx', 'scph5502.bin', false, 'PAL')] },
+    { id: 'snes', name: 'Super Nintendo', core: 'snes9x_libretro', core_choices: [{ name: 'snes9x_libretro', installed: true }], extensions: ['sfc', 'smc'], enabled: true, core_installed: true, bios_ready: true, game_count: 1, bios: [] },
+    { id: 'gba', name: 'Game Boy Advance', core: 'mgba_libretro', core_choices: [{ name: 'mgba_libretro', installed: true }], extensions: ['gba'], enabled: true, core_installed: true, bios_ready: true, game_count: 1, bios: [mockBios('gba', 'gba_bios.bin', false, 'optional')] },
   ],
   games: [
     { system: 'neogeo', title: 'Sample Shooter', path: '/roms/neogeo/shooter.zip', size: 31_000_000, last_played: Date.now() / 1000 - 7200, play_secs: 11520, favorite: true, blocked: null, imported: true },
@@ -29,6 +29,7 @@ const mock = {
   get_overview: async () => mockOverview(),
   set_rom_dir: async () => {},
   set_system_enabled: async () => {},
+  set_system_core: async () => {},
   toggle_favorite: async () => true,
   import_bios: async ({ paths }) => paths.map((p) => ({ source: p, ok: false, message: 'Not available in browser preview' })),
   launch_game: async () => {},

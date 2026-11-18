@@ -103,7 +103,7 @@ Goal: adding a system is a data change plus a test, not a code change.
 Order of work: registry as data first, then systems one by one (each is a data entry, a `make cores` entry and a test).
 
 - [x] Move `registry` from Rust constants to data: `crates/core/data/systems.json`, parsed and validated by `registry::parse_systems` (duplicate ids, empty extensions rejected)
-- [ ] More than one core per system, selectable per system (setting stored in `config/`, shown on the Cores & BIOS screen) (data has `alt_cores`; the selection setting and UI are still to do)
+- [x] More than one core per system, selectable per system: `Settings.cores`, `App::set_system_core`, drop-down on Cores & BIOS (tested with fakes)
 - [x] Systems wave 1 registered and detected (cores exist on the buildbot; not yet played with real games, tracked in M1) (cheap, software cores, no BIOS or optional BIOS):
 
 | System | Default core | Alternative | License note |

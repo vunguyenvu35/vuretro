@@ -28,6 +28,13 @@ pub struct System {
     pub enabled: bool,
 }
 
+impl System {
+    /// The default core followed by the alternatives.
+    pub fn all_cores(&self) -> impl Iterator<Item = &'static str> {
+        std::iter::once(self.core).chain(self.alt_cores.iter().copied())
+    }
+}
+
 /// Raw shape of `data/systems.json`; leaked once into the `'static` registry.
 #[derive(Deserialize)]
 struct RawBios {

@@ -496,3 +496,33 @@ fn controls_round_trip_and_save_errors_reach_the_caller() {
         "disk full"
     );
 }
+
+#[test]
+fn a_system_can_be_switched_to_another_listed_core() {
+    let f = ready_world();
+    let a = app(&f);
+    // default first
+    let nes = |a: &App| {
+        a.overview()
+            .systems
+            .into_iter()
+            .find(|s| s.id == "nes")
+            .unwrap()
+    };
+    assert_eq!(nes(&a).core, "fceumm_libretro");
+    assert_eq!(nes(&a).core_choices.len(), 3);
+
+    a.set_system_core("nes", "mesen_libretro").unwrap();
+    assert_eq!(nes(&a).core, "mesen_libretro");
+    assert_eq!(f.0.lock().unwrap().settings.cores["nes"], "mesen_libretro");
+    // not installed -> the system reports its chosen core as missing
+    f.0.lock().unwrap().cores.remove("mesen_libretro");
+    assert!(!nes(&a).core_installed);
+
+    // going back to the default clears the entry
+    a.set_system_core("nes", "fceumm_libretro").unwrap();
+    assert!(f.0.lock().unwrap().settings.cores.is_empty());
+    // a core the registry does not list for that system is refused
+    assert!(a.set_system_core("nes", "snes9x_libretro").is_err());
+    assert!(a.set_system_core("nope", "x").is_err());
+}

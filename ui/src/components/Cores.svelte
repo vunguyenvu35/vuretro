@@ -3,6 +3,7 @@
   import { app, refresh, importBios } from '../lib/store.svelte.js';
   import { api } from '../lib/api.js';
   import { colorOf } from '../lib/systems.js';
+  import Select from './Select.svelte';
 
   let over = $state(false);
   const ov = $derived(app.overview);
@@ -13,6 +14,14 @@
   async function toggle(s) {
     await api.setSystemEnabled(s.id, !s.enabled);
     refresh();
+  }
+
+  async function pickCore(s, core) {
+    try {
+      await api.setSystemCore(s.id, core);
+    } finally {
+      refresh();
+    }
   }
 
   const importFiles = importBios;
@@ -50,7 +59,15 @@
           <span class="status {kind}">● {label}</span>
         </header>
         <dl>
-          <dt>Core</dt><dd class="mono">{s.core}</dd>
+          <dt>Core</dt>
+          <dd>
+            {#if (s.core_choices?.length ?? 0) > 1}
+              <Select compact value={s.core} ariaLabel="Core for {s.name}" onchange={(v) => pickCore(s, v)}
+                options={s.core_choices.map((c) => ({ value: c.name, label: c.name.replace(/_libretro$/, ''), hint: c.installed ? '' : 'not installed' }))} />
+            {:else}
+              <span class="mono">{s.core}</span>
+            {/if}
+          </dd>
           <dt>Files</dt><dd class="mono">{s.extensions.map((e) => '.' + e).join(' ')}</dd>
           <dt>Games</dt><dd>{s.game_count}</dd>
           <dt>BIOS</dt>
