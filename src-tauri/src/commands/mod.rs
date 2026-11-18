@@ -1,6 +1,7 @@
 //! Tauri commands: thin glue between the Svelte UI and the use cases in `vuretro-core`.
 //! No rules live here; each command unwraps its arguments, calls `App` and shapes the reply.
 
+pub mod backup;
 pub mod config;
 pub mod cores;
 pub mod covers;

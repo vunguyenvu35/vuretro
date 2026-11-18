@@ -18,3 +18,16 @@ export function parseSidebar(saved) {
   const n = Number(saved);
   return saved != null && saved !== '' && Number.isFinite(n) ? clampSidebar(n) : SIDEBAR_DEFAULT;
 }
+
+/** `vuretro-backup-2026-11-18.zip`: the name a backup is offered under. */
+export function backupFileName(date = new Date()) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `vuretro-backup-${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}.zip`;
+}
+
+/** Human size: 1.2 MB, 340 KB. */
+export function formatBytes(n) {
+  if (n >= 1e9) return `${(n / 1e9).toFixed(1)} GB`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(n / 1e3))} KB`;
+}

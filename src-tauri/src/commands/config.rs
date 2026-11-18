@@ -78,7 +78,9 @@ pub fn get_controls_for(
     shell: State<'_, Shell>,
     system: Option<String>,
 ) -> Result<ScopedControlsView, String> {
-    let v = shell.app.controls_for(system.as_deref().filter(|s| !s.is_empty()))?;
+    let v = shell
+        .app
+        .controls_for(system.as_deref().filter(|s| !s.is_empty()))?;
     Ok(scoped_view(&shell, v))
 }
 
@@ -106,7 +108,9 @@ pub fn get_scoped_settings(
     shell: State<'_, Shell>,
     system: Option<String>,
 ) -> Result<vuretro_core::model::ScopedSettings, String> {
-    shell.app.scoped_settings(system.as_deref().filter(|s| !s.is_empty()))
+    shell
+        .app
+        .scoped_settings(system.as_deref().filter(|s| !s.is_empty()))
 }
 
 #[tauri::command]

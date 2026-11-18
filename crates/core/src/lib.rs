@@ -5,6 +5,7 @@
 //!
 //! Dependency rule: everything else depends on this crate, never the other way round.
 
+pub mod backup;
 pub mod detect;
 pub mod model;
 pub mod paths;

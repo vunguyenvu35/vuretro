@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use vuretro_controls::{macros::MacroConfig, ControlsConfig};
+use vuretro_core::backup::BackupOptions;
 use vuretro_core::model::*;
 use vuretro_core::paths::Paths;
 use vuretro_core::ports::*;
@@ -43,6 +44,9 @@ struct World {
     /// What the fake finds when a folder is imported.
     folder_games: Vec<(PathBuf, Result<ImportedRom, String>)>,
     folder_bios: Vec<PathBuf>,
+    /// What the fake archive was asked to do, in order.
+    archive_calls: Vec<String>,
+    backup_format: u32,
     art_calls: Vec<(String, String)>,
     dat_entries: usize,
 }
@@ -1357,4 +1361,136 @@ fn a_bios_file_chosen_as_a_game_is_installed_as_a_bios_instead_of_refused() {
     let out = app(&f).import_roms(vec!["/dl/Neo-Geo/neogeo.zip".into()], None);
     assert!(out[0].ok, "{out:?}");
     assert_eq!(out[0].message, "BIOS installed: neogeo.zip");
+}
+
+struct FakeArchive(Fake);
+
+impl Archive for FakeArchive {
+    fn create_backup(
+        &self,
+        dest: &Path,
+        includes: &[&str],
+        _v: &str,
+        _t: u64,
+    ) -> Result<vuretro_core::backup::BackupSummary, String> {
+        self.0 .0.lock().unwrap().archive_calls.push(format!(
+            "create {} [{}]",
+            dest.display(),
+            includes.join(",")
+        ));
+        Ok(vuretro_core::backup::BackupSummary {
+            path: dest.to_string_lossy().into(),
+            files: 3,
+            bytes: 30,
+        })
+    }
+    fn inspect_backup(&self, _src: &Path) -> Result<vuretro_core::backup::BackupManifest, String> {
+        let format = self.0 .0.lock().unwrap().backup_format;
+        Ok(vuretro_core::backup::BackupManifest {
+            format,
+            app_version: "1".into(),
+            created: 5,
+            includes: vec![],
+        })
+    }
+    fn restore_backup(&self, src: &Path) -> Result<vuretro_core::backup::BackupSummary, String> {
+        let mut w = self.0 .0.lock().unwrap();
+        w.archive_calls.push(format!("restore {}", src.display()));
+        w.meta.clear(); // the restored library file has no favorites
+        Ok(vuretro_core::backup::BackupSummary {
+            path: src.to_string_lossy().into(),
+            files: 2,
+            bytes: 20,
+        })
+    }
+    fn write_text(&self, dest: &Path, text: &str) -> Result<(), String> {
+        self.0 .0.lock().unwrap().archive_calls.push(format!(
+            "write {} {}",
+            dest.display(),
+            text.lines().count()
+        ));
+        Ok(())
+    }
+}
+
+fn backup_app(f: &Fake) -> App {
+    f.0.lock().unwrap().backup_format = vuretro_core::backup::FORMAT;
+    app(f).with_archive(Box::new(FakeArchive(f.clone())))
+}
+
+#[test]
+fn a_backup_includes_what_was_chosen() {
+    let f = ready_world();
+    let a = backup_app(&f);
+    a.create_backup(
+        "/out/b.zip",
+        BackupOptions {
+            saves: false,
+            covers: true,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        f.0.lock().unwrap().archive_calls,
+        ["create /out/b.zip [settings.json,library.json,config,dats,covers]"]
+    );
+    // a build without an archive says so
+    assert!(app(&ready_world())
+        .create_backup("/x", BackupOptions::default())
+        .unwrap_err()
+        .contains("cannot write backups"));
+}
+
+#[test]
+fn restoring_makes_a_safety_copy_first_and_reloads_what_the_app_holds() {
+    let f = ready_world();
+    let a = backup_app(&f);
+    assert!(a.toggle_favorite("/x".into()), "a favorite in memory");
+    let s = a.restore_backup("/in/b.zip").unwrap();
+    assert_eq!(s.files, 2);
+    let calls = f.0.lock().unwrap().archive_calls.clone();
+    assert!(
+        calls[0].starts_with("create /data/backups/before-restore-"),
+        "{calls:?}"
+    );
+    assert!(calls[0].contains("saves"), "the safety copy includes saves");
+    assert_eq!(calls[1], "restore /in/b.zip");
+    // memory was reloaded from the restored files: the favorite is gone
+    assert!(
+        a.toggle_favorite("/x".into()),
+        "toggling again starts from the restored state"
+    );
+}
+
+#[test]
+fn a_backup_from_a_newer_app_is_refused_before_anything_is_touched() {
+    let f = ready_world();
+    let a = backup_app(&f);
+    f.0.lock().unwrap().backup_format = vuretro_core::backup::FORMAT + 1;
+    let err = a.restore_backup("/in/b.zip").unwrap_err();
+    assert!(err.contains("newer Vuretro"), "{err}");
+    assert!(
+        f.0.lock().unwrap().archive_calls.is_empty(),
+        "no safety copy, no restore"
+    );
+    assert!(a.inspect_backup("/in/b.zip").is_err());
+}
+
+#[test]
+fn the_library_can_be_exported_as_csv() {
+    let f = ready_world();
+    f.0.lock().unwrap().scans.insert(
+        "/data/roms".into(),
+        vec![
+            entry("snes", "/data/roms/snes/a.sfc"),
+            entry("snes", "/data/roms/snes/b.sfc"),
+        ],
+    );
+    let a = backup_app(&f);
+    assert_eq!(a.export_library("/out/games.csv").unwrap(), 2);
+    assert_eq!(
+        f.0.lock().unwrap().archive_calls,
+        ["write /out/games.csv 3"],
+        "header plus two games"
+    );
 }

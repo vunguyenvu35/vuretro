@@ -1,5 +1,6 @@
 //! Implementations of the `vuretro_core::ports` traits for a real machine.
 
+mod archive;
 mod art;
 mod catalog;
 mod installer;
@@ -9,6 +10,7 @@ mod machine;
 mod screenscraper;
 mod store;
 
+pub use archive::ZipBackup;
 pub use art::ThumbnailsArt;
 pub use catalog::FsCatalog;
 pub use installer::BuildbotInstaller;

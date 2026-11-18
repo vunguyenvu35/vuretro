@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Backup and restore** (Settings): one zip with settings, favorites, collections, controls, cheats and optionally saves and cover pictures; restoring first saves a copy of the current state. **Export** the game list as CSV.
+- Import: BIOS files found in an imported folder, or picked by mistake as a game, are now installed as BIOS.
+- Fixes: list header overlapping game rows, readability of secondary text, text shown wrongly on Controls and the Install button.
+
 ## 0.1.3
 
 Same features as 0.1.2 (see below); the app is now named **Vuretro** (capital V) in its window title, menu, Dock and installer file names. The 0.1.2 packages keep the old lower-case names.

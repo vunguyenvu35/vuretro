@@ -186,3 +186,13 @@ On **Settings** and **Controls**, the **Applies to** box at the top chooses what
 - **Settings per game:** select a game and open **Settings for this game** in its details. The same three settings can be set for that one game; it overrides its system, which overrides All games. A game is told apart by its file name, so two copies with the same name share their settings.
 
 The files are `config/overrides.json` and `config/controls/<system>.json` and `config/controls/games/<game>.json` in the data folder.
+
+## Backup, restore and export
+
+On **Settings** (All games), the **Backup and export** section has three buttons.
+
+- **Back up…** saves one `.zip` file with your settings, favorites, collections, play time, controls, macros, cheats, core options, per-system and per-game choices and DAT files. Tick **Game saves and save states** to include saves (on by default) and **Cover pictures** to include previews and downloaded or chosen art (off by default: large, and previews can be made again). **Your games, BIOS files and cores are never included.**
+- **Restore…** brings a backup back, for example on a new computer. It shows what the file holds and asks first. Before anything is replaced, a copy of your current state is saved in the `backups` folder of the data folder (`before-restore-<time>.zip`). Games, BIOS and cores are not touched. The app reloads afterwards.
+- **Export…** writes the game list as a CSV spreadsheet: title, system, file, size, minutes played, last played, favorite, duplicate and collections.
+
+Restoring only writes files of the kinds a backup holds, inside the data folder; anything else in the zip is ignored.

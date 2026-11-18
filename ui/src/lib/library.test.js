@@ -121,3 +121,13 @@ test('an import reports installed BIOS files by name and does not count them as 
   assert.equal(failed, 0);
   assert.equal(text, '✓ 1 game added\n✓ BIOS installed: neogeo.zip\n1 already in the library');
 });
+
+import { backupFileName, formatBytes } from './layout.js';
+
+test('backup file names carry the date, and sizes read naturally', () => {
+  assert.equal(backupFileName(new Date(2026, 10, 8)), 'vuretro-backup-2026-11-08.zip');
+  assert.equal(formatBytes(340_000), '340 KB');
+  assert.equal(formatBytes(1_234_000), '1.2 MB');
+  assert.equal(formatBytes(2_500_000_000), '2.5 GB');
+  assert.equal(formatBytes(10), '1 KB');
+});

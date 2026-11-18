@@ -2,7 +2,7 @@
 // browser (no Tauri) the calls are answered by `mock.js` so the UI can be developed.
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { open } from '@tauri-apps/plugin-dialog';
+import { open, save } from '@tauri-apps/plugin-dialog';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { mock, DEFAULT_GAME } from './mock.js';
 
@@ -32,6 +32,20 @@ export const api = {
     if (!inTauri) return null;
     const r = await open({ multiple: false, title: 'Choose a cover image', filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg'] }] });
     return r || null;
+  },
+  // backup and export
+  createBackup: (dest, saves, covers) => call('create_backup', { dest, saves, covers }),
+  inspectBackup: (src) => call('inspect_backup', { src }),
+  restoreBackup: (src) => call('restore_backup', { src }),
+  exportLibrary: (dest) => call('export_library', { dest }),
+  /** Ask where to save a file; `null` when the user cancels (or outside the app). */
+  async pickSavePath(title, defaultPath, extension, label) {
+    if (!inTauri) return null;
+    return (await save({ title, defaultPath, filters: [{ name: label, extensions: [extension] }] })) || null;
+  },
+  async pickBackupFile() {
+    if (!inTauri) return null;
+    return (await open({ multiple: false, title: 'Choose a Vuretro backup', filters: [{ name: 'Vuretro backup', extensions: ['zip'] }] })) || null;
   },
   installCore: (core) => call('install_core', { core }),
   coreOptions: (core) => call('get_core_options', { core }),

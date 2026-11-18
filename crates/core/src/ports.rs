@@ -186,3 +186,20 @@ pub trait CoreInstaller: Send + Sync {
     /// Returns the path of the installed file.
     fn install(&self, stem: &str, progress: &dyn Fn(u8)) -> Result<PathBuf, String>;
 }
+
+/// Backup files and exports written to a place the user chose.
+pub trait Archive: Send + Sync {
+    /// Zip the given data-folder entries into `dest`.
+    fn create_backup(
+        &self,
+        dest: &Path,
+        includes: &[&str],
+        app_version: &str,
+        created: u64,
+    ) -> Result<crate::backup::BackupSummary, String>;
+    /// Read a backup's manifest without restoring anything.
+    fn inspect_backup(&self, src: &Path) -> Result<crate::backup::BackupManifest, String>;
+    /// Write the backup's files into the data folder (only safe, allowed entries).
+    fn restore_backup(&self, src: &Path) -> Result<crate::backup::BackupSummary, String>;
+    fn write_text(&self, dest: &Path, text: &str) -> Result<(), String>;
+}

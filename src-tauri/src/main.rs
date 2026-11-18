@@ -17,7 +17,8 @@ use std::sync::{Arc, Mutex};
 use vuretro_core::paths::Paths;
 use vuretro_core::service::App;
 use vuretro_library::adapters::{
-    BuildbotInstaller, FsCatalog, FsLocator, JsonStore, ProcessLauncher, DevLogin, ScreenScraperArt, SysMachine, ThumbnailsArt,
+    BuildbotInstaller, DevLogin, FsCatalog, FsLocator, JsonStore, ProcessLauncher,
+    ScreenScraperArt, SysMachine, ThumbnailsArt, ZipBackup,
 };
 
 fn build_app() -> App {
@@ -30,7 +31,8 @@ fn build_app() -> App {
         Box::new(FsLocator::new(paths.clone())),
         Box::new(ProcessLauncher::new(paths.clone())),
     )
-    .with_installer(Box::new(BuildbotInstaller::new(paths)))
+    .with_installer(Box::new(BuildbotInstaller::new(paths.clone())))
+    .with_archive(Box::new(ZipBackup::new(paths)))
     .with_machine(Box::new(SysMachine))
     .with_art_source(Box::new(ThumbnailsArt::new()));
     // ScreenScraper needs developer credentials issued to the project; without them it is off.
@@ -47,7 +49,7 @@ fn main() {
     };
     let pads = shell.pads.clone();
 
-    use commands::{config::*, cores::*, covers::*, launch::*, library::*};
+    use commands::{backup::*, config::*, cores::*, covers::*, launch::*, library::*};
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(shell)
@@ -83,6 +85,10 @@ fn main() {
             get_game_override,
             set_game_override,
             get_controls_for_game,
+            create_backup,
+            inspect_backup,
+            restore_backup,
+            export_library,
             set_controls_for_game,
             reset_controls_for_game,
             get_slot_thumbnail,

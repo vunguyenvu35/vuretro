@@ -148,6 +148,7 @@ Only when there is demand; each item is large.
 - [ ] RetroAchievements (`rcheevos`, MIT; needs per-system ROM hashing)
 - [x] Guard rails for 3D systems (done ahead of the renderer): N64, PSP, GameCube, PS2 and 3DS are registered as `hardware` systems that are off until the user turns them on; `assess()` compares memory and cores with each system's minimum and says good, marginal or poor (the GPU is not measured and the verdict says so); the Cores screen shows this computer and asks before turning one on; the runner times every frame and shows "(slow: about N fps)" in the title when it cannot keep up (all systems). Their games stay locked until the renderer exists (`HARDWARE_RENDERER` in `service.rs`). Tested with fakes; real hardware numbers (the minimums) are my estimates
 - [ ] Hardware-render cores (OpenGL/Vulkan) for N64 (`mupen64plus_next`), PSP (`ppsspp`), Dreamcast (`flycast`), Saturn: the runner only handles software frames today. Needs `SET_HW_RENDER` and a GL/Vulkan context shared with `wgpu`, so do it after M2
+- [x] Backup, restore and CSV export of the library (`vuretro-core::backup`, `ZipBackup` adapter, Settings section); restore refuses entries outside the data folder or outside the allowed kinds and makes a safety copy first. Tested with fakes and a hostile-zip test, not yet used on real data
 - [ ] Netplay, run-ahead, larger shader library (slang)
 
 ## Done when (acceptance per milestone)

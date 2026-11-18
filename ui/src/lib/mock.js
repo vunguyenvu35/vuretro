@@ -134,4 +134,9 @@ mock.get_controls_for = async ({ system }) => (system ? controlsView(system) : {
 mock.set_controls_for = async ({ system, config }) => ((mockSystemControls[system] = config), controlsView(system));
 mock.reset_controls_for = async ({ system }) => (delete mockSystemControls[system], controlsView(system));
 
+mock.create_backup = async ({ dest }) => ({ path: dest, files: 12, bytes: 480000 });
+mock.inspect_backup = async () => ({ format: 1, app_version: '0.1.3', created: Math.floor(Date.now() / 1000) - 86400, includes: ['settings.json', 'library.json', 'config', 'dats', 'saves'] });
+mock.restore_backup = async ({ src }) => ({ path: src, files: 12, bytes: 480000 });
+mock.export_library = async () => 5;
+
 export { mock, DEFAULT_GAME };

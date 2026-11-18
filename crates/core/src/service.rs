@@ -1,6 +1,7 @@
 //! Use cases of the app. `App` owns the in-memory state and talks to the outside world
 //! only through the ports in `ports`, so everything here runs in tests with fakes.
 
+use crate::backup::{self, BackupManifest, BackupOptions, BackupSummary};
 use crate::detect;
 use crate::model::{
     assess, CoreChoice, CoreOptionView, MachineInfo, ScopedControls, ScopedSettings, SlotInfo,
@@ -8,8 +9,8 @@ use crate::model::{
 use crate::model::{game_views, GameMeta, Outcome, Overview, Settings, SystemView};
 use crate::paths::Paths;
 use crate::ports::{
-    ArtQuery, ArtSource, Catalog, CoreInstaller, CoverJob, GameProcess, LaunchSpec, Launcher,
-    Locator, Machine, Store,
+    Archive, ArtQuery, ArtSource, Catalog, CoreInstaller, CoverJob, GameProcess, LaunchSpec,
+    Launcher, Locator, Machine, Store,
 };
 use crate::registry::systems;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -48,6 +49,7 @@ pub struct App {
     locator: Box<dyn Locator>,
     launcher: Box<dyn Launcher>,
     installer: Option<Box<dyn CoreInstaller>>,
+    archive: Option<Box<dyn Archive>>,
     /// What this computer offers, measured once at start-up.
     machine: Option<MachineInfo>,
     art: Vec<Box<dyn ArtSource>>,
@@ -83,6 +85,7 @@ impl App {
             locator,
             launcher,
             installer: None,
+            archive: None,
             machine: None,
             art: Vec::new(),
             art_missing: Mutex::new(HashSet::new()),
@@ -94,6 +97,85 @@ impl App {
             cover_failed: Mutex::new(HashSet::new()),
             identify_checked: Mutex::new(HashSet::new()),
         }
+    }
+
+    /// Let the app write backups and exports.
+    pub fn with_archive(mut self, archive: Box<dyn Archive>) -> Self {
+        self.archive = Some(archive);
+        self
+    }
+
+    fn archive(&self) -> Result<&dyn Archive, String> {
+        self.archive
+            .as_deref()
+            .ok_or_else(|| "this build cannot write backups".to_string())
+    }
+
+    /// Back up settings, favorites, controls, cheats and the rest of what the user set up
+    /// (and, if chosen, saves and cover pictures). ROMs, BIOS files and cores are never
+    /// included: they are big, and they are the user's own files.
+    pub fn create_backup(
+        &self,
+        dest: &str,
+        options: BackupOptions,
+    ) -> Result<BackupSummary, String> {
+        self.archive()?.create_backup(
+            Path::new(dest),
+            &options.includes(),
+            env!("CARGO_PKG_VERSION"),
+            now(),
+        )
+    }
+
+    /// What a backup file holds, before restoring it.
+    pub fn inspect_backup(&self, src: &str) -> Result<BackupManifest, String> {
+        let m = self.archive()?.inspect_backup(Path::new(src))?;
+        backup::check_manifest(&m)?;
+        Ok(m)
+    }
+
+    /// Restore a backup. A safety copy of the current state is made first, next to the data
+    /// (`backups/before-restore-<time>.zip`), and what the app holds in memory is reloaded.
+    pub fn restore_backup(&self, src: &str) -> Result<BackupSummary, String> {
+        let archive = self.archive()?;
+        self.inspect_backup(src)?;
+        let safety = self
+            .paths
+            .data_dir()
+            .join("backups")
+            .join(format!("before-restore-{}.zip", now()));
+        archive
+            .create_backup(
+                &safety,
+                &BackupOptions {
+                    saves: true,
+                    covers: false,
+                }
+                .includes(),
+                env!("CARGO_PKG_VERSION"),
+                now(),
+            )
+            .map_err(|e| {
+                format!("could not make a safety copy first, nothing was restored: {e}")
+            })?;
+        let summary = archive.restore_backup(Path::new(src))?;
+        *self.settings.lock().unwrap() = self.store.load_settings();
+        *self.meta.lock().unwrap() = self.store.load_meta();
+        Ok(summary)
+    }
+
+    /// Write the library as a CSV spreadsheet.
+    pub fn export_library(&self, dest: &str) -> Result<usize, String> {
+        let ov = self.overview();
+        let name = |id: &str| {
+            ov.systems
+                .iter()
+                .find(|s| s.id == id)
+                .map_or_else(|| id.to_string(), |s| s.name.to_string())
+        };
+        let csv = backup::library_csv(&ov.games, name);
+        self.archive()?.write_text(Path::new(dest), &csv)?;
+        Ok(ov.games.len())
     }
 
     /// Measure the computer so 3D systems can be judged against it.

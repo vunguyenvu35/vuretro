@@ -4,6 +4,7 @@
   import { toast } from '../lib/ui.svelte.js';
   import { HOTKEYS, APP_SHORTCUTS } from '../lib/controls.js';
   import { app } from '../lib/store.svelte.js';
+  import Backup from './Backup.svelte';
   import ScopeBar from './ScopeBar.svelte';
   import ScopedSettingsEditor from './ScopedSettingsEditor.svelte';
   import { parseScope } from '../lib/scope.js';
@@ -237,6 +238,9 @@
           </div>
         </div>
       </div>
+
+      <!-- ================= BACKUP ================= -->
+      <Backup />
 
       <!-- ================= SHORTCUTS ================= -->
       {#each [['Shortcuts in the app', APP_SHORTCUTS, 'Press these anywhere in the app window.'], ['Shortcuts in a game', HOTKEYS, 'Button keys for each player are set on the Controls screen. These keys are fixed and cannot be used as buttons.']] as [title, list, foot] (title)}
