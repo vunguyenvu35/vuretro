@@ -233,11 +233,17 @@ impl Session {
                 },
                 None => "this core has no save states".to_string(),
             }),
-            Act::LoadState => Some(match std::fs::read(self.state_path(self.slot)) {
+            Act::LoadState => {
+                // older states belong to a timeline that no longer exists
+                if let Some(r) = self.rewind.as_mut() {
+                    r.clear();
+                }
+                Some(match std::fs::read(self.state_path(self.slot)) {
                 Ok(data) if self.emulator.load_state(&data) => format!("loaded slot {}", self.slot),
                 Ok(_) => format!("slot {} was rejected by the core", self.slot),
                 Err(_) => format!("slot {} is empty", self.slot),
             }),
+            },
             Act::NextSlot => {
                 self.slot = self.slot % SLOTS + 1;
                 Some(format!("slot {}", self.slot))
@@ -380,7 +386,7 @@ impl Session {
             return;
         };
         self.frames_run += 1;
-        if self.frames_run % REWIND_EVERY == 0 {
+        if self.frames_run.is_multiple_of(REWIND_EVERY) {
             if let Some(state) = self.emulator.save_state() {
                 rewind.push(state);
             }

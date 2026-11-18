@@ -40,6 +40,7 @@ impl Rewind {
         Some(s)
     }
 
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.states.len()
     }
