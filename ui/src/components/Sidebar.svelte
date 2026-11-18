@@ -155,7 +155,7 @@
   }
   nav button:hover { background: var(--surface-2); color: var(--text); }
   nav button.active { color: var(--accent); background: var(--surface-2); border-left-color: var(--accent); }
-  nav button.off { opacity: .45; }
+  nav button.off { opacity: .62; }
   /* the name takes the free space and is cut with an ellipsis; the count stays in its own column */
   .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   small { flex: none; min-width: 2.2ch; text-align: right; color: var(--faint); font-variant-numeric: tabular-nums; }
