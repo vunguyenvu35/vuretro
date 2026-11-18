@@ -12,10 +12,10 @@ Try the current state: `make dev` (see [DEVELOPMENT.md](DEVELOPMENT.md)). Archit
 | 0 | Workspace, CI, fake core | `make ci` | ✅ |
 | 1 | Runner plays games | `make dev`, `make play ROM=…` | in progress |
 | 2 | Tauri UI (see [UI.md](UI.md)) | `make dev` | first version done |
-| M1 | Releasable base: real-game checks on 3 OSes, in-app core installer, installers, updater | install from a package, play without a terminal | not started |
-| M2 | Play experience: `wgpu`, shaders, in-game menu, slots with thumbnails, core options UI, rewind | real play | not started |
-| M3 | More systems: data-driven registry, NES, GB/GBC, Genesis, SMS, PC Engine, multi-disc | `make cores` + ROMs | registry as data, wave 1 registered; SNES + GBA play-tested |
-| M4 | Rich library: hash identification, cover art, collections, gamepad-driven UI | big ROM folder | not started |
+| M1 | Releasable base: real-game checks on 3 OSes, in-app core installer, installers, updater | install from a package, play without a terminal | in progress: in-app core installer, unsigned macOS dmg and release workflow done; 3-OS checks, signing, Flatpak, updater open |
+| M2 | Play experience: `wgpu`, shaders, in-game menu, slots with thumbnails, core options UI, rewind | real play | in progress: core options, slots with thumbnails, CRT scanlines, rewind, cheats done; wgpu, rumble, per-game overrides open |
+| M3 | More systems: data-driven registry, NES, GB/GBC, Genesis, SMS, PC Engine, multi-disc | `make cores` + ROMs | data registry, core choice, wave 1 and 2 registered, disc swap; only SNES + GBA play-tested |
+| M4 | Rich library: hash identification, cover art, collections, gamepad-driven UI | big ROM folder | in progress: DAT identification, collections, opt-in cover art, gamepad navigation done; multi-disc grouping, user art open |
 | M5 | Advanced: RetroAchievements, hardware-render cores, netplay | per feature | not started |
 
 Phases 0 to 2 are the foundation. M1 to M5 are ordered by what gets vuretro to real users first (see [Gaps](#gaps-compared-with-other-frontends)).
