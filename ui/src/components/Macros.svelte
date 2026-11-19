@@ -31,7 +31,10 @@
     for (const g of app.overview?.games ?? []) seen.set(gameKey(g.path), g.title);
     return [...seen].map(([key, title]) => ({ key, title })).sort((a, b) => a.title.localeCompare(b.title));
   });
-  const list = $derived(cfg ? (scope ? (cfg.games[scope] ??= []) : cfg.global) : []);
+  // Only reads: Svelte forbids changing state inside a $derived, and choosing a game that has no
+  // macros yet used to do exactly that, which broke the whole screen.
+  const NONE = [];
+  const list = $derived(cfg ? (scope ? (cfg.games[scope] ?? NONE) : cfg.global) : NONE);
   const scopeName = $derived(scope ? (games.find((g) => g.key === scope)?.title ?? scope) : 'every game');
 
   $effect(() => {
@@ -76,10 +79,17 @@
   function add(kind) {
     const uid = crypto?.randomUUID?.() ?? String(Math.random()).slice(2);
     const k = KINDS.find((x) => x.id === kind);
-    list.push({
+    // A game gets its own list the first time something is added to it. Read it back after
+    // assigning: `x ??= []` gives the plain array, not the copy the state keeps, and a macro
+    // pushed onto the plain one is lost.
+    if (scope && !cfg.games[scope]) cfg.games[scope] = [];
+    const target = scope ? cfg.games[scope] : cfg.global;
+    target.push({
       id: uid, name: k.name, enabled: true, player: 0, key: null, pad: null, kind,
       actions: [], rate_hz: 15, steps: kind === 'sequence' ? [{ actions: [], ms: 100 }] : [], repeat: false,
     });
+    // the next thing to do is choose the trigger, so wait for that key right away
+    capture = { id: uid, kind: 'key' };
     save();
   }
   function remove(m) {
@@ -113,6 +123,7 @@
     return Object.keys(kb).find((a) => kb[a].includes(name)) ?? null;
   }
   function startRec(m) {
+    capture = null; // recording a move and choosing a trigger key are different things
     m.steps = [];
     rec = { id: m.id, held: [], last: performance.now(), started: false };
   }

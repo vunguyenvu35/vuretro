@@ -29,7 +29,7 @@
   // Whatever the backend sends, fill in anything missing so a switch never gets stuck.
   const DEFAULTS = {
     window_scale: 2, sound: true, volume: 100, sync_display: true, pause_on_blur: false, crt: false, rewind: false,
-    fast_forward: 4, ff_sound: false, resume: false, lcd: false, scale2x: false, integer_scale: false, fullscreen: false, rumble: true, auto_coin: true,
+    fast_forward: 4, ff_sound: false, resume: false, lcd: false, scale2x: false, integer_scale: false, fullscreen: false, rumble: true, auto_coin: false,
   };
   const SPEEDS = [2, 3, 4, 8];
   const withDefaults = (v) => ({ ...DEFAULTS, ...v });

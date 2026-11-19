@@ -250,7 +250,7 @@ mod tests {
                 lcd: Some(true),
                 integer_scale: Some(true),
                 resume: Some(true),
-                auto_coin: Some(false),
+                auto_coin: Some(true),
                 ..Override::default()
             },
         );
@@ -263,8 +263,8 @@ mod tests {
             (s.fast_forward, s.lcd, s.integer_scale, s.resume),
             (8, true, true, true)
         );
-        assert!(!s.auto_coin, "a system can switch it off");
-        assert!(base.auto_coin, "it is on by default");
+        assert!(s.auto_coin, "a system can switch it on");
+        assert!(!base.auto_coin, "it is off by default");
         assert_eq!(o.resolve(&base, SNES), base);
         // an offered speed is enforced even on a hand-edited file
         o.set_system(
