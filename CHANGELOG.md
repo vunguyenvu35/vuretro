@@ -1,8 +1,33 @@
 # Changelog
 
-## Unreleased
+## 0.1.5
 
-- **Core options for FBNeo and similar cores:** the options screen now loads one of your games of that system to read the options (FBNeo announces most of them only after a game is loaded, so the screen was empty), and shows Vuretro's own defaults. For Neo Geo that is the mode picked from your `neogeo.zip` (AES, or the Universe BIOS); switch **Neo-Geo mode** for the arcade way.
+More to play with and a few Neo Geo and arcade improvements. Still an early release with unsigned packages.
+
+| System | File |
+|---|---|
+| macOS (Apple Silicon and Intel) | `Vuretro_0.1.5_universal.dmg` |
+| Windows | `Vuretro_0.1.5_x64-setup.exe` or `Vuretro_0.1.5_x64_en-US.msi` |
+| Linux | `Vuretro_0.1.5_amd64.AppImage`, `.deb` or `.rpm` |
+
+### New
+- **Arcade coins:** *Insert a coin when Start is pressed* (Settings, on by default). Neo Geo and MAME games ignore Start until a coin is in; now Start puts the coin in first and then starts the game. Off for consoles.
+- **Neo Geo BIOS mode** is picked from your `neogeo.zip` (AES if it has the AES BIOS, otherwise the Universe BIOS), so the long system check is skipped.
+- **Core options** now work for cores that announce their options only after a game is loaded (FBNeo had an empty screen), and show the values Vuretro really uses.
+- **Speed:** hold `Tab` to fast-forward, `F1` to keep it on, `Shift`+`F1` for slow motion; the speed is set in Settings. Sound while fast-forwarding is optional.
+- **Carry on where I left off:** the game is saved when you close it and loaded the next time (Settings).
+- **Full screen** (macOS and Windows) and **whole-number scaling**; an **LCD pixel grid** next to the CRT scanlines.
+- **Gamepad shortcuts:** hold Select and press another button to save, load, change slot, fast-forward, rewind, pause, take a screenshot or quit.
+- **Gamepad vibration** (Windows and Linux).
+- **ROM patches:** right-click a game, **Apply patch…** (IPS, UPS, BPS) adds a patched copy and leaves the original alone.
+- **Library:** *Continue playing* and the details panel follow the chosen system. Previews are made only for the games on screen, a game keeps the picture it has, and closing a game keeps its last picture.
+- **macOS:** the game window no longer shows a generic "exec" icon in the Dock.
+- **Docs:** a section on how two people can play.
+
+### Fixes
+- The **Swap player 1 and 2** button on Controls lines up with the player cards.
+
+Features from earlier versions are listed below. How to use the app: [docs/USAGE.md](docs/USAGE.md).
 
 ## 0.1.4
 
