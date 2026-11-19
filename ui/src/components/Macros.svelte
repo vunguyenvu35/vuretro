@@ -1,9 +1,10 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
+  import { gameKey, profilesOf } from '../lib/macros.js';
   import { api } from '../lib/api.js';
   import { app } from '../lib/store.svelte.js';
-  import { toast } from '../lib/ui.svelte.js';
-  import { ACTIONS, RESERVED, keyName, keyLabel, padLabel } from '../lib/controls.js';
+  import { toast, confirmDialog } from '../lib/ui.svelte.js';
+  import { ACTIONS, RESERVED, keyName, keyLabel, padLabel, actionLabel, pressedBy } from '../lib/controls.js';
   import Select from './Select.svelte';
 
   let cfg = $state(null);
@@ -11,7 +12,7 @@
   let scope = $state(''); // '' = every game, otherwise a game key
   let saved = $state(false);
   let capture = $state(null); // { id, kind: 'key' | 'pad' }
-  let rec = $state(null); // { id, held: string[], last: number, started: boolean }
+  let rec = $state(null); // { id, down: { [key code]: string[] }, last: number, started: boolean }
   let saveTimer;
   let savedTimer;
 
@@ -19,13 +20,54 @@
     { id: 'combo', name: 'Combo', hint: 'Hold the key to press several buttons together' },
     { id: 'turbo', name: 'Turbo', hint: 'Hold the key to tap the buttons again and again' },
     { id: 'sequence', name: 'Sequence', hint: 'Press the key to play buttons one after another' },
+    { id: 'move', name: 'Move', hint: 'Type a special move or combo (236P, j.D, cl.C > 236P) and play it with one key' },
   ];
 
-  const gameKey = (path) => {
-    const name = path.split(/[\\/]/).pop();
-    const i = name.lastIndexOf('.');
-    return (i > 0 ? name.slice(0, i) : name).toLowerCase();
+  // ---- moves and combos written in fighting-game notation ----
+  let checks = $state({}); // macro id -> { ok, count, ms } | { error }
+  const checkTimers = {};
+  /** What the notation means, shown in the card of a move. */
+  const GUIDE = [
+    ['Directions (facing right)', [['7 8 9', '↖ ↑ ↗'], ['4 5 6', '← neutral →'], ['1 2 3', '↙ ↓ ↘'], ['236', 'quarter circle forward']]],
+    ['Buttons (Neo Geo)', [['A B C D', 'the four buttons'], ['P  K', 'a punch (A), a kick (B)'], ['A+B', 'two at once']]],
+    ['Motions', [['QCF  QCB', '236  214'], ['DP  RDP', '623  421'], ['HCF  HCB', '41236  63214'], ['[4]6', 'charge back, then forward']]],
+    ['Moves in a combo', [[',', 'link: wait for the first move'], ['>', 'cancel: press at once'], ['x3', 'repeat three times'], ['j.  cr.  cl.', 'jumping, crouching, standing']]],
+  ];
+  const isMove = (m) => m.notation != null;
+
+  // What the buttons are called: the standard pad names, or a Neo Geo's A B C D. A Neo Geo
+  // game gets its own names unless the player chose otherwise.
+  const NAMES_KEY = 'vuretro.macro-names';
+  const readNames = () => {
+    try {
+      return localStorage.getItem(NAMES_KEY) ?? '';
+    } catch {
+      return '';
+    }
   };
+  let namesPref = $state(readNames()); // '' = follow the game, 'neogeo' or 'pad'
+  function setNames(v) {
+    namesPref = v;
+    try {
+      localStorage.setItem(NAMES_KEY, v);
+    } catch {
+      /* a convenience only */
+    }
+  }
+  const scopeSystem = $derived(app.overview?.games.find((g) => gameKey(g.path) === scope)?.system ?? '');
+  const neo = $derived(namesPref === 'neogeo' || (namesPref === '' && scopeSystem === 'neogeo'));
+  const lab = (a) => actionLabel(a, neo);
+  const tip = (a) => `${a.label} on a standard pad · ${a.hint}`;
+  /** "Z = A · X = B …": which of the player's keys is which button, in the names shown. */
+  const keyLegend = (player) => {
+    const kb = controls?.players[player]?.keyboard ?? {};
+    return ['b', 'a', 'y', 'x']
+      .map((id) => ({ a: ACTIONS.find((x) => x.id === id), keys: kb[id] ?? [] }))
+      .filter((x) => x.keys.length)
+      .map((x) => `${x.keys.map(keyLabel).join('/')} = ${lab(x.a)}`)
+      .join(' · ');
+  };
+
   const games = $derived.by(() => {
     const seen = new Map();
     for (const g of app.overview?.games ?? []) seen.set(gameKey(g.path), g.title);
@@ -34,7 +76,25 @@
   // Only reads: Svelte forbids changing state inside a $derived, and choosing a game that has no
   // macros yet used to do exactly that, which broke the whole screen.
   const NONE = [];
-  const list = $derived(cfg ? (scope ? (cfg.games[scope] ?? NONE) : cfg.global) : NONE);
+  // Which macros are shown: of every game, of one game (shared by its characters), or of one
+  // profile of that game (a character).
+  let profileId = $state(''); // '' = the macros shared by every character
+  const profileInfo = $derived(profilesOf(cfg, scope));
+  const profiles = $derived(profileInfo.profiles);
+  const activeId = $derived(profileInfo.active);
+  const profile = $derived(profiles.find((p) => p.id === profileId) ?? null);
+  const list = $derived(
+    cfg ? (scope ? (profile ? profile.macros : (cfg.games[scope] ?? NONE)) : cfg.global) : NONE,
+  );
+  // choosing another game shows the profile that is in use for it
+  let profileScope = null;
+  $effect(() => {
+    const s = scope;
+    if (cfg && s !== profileScope) {
+      profileScope = s;
+      profileId = untrack(() => profilesOf(cfg, s).active);
+    }
+  });
   const scopeName = $derived(scope ? (games.find((g) => g.key === scope)?.title ?? scope) : 'every game');
 
   $effect(() => {
@@ -76,26 +136,98 @@
     }, 250);
   }
 
-  function add(kind) {
+  /** Add a macro of a kind (`move` is a sequence made from notation); `extra` fills fields. */
+  function add(kind, extra = {}) {
     const uid = crypto?.randomUUID?.() ?? String(Math.random()).slice(2);
     const k = KINDS.find((x) => x.id === kind);
+    const asMove = kind === 'move';
     // A game gets its own list the first time something is added to it. Read it back after
     // assigning: `x ??= []` gives the plain array, not the copy the state keeps, and a macro
     // pushed onto the plain one is lost.
-    if (scope && !cfg.games[scope]) cfg.games[scope] = [];
-    const target = scope ? cfg.games[scope] : cfg.global;
+    if (scope && !profile && !cfg.games[scope]) cfg.games[scope] = [];
+    const target = scope ? (profile ? profile.macros : cfg.games[scope]) : cfg.global;
     target.push({
-      id: uid, name: k.name, enabled: true, player: 0, key: null, pad: null, kind,
+      id: uid, name: k.name, enabled: true, player: 0, key: null, pad: null, kind: asMove ? 'sequence' : kind,
       actions: [], rate_hz: 15, steps: kind === 'sequence' ? [{ actions: [], ms: 100 }] : [], repeat: false,
+      notation: asMove ? '' : null, mirror: false, auto_facing: asMove, ...extra,
     });
     // the next thing to do is choose the trigger, so wait for that key right away
     capture = { id: uid, kind: 'key' };
     save();
   }
+  /** Work out what a move would play (and show why it cannot be played). */
+  function check(m) {
+    clearTimeout(checkTimers[m.id]);
+    checkTimers[m.id] = setTimeout(async () => {
+      const text = (m.notation ?? '').trim();
+      if (!text) {
+        checks[m.id] = { error: 'Type a move first, for example 236P' };
+        return;
+      }
+      try {
+        const r = await api.compileMove(text, m.mirror);
+        checks[m.id] = { ok: true, count: r.steps.length, ms: r.total_ms };
+        m.steps = r.steps;
+      } catch (e) {
+        checks[m.id] = { error: String(e) };
+      }
+      save();
+    }, 250);
+  }
+  // moves that are already saved are checked when they appear
+  $effect(() => {
+    scope;
+    cfg;
+    untrack(() => {
+      for (const m of list) if (isMove(m) && !checks[m.id]) check(m);
+    });
+  });
+
+  // ---- profiles: a set of macros per character ----
+  const newId = () => crypto?.randomUUID?.() ?? String(Math.random()).slice(2);
+  function newProfile() {
+    if (!scope || !cfg) return;
+    cfg.profiles ??= {};
+    cfg.active ??= {};
+    if (!cfg.profiles[scope]) cfg.profiles[scope] = [];
+    if (cfg.profiles[scope].length >= 50) return toast('A game can have up to 50 profiles', 'error');
+    const id = newId();
+    cfg.profiles[scope].push({ id, name: `Profile ${cfg.profiles[scope].length + 1}`, macros: [] });
+    profileId = id;
+    if (!cfg.active[scope]) cfg.active[scope] = id; // the first one is used at once
+    save();
+  }
+  function useProfile(id) {
+    cfg.active ??= {};
+    if (id) cfg.active[scope] = id;
+    else delete cfg.active[scope];
+    save();
+  }
+  async function deleteProfile() {
+    if (!profile) return;
+    const yes = await confirmDialog({
+      title: `Delete “${profile.name}”?`,
+      message: `Its ${profile.macros.length} macro${profile.macros.length === 1 ? '' : 's'} are deleted with it.`,
+      confirmLabel: 'Delete profile',
+      danger: true,
+    });
+    if (!yes) return;
+    const id = profile.id;
+    cfg.profiles[scope] = cfg.profiles[scope].filter((p) => p.id !== id);
+    if (!cfg.profiles[scope].length) delete cfg.profiles[scope];
+    if (cfg.active?.[scope] === id) delete cfg.active[scope];
+    profileId = '';
+    save();
+  }
+  /** Turn a move into a plain sequence of steps that can be edited one by one. */
+  function editByHand(m) {
+    m.notation = null;
+    save();
+  }
   function remove(m) {
     const i = list.indexOf(m);
     if (i >= 0) list.splice(i, 1);
-    if (scope && !list.length) delete cfg.games[scope];
+    if (scope && !profile && !list.length) delete cfg.games[scope];
     save();
   }
   const has = (arr, a) => arr.includes(a);
@@ -105,32 +237,51 @@
     else arr.push(a);
     save();
   }
+  // A step with no button is a pause (the time between two presses). It is shown as a slim
+  // "wait" row, not as a press with nothing lit; a step you just added is shown open so you
+  // can choose its buttons.
+  let openSteps = $state({}); // `${macro id}:${step index}` -> true
+  const stepKey = (m, i) => `${m.id}:${i}`;
+  const isWait = (m, st, i) => st.actions.length === 0 && !openSteps[stepKey(m, i)];
   function addStep(m) {
     m.steps.push({ actions: [], ms: 100 });
+    openSteps[stepKey(m, m.steps.length - 1)] = true;
+    save();
+  }
+  /** Make every pause between presses at most this long (a slow recording becomes a fast move). */
+  const SHORT_PAUSE_MS = 100;
+  function tightenPauses(m) {
+    for (const st of m.steps) if (!st.actions.length) st.ms = Math.min(st.ms, SHORT_PAUSE_MS);
     save();
   }
   function removeStep(m, i) {
+    openSteps = {};
     m.steps.splice(i, 1);
     save();
   }
   const totalMs = (m) => m.steps.reduce((t, s) => t + (+s.ms || 0), 0);
 
   // ---- recording a sequence from the keyboard (uses the player's own key bindings) ----
-  function actionOf(code, player) {
+  /** The buttons a key presses for this player: its action, or both directions of a diagonal key. */
+  function actionsOf(code, player) {
     const name = keyName(code);
-    if (!name || !controls) return null;
+    if (!name || !controls) return [];
     const kb = controls.players[player]?.keyboard ?? {};
-    return Object.keys(kb).find((a) => kb[a].includes(name)) ?? null;
+    const hit = Object.keys(kb).find((a) => kb[a].includes(name));
+    return hit ? pressedBy(hit) : [];
   }
+  /** Every button held right now, whichever keys hold it. */
+  const heldNow = () => ACTIONS.map((a) => a.id).filter((id) => Object.values(rec.down).some((l) => l.includes(id)));
   function startRec(m) {
+    openSteps = {};
     capture = null; // recording a move and choosing a trigger key are different things
     m.steps = [];
-    rec = { id: m.id, held: [], last: performance.now(), started: false };
+    rec = { id: m.id, down: {}, last: performance.now(), started: false };
   }
   function pushStep(m, now) {
     if (!rec.started) return;
     const ms = Math.max(10, Math.round(now - rec.last));
-    m.steps.push({ actions: ACTIONS.map((a) => a.id).filter((a) => rec.held.includes(a)), ms });
+    m.steps.push({ actions: heldNow(), ms });
     rec.last = now;
   }
   function stopRec() {
@@ -149,11 +300,11 @@
       e.preventDefault();
       if (e.code === 'Escape') return stopRec();
       const m = list.find((x) => x.id === rec.id);
-      const a = m && actionOf(e.code, m.player);
-      if (!a || rec.held.includes(a)) return;
+      const as = m ? actionsOf(e.code, m.player) : [];
+      if (!as.length || rec.down[e.code]) return; // not a game key, or a key that is already down
       const now = performance.now();
       pushStep(m, now);
-      rec.held = [...rec.held, a];
+      rec.down[e.code] = as;
       rec.started = true;
       rec.last = now;
       return;
@@ -172,11 +323,10 @@
   function onkeyup(e) {
     if (!rec) return;
     const m = list.find((x) => x.id === rec.id);
-    const a = m && actionOf(e.code, m.player);
-    if (!a || !rec.held.includes(a)) return;
+    if (!m || !rec.down[e.code]) return;
     const now = performance.now();
     pushStep(m, now);
-    rec.held = rec.held.filter((x) => x !== a);
+    delete rec.down[e.code];
     rec.last = now;
   }
 </script>
@@ -200,12 +350,45 @@
           <Select bind:value={scope} searchable ariaLabel="Macros for" options={[{ value: '', label: 'Every game', hint: 'global' }, ...games.map((g) => ({ value: g.key, label: g.title }))]} />
         </div>
         <span class="muted">{scope ? 'Played together with the macros for every game.' : 'Available in all games.'}</span>
+        <span class="names" role="radiogroup" aria-label="How the buttons are named">
+          <small>Buttons</small>
+          <button role="radio" aria-checked={neo} class:on={neo} onclick={() => setNames('neogeo')} title="A B C D, as on a Neo Geo">Neo Geo</button>
+          <button role="radio" aria-checked={!neo} class:on={!neo} onclick={() => setNames('pad')} title="B A Y X, as on a standard pad">Standard pad</button>
+        </span>
       </div>
+
+      {#if scope}
+        <div class="profiles">
+          <span class="slabel">Profile</span>
+          <div class="ptabs" role="tablist" aria-label="Macro profile">
+            <button role="tab" aria-selected={!profile} class="ptab" class:on={!profile} onclick={() => (profileId = '')} title="Macros every character of this game shares">All characters</button>
+            {#each profiles as p (p.id)}
+              <button role="tab" aria-selected={profile?.id === p.id} class="ptab" class:on={profile?.id === p.id} onclick={() => (profileId = p.id)}>{p.name || 'Profile'}{#if activeId === p.id}<i class="inuse">in use</i>{/if}</button>
+            {/each}
+            <button class="add" onclick={newProfile} title="A set of macros for one character">+ New profile</button>
+          </div>
+        </div>
+        {#if profile}
+          <div class="pbar">
+            <input class="pname" bind:value={profile.name} oninput={save} maxlength="40" aria-label="Profile name" />
+            {#if activeId === profile.id}
+              <span class="inusebig">✓ in use when you play {scopeName}</span>
+              <button class="btn small" onclick={() => useProfile(null)}>Stop using</button>
+            {:else}
+              <button class="btn small primary" onclick={() => useProfile(profile.id)}>Use this profile</button>
+            {/if}
+            <button class="btn small danger" onclick={deleteProfile}>Delete profile</button>
+          </div>
+          <p class="hint">Played together: “All characters”, this profile while it is in use, and the macros for every game.</p>
+        {:else}
+          <p class="hint">Shared by every character of this game. Make a profile for each character whose moves differ, and choose the one in use before you play.</p>
+        {/if}
+      {/if}
 
       {#each list as m (m.id)}
         <article class="card" class:off={!m.enabled}>
           <header class="mh">
-            <span class="badge {m.kind}">{KINDS.find((k) => k.id === m.kind)?.name}</span>
+            <span class="badge {isMove(m) ? 'move' : m.kind}">{isMove(m) ? 'Move' : KINDS.find((k) => k.id === m.kind)?.name}</span>
             <input class="name" bind:value={m.name} oninput={save} maxlength="60" aria-label="Macro name" />
             <button class="switch" role="switch" aria-checked={m.enabled} aria-label="Enabled" class:on={m.enabled} onclick={() => { m.enabled = !m.enabled; save(); }}><span></span></button>
             <button class="del" onclick={() => remove(m)} aria-label="Delete macro" title="Delete">✕</button>
@@ -234,12 +417,43 @@
             </span>
           </div>
 
-          {#if m.kind !== 'sequence'}
+          {#if isMove(m)}
+            <div class="acts">
+              <span class="lbl">Move</span>
+              <input class="notation" bind:value={m.notation} oninput={() => check(m)} placeholder="236P     or     j.D, cl.C > 236P" spellcheck="false" autocomplete="off" aria-label="Move or combo" />
+            </div>
+            <div class="acts">
+              <span class="lbl">Facing</span>
+              <span class="face" role="radiogroup" aria-label="Which way the character faces">
+                <button role="radio" aria-checked={!m.auto_facing && !m.mirror} class:on={!m.auto_facing && !m.mirror} onclick={() => { m.auto_facing = false; m.mirror = false; check(m); }} title="Always as written: facing right">Right →</button>
+                <button role="radio" aria-checked={!m.auto_facing && m.mirror} class:on={!m.auto_facing && m.mirror} onclick={() => { m.auto_facing = false; m.mirror = true; check(m); }} title="Always mirrored: facing left">← Left</button>
+                <button role="radio" aria-checked={!!m.auto_facing} class:on={!!m.auto_facing} onclick={() => { m.auto_facing = true; m.mirror = false; check(m); }} title="The side is chosen each time you press the trigger">Auto</button>
+              </span>
+              <span class="status" class:ok={checks[m.id]?.ok} class:err={checks[m.id]?.error} aria-live="polite">
+                {#if checks[m.id]?.ok}✓ {checks[m.id].count} steps · {(checks[m.id].ms / 1000).toFixed(2)} s{:else if checks[m.id]?.error}{checks[m.id].error}{/if}
+              </span>
+              <button class="btn small" onclick={() => editByHand(m)} title="Turn it into a sequence whose steps you edit yourself">Edit steps by hand</button>
+            </div>
+            {#if m.auto_facing}
+              <p class="hint">Auto: when you press the trigger, <b>hold ← or → towards your opponent</b>. Holding ← plays the move mirrored, holding → (or nothing) plays it facing right. One move works on both sides.</p>
+            {/if}
+            <details class="guide">
+              <summary>Notation guide</summary>
+              <div class="gridg">
+                {#each GUIDE as [title, rows] (title)}
+                  <div>
+                    <h5>{title}</h5>
+                    {#each rows as [k, v] (k)}<div class="kv"><code>{k}</code><span>{v}</span></div>{/each}
+                  </div>
+                {/each}
+              </div>
+            </details>
+          {:else if m.kind !== 'sequence'}
             <div class="acts">
               <span class="lbl">{m.kind === 'turbo' ? 'Taps' : 'Presses'}</span>
               <span class="pad">
                 {#each ACTIONS as a (a.id)}
-                  <button class:on={has(m.actions, a.id)} onclick={() => toggle(m.actions, a.id)} title={a.hint}>{a.label}</button>
+                  <button class:on={has(m.actions, a.id)} onclick={() => toggle(m.actions, a.id)} title={tip(a)}>{lab(a)}</button>
                 {/each}
               </span>
             </div>
@@ -259,24 +473,36 @@
                 <span class="srow">
                   {#if rec?.id === m.id}
                     <span class="recnote">● Recording… play the move with your keys <small>Esc stops</small></span>
+                    {#if keyLegend(m.player)}<span class="legend">{keyLegend(m.player)}</span>{/if}
                     <button class="btn small" onclick={stopRec}>Stop</button>
                   {:else}
                     <button class="btn small" onclick={() => startRec(m)} disabled={!!rec}>● Record</button>
                     <button class="btn small" onclick={() => addStep(m)}>+ Step</button>
+                    <button class="btn small" onclick={() => tightenPauses(m)} title="Make every wait at most {SHORT_PAUSE_MS} ms">Shorten waits</button>
                   {/if}
                 </span>
               </div>
               {#each m.steps as st, i (i)}
+                {#if isWait(m, st, i)}
+                  <div class="step wait">
+                    <span class="n mono">{i + 1}</span>
+                    <span class="waitl">⏱ wait <small>nothing pressed</small></span>
+                    <button class="add" onclick={() => (openSteps[stepKey(m, i)] = true)} title="Press buttons in this step">+ buttons</button>
+                    <label class="ms"><input type="number" min="10" max="10000" step="10" bind:value={st.ms} onchange={save} aria-label="Milliseconds" /> ms</label>
+                    <button class="del" onclick={() => removeStep(m, i)} aria-label="Remove step">✕</button>
+                  </div>
+                {:else}
                 <div class="step">
                   <span class="n mono">{i + 1}</span>
                   <span class="pad small">
                     {#each ACTIONS as a (a.id)}
-                      <button class:on={has(st.actions, a.id)} onclick={() => toggle(st.actions, a.id)} title={a.hint}>{a.label}</button>
+                      <button class:on={has(st.actions, a.id)} onclick={() => toggle(st.actions, a.id)} title={tip(a)}>{lab(a)}</button>
                     {/each}
                   </span>
                   <label class="ms"><input type="number" min="10" max="10000" step="10" bind:value={st.ms} onchange={save} aria-label="Milliseconds" /> ms</label>
                   <button class="del" onclick={() => removeStep(m, i)} aria-label="Remove step">✕</button>
                 </div>
+                {/if}
               {/each}
               <label class="check"><input type="checkbox" bind:checked={m.repeat} onchange={save} /> Keep repeating while the trigger is held</label>
             </div>
@@ -284,7 +510,7 @@
         </article>
       {:else}
         <div class="empty">
-          <strong>No macros for {scopeName} yet</strong>
+          <strong>No macros for {profile ? profile.name : scopeName} yet</strong>
           <span>Add one below. Pick what it should do.</span>
         </div>
       {/each}
@@ -318,6 +544,22 @@
     background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 7px 10px; color: var(--text); font: inherit; font-size: 13px;
   }
   .scopesel { width: 280px; }
+  .profiles { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .ptabs { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; flex: 1; }
+  .ptab { background: var(--surface); border: 1px solid var(--border); color: var(--muted); border-radius: 999px; padding: 5px 14px; font: 600 12px var(--font-body); display: inline-flex; gap: 8px; align-items: center; }
+  .ptab:hover { color: var(--text); }
+  .ptab.on { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); border-color: var(--accent); color: var(--accent); }
+  .inuse { font-style: normal; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--ok); }
+  .inusebig { color: var(--ok); font-size: 12px; }
+  .pbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .pname { flex: 1; min-width: 160px; font-weight: 600; background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 7px 12px; color: var(--text); }
+  .pname:focus { outline: none; border-color: var(--accent); }
+  .btn.danger { color: var(--bad); }
+  .names { margin-left: auto; display: inline-flex; align-items: center; background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 2px; gap: 2px; }
+  .names small { color: var(--faint); padding: 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .names button { background: none; border: 0; color: var(--muted); padding: 4px 10px; border-radius: 7px; font: 600 12px var(--font-body); }
+  .names button.on { background: var(--accent); color: #090b10; }
+  .legend { font: 12px var(--font-mono); color: var(--muted); }
 
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
   .card.off { opacity: .55; }
@@ -326,6 +568,7 @@
   .badge.combo { color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
   .badge.turbo { color: var(--brand-magenta); background: color-mix(in srgb, var(--brand-magenta) 16%, transparent); }
   .badge.sequence { color: #6cc8ff; background: color-mix(in srgb, #6cc8ff 16%, transparent); }
+  .badge.move { color: #7be29a; background: color-mix(in srgb, #7be29a 16%, transparent); }
   .name { flex: 1; min-width: 0; font-weight: 600; font-size: 15px; background: transparent; border-color: transparent; }
   .name:hover, .name:focus { border-color: var(--border); background: var(--bg); outline: none; }
   .del { background: none; border: 0; color: var(--faint); font-size: 14px; padding: 4px 8px; border-radius: 6px; }
@@ -362,6 +605,9 @@
   .recnote small { color: var(--faint); font-weight: 400; margin-left: 6px; }
   .step { display: flex; align-items: center; gap: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 8px 10px; }
   .step .n { width: 20px; color: var(--faint); font-size: 12px; text-align: center; }
+  .step.wait { background: transparent; border-style: dashed; padding: 4px 10px; opacity: .8; }
+  .waitl { flex: 1; color: var(--muted); font-size: 12px; }
+  .waitl small { color: var(--faint); margin-left: 6px; }
   .step .pad { gap: 4px; }
   .ms { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; flex: none; }
   .ms input { width: 76px; padding: 5px 8px; }
@@ -376,12 +622,29 @@
 
   .empty { display: flex; flex-direction: column; gap: 4px; text-align: center; padding: 34px 20px; background: var(--surface); border: 1px dashed var(--border); border-radius: 16px; color: var(--muted); }
   .empty strong { color: var(--text); }
-  .addrow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .addrow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
   .newk { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; color: var(--text); transition: border-color .15s, transform .1s; }
   .newk b { font-size: 14px; }
   .newk small { color: var(--muted); font-size: 12px; line-height: 1.4; }
   .newk:hover { border-color: var(--accent); }
   .newk:active { transform: scale(.98); }
   .foot { color: var(--faint); font-size: 12px; margin: 0; }
+  .notation { flex: 1; min-width: 220px; font: 14px var(--font-mono); background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 8px 12px; color: var(--text); }
+  .notation:focus { outline: none; border-color: var(--accent); }
+  .face { display: inline-flex; background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 2px; gap: 2px; }
+  .face button { background: none; border: 0; color: var(--muted); padding: 4px 10px; border-radius: 7px; font: 600 12px var(--font-body); }
+  .face button.on { background: var(--accent); color: #090b10; }
+  .status { flex: 1; min-width: 140px; font-size: 12px; color: var(--muted); }
+  .status.ok { color: var(--ok); }
+  .status.err { color: var(--bad); }
+
+  .hint { color: var(--muted); margin: 0; font-size: 12px; line-height: 1.5; }
+  .guide { margin-top: 6px; }
+  .guide > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  .gridg { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-top: 10px; }
+  .gridg h5 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+  .kv { display: flex; gap: 10px; font-size: 12px; color: var(--muted); padding: 1px 0; }
+  .kv code { min-width: 44px; font: 12px var(--font-mono); color: var(--text); }
+  @media (max-width: 980px) { .addrow { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   @media (max-width: 820px) { .addrow { grid-template-columns: 1fr; } }
 </style>

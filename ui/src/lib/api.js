@@ -87,6 +87,8 @@ export const api = {
   setGameOverride: (path, overrides) => call('set_game_override', { path, overrides }),
   macros: () => call('get_macros'),
   setMacros: (config) => call('set_macros', { config }),
+  setMacroProfile: (game, profile) => call('set_macro_profile', { game, profile }),
+  compileMove: (notation, mirror = false) => call('compile_move', { notation, mirror }),
 
   // game settings
   gameSettings: () => call('get_game_settings'),

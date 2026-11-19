@@ -9,6 +9,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   import Icon from './Icon.svelte';
   import SaveSlots from './SaveSlots.svelte';
   import Cheats from './Cheats.svelte';
+  import MacroProfile from './MacroProfile.svelte';
   import ScopedSettingsEditor from './ScopedSettingsEditor.svelte';
   let newTag = $state('');
   async function setTags(game, tags) {
@@ -370,6 +371,8 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
     </div>
 
     <Cheats game={selected} />
+
+    <MacroProfile game={selected} />
 
     <button class="btn wide" onclick={() => { app.scope = gameScope(selected.path); app.view = 'controls'; }}>Key bindings for this game…</button>
 

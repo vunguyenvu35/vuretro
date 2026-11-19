@@ -134,6 +134,17 @@ pub struct retro_log_callback {
     pub log: Option<unsafe extern "C" fn(level: c_int, fmt: *const c_char)>,
 }
 
+/// One entry of the list a core sends with `SET_INPUT_DESCRIPTORS`: what a controller button
+/// does in this game. The list ends with an entry whose `description` is null.
+#[repr(C)]
+pub struct retro_input_descriptor {
+    pub port: c_uint,
+    pub device: c_uint,
+    pub index: c_uint,
+    pub id: c_uint,
+    pub description: *const c_char,
+}
+
 /// The rumble function a core asks the frontend for (`GET_RUMBLE_INTERFACE`).
 /// `effect` is [`RETRO_RUMBLE_STRONG`] or [`RETRO_RUMBLE_WEAK`]; `strength` 0 stops it.
 #[repr(C)]

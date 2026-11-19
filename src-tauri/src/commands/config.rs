@@ -34,6 +34,26 @@ pub fn default_controls(shell: State<'_, Shell>) -> ControlsConfig {
     shell.app.default_controls()
 }
 
+/// What a move written in notation would play; an error says what is wrong with it.
+#[tauri::command]
+pub fn compile_move(
+    shell: State<'_, Shell>,
+    notation: String,
+    mirror: bool,
+) -> Result<vuretro_core::model::CompiledMove, String> {
+    shell.app.compile_move(&notation, mirror)
+}
+
+/// Choose which macro profile of a game plays (none: only the shared macros).
+#[tauri::command]
+pub fn set_macro_profile(
+    shell: State<'_, Shell>,
+    game: String,
+    profile: Option<String>,
+) -> Result<MacroConfig, String> {
+    shell.app.set_active_macro_profile(&game, profile)
+}
+
 #[tauri::command]
 pub fn get_macros(shell: State<'_, Shell>) -> MacroConfig {
     shell.app.macros()

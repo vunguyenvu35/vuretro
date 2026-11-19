@@ -109,6 +109,8 @@ fn main() {
             default_controls,
             get_game_settings,
             get_macros,
+            set_macro_profile,
+            compile_move,
             set_macros,
             get_covers,
             generate_covers,

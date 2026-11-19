@@ -6,7 +6,7 @@ use crate::detect;
 use crate::model::{
     assess, CoreChoice, CoreOptionView, MachineInfo, ScopedControls, ScopedSettings, SlotInfo,
 };
-use crate::model::{game_views, GameMeta, Outcome, Overview, Settings, SystemView};
+use crate::model::{game_views, CompiledMove, GameMeta, Outcome, Overview, Settings, SystemView};
 use crate::paths::Paths;
 use crate::ports::{
     Archive, ArtQuery, ArtSource, Catalog, CoreInstaller, CoverJob, GameProcess, LaunchSpec,
@@ -551,6 +551,40 @@ impl App {
 
     pub fn macros(&self) -> MacroConfig {
         self.store.load_macros()
+    }
+
+    /// Check a move or combo written in fighting-game notation and show what it would play.
+    pub fn compile_move(&self, notation: &str, mirror: bool) -> Result<CompiledMove, String> {
+        let steps = vuretro_controls::moves::compile(notation, mirror)?;
+        let total_ms = vuretro_controls::moves::total_ms(&steps);
+        Ok(CompiledMove { steps, total_ms })
+    }
+
+    /// Choose which macro profile of a game plays (`None`: only the shared ones). `game` is
+    /// the game's path or name; profiles are told apart by file name like the macros.
+    pub fn set_active_macro_profile(
+        &self,
+        game: &str,
+        profile: Option<String>,
+    ) -> Result<MacroConfig, String> {
+        let key = vuretro_controls::macros::game_key(game);
+        let mut config = self.store.load_macros();
+        match profile {
+            Some(id) => {
+                let exists = config
+                    .profiles
+                    .get(&key)
+                    .is_some_and(|l| l.iter().any(|p| p.id == id));
+                if !exists {
+                    return Err("that macro profile does not exist".into());
+                }
+                config.active.insert(key, id);
+            }
+            None => {
+                config.active.remove(&key);
+            }
+        }
+        self.set_macros(config)
     }
 
     pub fn set_macros(&self, config: MacroConfig) -> Result<MacroConfig, String> {

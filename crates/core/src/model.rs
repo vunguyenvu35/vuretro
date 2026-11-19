@@ -322,6 +322,13 @@ pub struct CoreChoice {
     pub installed: bool,
 }
 
+/// A move written in notation, as the sequence of steps it plays.
+#[derive(Debug, Clone, Serialize)]
+pub struct CompiledMove {
+    pub steps: Vec<vuretro_controls::macros::Step>,
+    pub total_ms: u32,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SystemView {
     pub id: &'static str,

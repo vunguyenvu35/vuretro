@@ -63,7 +63,7 @@ const mockControls = () => ({
   config: {
     players: [
       { device: { kind: 'auto' }, deadzone: 0.35, stick_as_dpad: true,
-        keyboard: { up: ['Up'], down: ['Down'], left: ['Left'], right: ['Right'], b: ['Z'], a: ['X'], y: ['A'], x: ['S'], l: ['Q'], r: ['E'], l2: ['W'], r2: ['R'], select: ['RightShift', 'Key5'], start: ['Enter', 'Key1'] },
+        keyboard: { up: ['Up'], down: ['Down'], left: ['Left'], right: ['Right'], down_right: ['M'], up_left: ['I'], b: ['Z'], a: ['X'], y: ['A'], x: ['S'], l: ['Q'], r: ['E'], l2: ['W'], r2: ['R'], select: ['RightShift', 'Key5'], start: ['Enter', 'Key1'] },
         gamepad: { up: ['DPadUp'], down: ['DPadDown'], left: ['DPadLeft'], right: ['DPadRight'], b: ['South'], a: ['East'], y: ['West'], x: ['North'], l: ['LeftTrigger'], r: ['RightTrigger'], l2: ['LeftTrigger2'], r2: ['RightTrigger2'], l3: ['LeftThumb'], r3: ['RightThumb'], select: ['Select'], start: ['Start'] } },
       { device: { kind: 'auto' }, deadzone: 0.35, stick_as_dpad: true,
         keyboard: { up: ['I'], down: ['K'], left: ['J'], right: ['L'], b: ['N'], a: ['M'], y: ['H'], x: ['G'], select: ['Key6'], start: ['Key2'] },
@@ -97,8 +97,22 @@ mock.set_game_settings = async ({ settings }) => ((mockGame = { ...settings }), 
 // ---- preview images, macros, reveal ----
 mock.get_covers = async () => ({});
 mock.generate_covers = async () => {};
-let mockMacros = { global: [], games: {} };
+let mockMacros = { global: [], games: {}, profiles: {}, active: {} };
 mock.get_macros = async () => mockMacros;
+mock.set_macro_profile = async ({ game, profile }) => {
+  const key = game.split(/[\\/]/).pop().replace(/\.[^.]*$/, '').toLowerCase();
+  if (profile) mockMacros.active[key] = profile;
+  else delete mockMacros.active[key];
+  return mockMacros;
+};
+mock.compile_move = async ({ notation }) => {
+  const text = (notation ?? '').trim();
+  if (!text) throw 'type a move first, for example 236P';
+  const bad = text.match(/DM|special/i);
+  if (bad) throw `"${bad[0]}" is not a move I can play (use directions like 236 and the buttons A B C D)`;
+  const steps = [{ actions: ['down'], ms: 50 }, { actions: ['down', 'right'], ms: 50 }, { actions: ['right', 'b'], ms: 50 }];
+  return { steps, total_ms: 150 };
+};
 mock.set_macros = async ({ config }) => ((mockMacros = config), config);
 mock.reveal_path = async () => {};
 

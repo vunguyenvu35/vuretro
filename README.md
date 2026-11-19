@@ -48,7 +48,7 @@ Linux `~/.local/share/vuretro`.
 
 ## The app
 
-How to add games and BIOS, play, remap controls and set up macros: [docs/USAGE.md](docs/USAGE.md).
+How to add games and BIOS, play, remap controls and set up macros: [docs/USAGE.md](docs/USAGE.md). Making fighting-game moves and combos with one key: [docs/MACROS.md](docs/MACROS.md).
 
 ![Library](docs/images/app-library.png)
 
@@ -84,7 +84,7 @@ docs/             plan, architecture, UI design, dev guide (+ images/)
 Makefile          make dev, play, cores, scan, check, ci …
 ```
 
-Docs: [CHANGELOG](CHANGELOG.md) · [USAGE](docs/USAGE.md) · [BRAND](docs/assets/brand/README.md) · [DEVELOPMENT](docs/DEVELOPMENT.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [UI](docs/UI.md) · [PLAN](docs/PLAN.md)
+Docs: [CHANGELOG](CHANGELOG.md) · [USAGE](docs/USAGE.md) · [MACROS](docs/MACROS.md) · [BRAND](docs/assets/brand/README.md) · [DEVELOPMENT](docs/DEVELOPMENT.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [UI](docs/UI.md) · [PLAN](docs/PLAN.md)
 
 ## Support Vuretro
 

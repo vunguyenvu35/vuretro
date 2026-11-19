@@ -159,11 +159,38 @@ pub unsafe extern "C" fn environment_cb(cmd: c_uint, data: *mut c_void) -> bool 
             *(data as *mut bool) = false;
             true
         }
-        RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS | RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL => true,
+        RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS => {
+            log_input_descriptors(data as *const retro_input_descriptor);
+            true
+        }
+        RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL => true,
         _ => {
             log::trace!("unhandled environment cmd {cmd}");
             false
         }
+    }
+}
+
+/// Say what the core calls each button of the first controller (for example `A`, `Button B`).
+/// Shown with `RUST_LOG=debug`: it is how to see which RetroPad button is which game button.
+///
+/// # Safety
+/// `list` is the array the core passed to the environment call, ended by a null description.
+unsafe fn log_input_descriptors(list: *const retro_input_descriptor) {
+    if list.is_null() || !log::log_enabled!(log::Level::Debug) {
+        return;
+    }
+    let mut p = list;
+    while !(*p).description.is_null() {
+        let d = &*p;
+        if d.port == 0 && d.device == RETRO_DEVICE_JOYPAD {
+            log::debug!(
+                "input: RetroPad id {} is \"{}\"",
+                d.id,
+                cstr_lossy(d.description)
+            );
+        }
+        p = p.add(1);
     }
 }
 

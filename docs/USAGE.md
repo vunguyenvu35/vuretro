@@ -139,6 +139,8 @@ Open **Controls** to choose the device for Player 1 and Player 2 (automatic, key
 
 Changes save at once and apply the next time a game starts. `Esc`, `Tab`, `Backspace`, `P` and `F1`–`F12` are game hotkeys and cannot be used as buttons.
 
+**Diagonal keys.** Below the buttons is a **Diagonal keys** section (keyboard only): one key for ↖, ↗, ↙ or ↘ (see [MACROS.md](MACROS.md)). It presses both directions at once, so you can play diagonals on a keyboard without a numpad (a TKL keyboard) by choosing four keys you can reach with your arrow hand. Holding two arrow keys together still works as well. In a macro, **Record** understands these keys too.
+
 ## 7. Macros
 
 Open **Macros** to make one key or gamepad button do more than one thing:
@@ -148,6 +150,10 @@ Open **Macros** to make one key or gamepad button do more than one thing:
 - **Sequence**: pressing the trigger plays a list of steps, each a set of buttons held for some milliseconds. Use **● Record** to capture a move as you play it, or add steps by hand. A sequence can repeat while the trigger is held.
 
 Macros can be **global** or belong to **one game**. A game's own macros run together with the global ones. They load when a game starts.
+
+### Moves and combos (fighting games)
+
+Choose **+ Move** to play a special move or a whole combo with one key: type it in fighting-game notation (`236P`, `j.D, cl.C > 236P`), set a trigger key, and the app turns it into a sequence. Moves can be set per character with **profiles**. The full guide, with the notation, facing, diagonal keys and troubleshooting, is in [MACROS.md](MACROS.md).
 
 ## 8. Settings
 

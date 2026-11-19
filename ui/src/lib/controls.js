@@ -20,6 +20,40 @@ export const ACTIONS = [
   { id: 'start', label: 'Start', hint: 'Start' },
 ];
 
+/**
+ * Keys for a diagonal: one key presses two directions (for a keyboard without a numpad, where
+ * holding two arrows at once is awkward). Keyboard only; same names as the runner.
+ */
+export const DIAGONALS = [
+  { id: 'up_left', label: '↖ Up-left', hint: 'Up and left at once', parts: ['up', 'left'] },
+  { id: 'up_right', label: '↗ Up-right', hint: 'Up and right at once', parts: ['up', 'right'] },
+  { id: 'down_left', label: '↙ Down-left', hint: 'Down and left at once', parts: ['down', 'left'] },
+  { id: 'down_right', label: '↘ Down-right', hint: 'Down and right at once', parts: ['down', 'right'] },
+];
+
+/** The directions a bound action presses: a diagonal presses two, anything else itself. */
+export function pressedBy(actionId) {
+  const d = DIAGONALS.find((x) => x.id === actionId);
+  if (d) return d.parts;
+  return ACTIONS.some((a) => a.id === actionId) ? [actionId] : [];
+}
+
+/**
+ * How the buttons are called on a Neo Geo: its four face buttons are the RetroPad buttons
+ * B, A, Y, X (so Z, X, A, S on the default keys are A, B, C, D), and the core has buttons that
+ * press several at once. Everything else keeps its usual name.
+ */
+export const NEOGEO_NAMES = {
+  b: 'A', a: 'B', y: 'C', x: 'D',
+  l: 'C+D', r: 'A+B', l2: 'B+C+D', r2: 'A+B+C',
+  select: 'Coin',
+};
+
+/** The label of a button (an entry of [ACTIONS]) in the Neo Geo naming or the standard one. */
+export function actionLabel(action, neo) {
+  return (neo && NEOGEO_NAMES[action.id]) || action.label;
+}
+
 const CODE_TO_KEY = {
   ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
   Enter: 'Enter', Space: 'Space', Backspace: 'Backspace',

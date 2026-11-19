@@ -31,6 +31,9 @@ struct World {
     spawned: Vec<LaunchSpec>,
     cover_ok: bool,
     scratch_cleared: bool,
+    macros: MacroConfig,
+    /// Saving macros fails (a full disk).
+    macros_fail: bool,
     /// Keys of the previews the fake runner was asked to make, in order.
     captured: Vec<String>,
     core_options: HashMap<String, BTreeMap<String, String>>,
@@ -156,10 +159,15 @@ impl Store for Fake {
         Ok(())
     }
     fn load_macros(&self) -> MacroConfig {
-        MacroConfig::default()
+        self.0.lock().unwrap().macros.clone()
     }
-    fn save_macros(&self, _: &MacroConfig) -> Result<(), String> {
-        Err("disk full".into())
+    fn save_macros(&self, m: &MacroConfig) -> Result<(), String> {
+        let mut w = self.0.lock().unwrap();
+        if w.macros_fail {
+            return Err("disk full".into());
+        }
+        w.macros = m.clone();
+        Ok(())
     }
     fn load_game_settings(&self) -> GameSettings {
         self.0
@@ -715,7 +723,8 @@ fn controls_round_trip_and_save_errors_reach_the_caller() {
     assert_eq!(a.controls(), a.default_controls());
     let c = a.set_controls(a.default_controls()).unwrap();
     assert_eq!(a.controls(), c);
-    // the fake's macro store always fails: the error is not swallowed
+    // a macro store that fails: the error is not swallowed
+    f.0.lock().unwrap().macros_fail = true;
     assert_eq!(
         a.set_macros(MacroConfig::default()).unwrap_err(),
         "disk full"
@@ -1713,4 +1722,74 @@ fn a_system_offers_its_recommended_look_and_applying_it_is_just_an_override() {
     // and it can be undone
     let reset = a.set_system_override("gba", Override::default()).unwrap();
     assert!(reset.overridden.is_empty());
+}
+
+#[test]
+fn a_move_is_compiled_for_the_card_and_a_bad_one_says_why() {
+    let f = ready_world();
+    let a = app(&f);
+    let ok = a.compile_move("236P", false).unwrap();
+    assert_eq!(ok.steps.len(), 3);
+    assert_eq!(ok.total_ms, 150);
+    assert_eq!(
+        a.compile_move("236P", true).unwrap().steps[1].actions,
+        ["down", "left"]
+    );
+    assert!(a
+        .compile_move("cl.C > DM", false)
+        .unwrap_err()
+        .contains("\"M\""));
+}
+
+#[test]
+fn choosing_the_macro_profile_of_a_game_is_saved_and_only_real_profiles_can_be_chosen() {
+    use vuretro_controls::macros::Profile;
+    let f = ready_world();
+    let mut cfg = MacroConfig::default();
+    cfg.profiles.insert(
+        "fswords".into(),
+        vec![
+            Profile {
+                id: "h".into(),
+                name: "Haohmaru".into(),
+                macros: vec![],
+            },
+            Profile {
+                id: "n".into(),
+                name: "Nakoruru".into(),
+                macros: vec![],
+            },
+        ],
+    );
+    f.0.lock().unwrap().macros = cfg;
+    let a = app(&f);
+
+    let c = a
+        .set_active_macro_profile("/roms/neogeo/FSwords.zip", Some("n".into()))
+        .unwrap();
+    assert_eq!(
+        c.active["fswords"], "n",
+        "the game is found by its file name"
+    );
+    assert_eq!(
+        f.0.lock().unwrap().macros.active["fswords"],
+        "n",
+        "and it is saved"
+    );
+
+    assert!(a
+        .set_active_macro_profile("fswords", Some("nobody".into()))
+        .unwrap_err()
+        .contains("does not exist"));
+    assert_eq!(
+        a.macros().active["fswords"],
+        "n",
+        "the refusal changed nothing"
+    );
+
+    let c = a.set_active_macro_profile("fswords", None).unwrap();
+    assert!(
+        c.active.is_empty(),
+        "no profile: only the shared macros play"
+    );
 }

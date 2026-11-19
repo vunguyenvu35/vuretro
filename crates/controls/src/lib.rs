@@ -7,6 +7,7 @@
 //! names mean "South" is the bottom face button on any pad.
 
 pub mod macros;
+pub mod moves;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -19,6 +20,16 @@ pub const PLAYERS: usize = 4;
 pub const ACTIONS: [&str; 16] = [
     "up", "down", "left", "right", "b", "a", "y", "x", "l", "r", "l2", "r2", "l3", "r3", "select",
     "start",
+];
+
+/// Keyboard keys that press two directions at once, for keyboards where holding two arrows
+/// is awkward (a TKL keyboard has no numpad for them). Name and the two directions it presses.
+/// Only the keyboard has them; a gamepad has its own D-pad.
+pub const DIAGONALS: [(&str, [&str; 2]); 4] = [
+    ("up_left", ["up", "left"]),
+    ("up_right", ["up", "right"]),
+    ("down_left", ["down", "left"]),
+    ("down_right", ["down", "right"]),
 ];
 
 /// Which device drives a player.
@@ -182,7 +193,9 @@ impl ControlsConfig {
             } else {
                 0.35
             };
-            p.keyboard.retain(|a, _| ACTIONS.contains(&a.as_str()));
+            p.keyboard.retain(|a, _| {
+                ACTIONS.contains(&a.as_str()) || DIAGONALS.iter().any(|(d, _)| d == a)
+            });
             p.gamepad.retain(|a, _| ACTIONS.contains(&a.as_str()));
         }
         self
@@ -348,5 +361,30 @@ mod tests {
 
         std::fs::write(&path, "{ not json").unwrap();
         assert_eq!(load(&path), ControlsConfig::default());
+    }
+
+    #[test]
+    fn diagonal_keys_are_kept_for_the_keyboard_only() {
+        let mut cfg = ControlsConfig::default();
+        cfg.players[0]
+            .keyboard
+            .insert("down_right".into(), vec!["M".into()]);
+        cfg.players[0]
+            .gamepad
+            .insert("down_right".into(), vec!["South".into()]);
+        cfg.players[0]
+            .keyboard
+            .insert("sideways".into(), vec!["N".into()]);
+        let cfg = cfg.sanitized();
+        assert_eq!(cfg.players[0].keyboard["down_right"], vec!["M"]);
+        assert!(
+            !cfg.players[0].gamepad.contains_key("down_right"),
+            "pads have a D-pad"
+        );
+        assert!(
+            !cfg.players[0].keyboard.contains_key("sideways"),
+            "unknown actions are dropped"
+        );
+        assert_eq!(DIAGONALS.len(), 4);
     }
 }

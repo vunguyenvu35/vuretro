@@ -8,7 +8,7 @@
     "build": "vite build",
     "check": "svelte-check --tsconfig ./jsconfig.json",
     "tauri": "tauri",
-    "test": "node --test ui/src/lib/library.test.js ui/src/lib/gamepadNav.test.js"
+    "test": "node --test ui/src/lib/library.test.js ui/src/lib/gamepadNav.test.js ui/src/lib/controls.test.js ui/src/lib/macros.test.js"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.1.1",

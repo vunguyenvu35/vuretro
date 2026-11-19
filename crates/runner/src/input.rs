@@ -13,7 +13,7 @@ use libretro_sys::*;
 use minifb::Key;
 use std::collections::HashMap;
 use vuretro_controls::macros::{Engine, Macro};
-use vuretro_controls::{assign, ControlsConfig, PadInfo, PortSource, ACTIONS};
+use vuretro_controls::{assign, ControlsConfig, PadInfo, PortSource, ACTIONS, DIAGONALS};
 
 fn action_id(name: &str) -> Option<u32> {
     Some(match name {
@@ -175,6 +175,18 @@ fn resolve(cfg: &ControlsConfig) -> Vec<Bindings> {
                     match parse_button(n) {
                         Some(btn) => b.buttons.push((btn, id)),
                         None => log::warn!("controls: unknown button '{n}' for {action}"),
+                    }
+                }
+            }
+            // a diagonal key presses its two directions
+            for (name, parts) in DIAGONALS {
+                for k in p.keyboard.get(name).into_iter().flatten() {
+                    let Some(key) = parse_key(k) else {
+                        log::warn!("controls: unknown key '{k}' for {name}");
+                        continue;
+                    };
+                    for id in parts.iter().filter_map(|d| action_id(d)) {
+                        b.keys.push((key, id));
                     }
                 }
             }
@@ -419,6 +431,13 @@ impl Input {
                     key_down || pad_down
                 })
                 .collect();
+            for (port, p) in state.iter().enumerate() {
+                self.engine.hint_facing(
+                    port,
+                    p[RETRO_DEVICE_ID_JOYPAD_LEFT as usize],
+                    p[RETRO_DEVICE_ID_JOYPAD_RIGHT as usize],
+                );
+            }
             for (player, action) in self.engine.step(&down) {
                 if let (Some(id), Some(port)) = (action_id(&action), state.get_mut(player)) {
                     port[id as usize] = true;
@@ -487,5 +506,179 @@ mod tests {
         ] {
             assert!(parse_key(reserved).is_none(), "{reserved}");
         }
+    }
+
+    // ---- a keyboard key plays a move ----
+
+    use std::collections::{HashSet, VecDeque};
+    use std::sync::{Arc, Mutex};
+    use vuretro_controls::macros::Kind;
+
+    struct Keys(HashSet<Key>);
+    impl Keyboard for Keys {
+        fn key_down(&self, key: Key) -> bool {
+            self.0.contains(&key)
+        }
+    }
+
+    /// The runner keeps its state in one global: tests that poll must not overlap.
+    static POLLING: Mutex<()> = Mutex::new(());
+
+    fn move_macro(key: &str, notation: &str, mirror: bool) -> Macro {
+        Macro {
+            id: "m".into(),
+            key: Some(key.into()),
+            kind: Kind::Sequence,
+            notation: Some(notation.into()),
+            mirror,
+            ..Macro::default()
+        }
+        .sanitized_for_test()
+    }
+
+    /// The buttons player 1 holds on each frame while `key` is pressed for `down_frames`.
+    fn play(m: Macro, key: Key, down_frames: usize, total: usize) -> Vec<Vec<usize>> {
+        frontend::init(
+            "/s",
+            "/v",
+            Arc::new(Mutex::new(VecDeque::new())),
+            HashMap::new(),
+        );
+        let mut input = Input::new(ControlsConfig::default(), vec![m], 60.0);
+        (0..total)
+            .map(|f| {
+                let held = if f < down_frames { vec![key] } else { vec![] };
+                input.poll(&Keys(held.into_iter().collect()));
+                frontend::with(|fe| {
+                    (0..JOYPAD_BUTTON_COUNT)
+                        .filter(|&b| fe.buttons[0][b])
+                        .collect::<Vec<usize>>()
+                })
+            })
+            .collect()
+    }
+
+    const DOWN: usize = RETRO_DEVICE_ID_JOYPAD_DOWN as usize;
+    const RIGHT: usize = RETRO_DEVICE_ID_JOYPAD_RIGHT as usize;
+    const LEFT: usize = RETRO_DEVICE_ID_JOYPAD_LEFT as usize;
+    // Neo Geo A is the RetroPad B button, Neo Geo C the RetroPad Y button
+    const NEO_A: usize = RETRO_DEVICE_ID_JOYPAD_B as usize;
+    const NEO_C: usize = RETRO_DEVICE_ID_JOYPAD_Y as usize;
+
+    #[test]
+    fn pressing_one_key_plays_the_whole_move_even_if_it_is_let_go_at_once() {
+        let _guard = POLLING.lock().unwrap_or_else(|e| e.into_inner());
+        // 236P: three frames each of down, down+right, then right with the punch
+        let frames = play(move_macro("V", "236P", false), Key::V, 1, 12);
+        assert_eq!(frames[0], vec![DOWN]);
+        assert_eq!(frames[3], vec![DOWN, RIGHT]);
+        assert_eq!(frames[6], vec![NEO_A, RIGHT]);
+        assert!(frames[9].is_empty(), "the move is over: {frames:?}");
+        assert!(frames[11].is_empty());
+    }
+
+    #[test]
+    fn the_key_does_nothing_when_it_is_not_pressed_and_the_move_plays_once_per_press() {
+        let _guard = POLLING.lock().unwrap_or_else(|e| e.into_inner());
+        let idle = play(move_macro("V", "236P", false), Key::V, 0, 12);
+        assert!(idle.iter().all(Vec::is_empty), "{idle:?}");
+        // held for a long time: still one run, not a new one every few frames
+        let held = play(move_macro("V", "236P", false), Key::V, 30, 30);
+        let presses = held.iter().filter(|f| f.contains(&NEO_A)).count();
+        assert_eq!(presses, 3, "the punch is down for its three frames only");
+    }
+
+    #[test]
+    fn a_move_for_a_character_facing_left_mirrors_the_direction() {
+        let _guard = POLLING.lock().unwrap_or_else(|e| e.into_inner());
+        let frames = play(move_macro("V", "236P", true), Key::V, 1, 12);
+        assert_eq!(frames[3], vec![DOWN, LEFT]);
+        assert_eq!(frames[6], vec![NEO_A, LEFT]);
+    }
+
+    #[test]
+    fn a_combo_chains_its_moves_on_one_key_press() {
+        let _guard = POLLING.lock().unwrap_or_else(|e| e.into_inner());
+        let frames = play(move_macro("C", "cl.C > 236P", false), Key::C, 1, 24);
+        assert_eq!(frames[0], vec![NEO_C], "the heavy punch first");
+        let punch = frames.iter().position(|f| f.contains(&NEO_A)).unwrap();
+        assert!(
+            punch > 6,
+            "then the fireball motion, ending in the punch: {frames:?}"
+        );
+    }
+
+    #[test]
+    fn a_diagonal_key_presses_both_directions_at_once() {
+        let _guard = POLLING.lock().unwrap_or_else(|e| e.into_inner());
+        frontend::init(
+            "/s",
+            "/v",
+            Arc::new(Mutex::new(VecDeque::new())),
+            HashMap::new(),
+        );
+        let mut cfg = ControlsConfig::default();
+        cfg.players[0]
+            .keyboard
+            .insert("down_right".into(), vec!["M".into()]);
+        cfg.players[0]
+            .keyboard
+            .insert("up_left".into(), vec!["I".into()]);
+        let mut input = Input::new(cfg, vec![], 60.0);
+        let held = |input: &mut Input, key: Key| {
+            input.poll(&Keys([key].into_iter().collect()));
+            frontend::with(|fe| {
+                (0..JOYPAD_BUTTON_COUNT)
+                    .filter(|&b| fe.buttons[0][b])
+                    .collect::<Vec<usize>>()
+            })
+        };
+        assert_eq!(held(&mut input, Key::M), vec![DOWN, RIGHT]);
+        let up = RETRO_DEVICE_ID_JOYPAD_UP as usize;
+        assert_eq!(held(&mut input, Key::I), vec![up, LEFT]);
+        // the plain arrows are untouched
+        assert_eq!(held(&mut input, Key::Down), vec![DOWN]);
+        assert!(held(&mut input, Key::K).is_empty());
+    }
+
+    #[test]
+    fn one_move_works_on_either_side_by_holding_the_direction_towards_the_opponent() {
+        let _guard = POLLING.lock().unwrap_or_else(|e| e.into_inner());
+        frontend::init(
+            "/s",
+            "/v",
+            Arc::new(Mutex::new(VecDeque::new())),
+            HashMap::new(),
+        );
+        let m = Macro {
+            auto_facing: true,
+            ..move_macro("V", "236P", false)
+        };
+        let run = |held: &[Key]| {
+            let mut input = Input::new(ControlsConfig::default(), vec![m.clone()], 60.0);
+            let keys: HashSet<Key> = held.iter().copied().chain([Key::V]).collect();
+            (0..8)
+                .map(|_| {
+                    input.poll(&Keys(keys.clone()));
+                    frontend::with(|fe| {
+                        (0..JOYPAD_BUTTON_COUNT)
+                            .filter(|&b| fe.buttons[0][b])
+                            .collect::<Vec<usize>>()
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
+        // holding left (towards an opponent on the left): the fireball goes the other way round
+        let left = run(&[Key::Left]);
+        assert!(
+            left[3].contains(&LEFT) && left[3].contains(&DOWN),
+            "{left:?}"
+        );
+        // holding right: as written
+        let right = run(&[Key::Right]);
+        assert!(
+            right[3].contains(&RIGHT) && right[3].contains(&DOWN),
+            "{right:?}"
+        );
     }
 }

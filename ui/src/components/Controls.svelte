@@ -7,7 +7,7 @@
   import Select from './Select.svelte';
   import ScopeBar from './ScopeBar.svelte';
   import { parseScope } from '../lib/scope.js';
-  import { ACTIONS, HOTKEYS, PAD_HOTKEYS, RESERVED, keyName, keyLabel, padLabel, deviceValue, parseDevice } from '../lib/controls.js';
+  import { ACTIONS, DIAGONALS, HOTKEYS, PAD_HOTKEYS, RESERVED, keyName, keyLabel, padLabel, deviceValue, parseDevice } from '../lib/controls.js';
 
   let cfg = $state(null);
   /** this system has key bindings of its own (otherwise it uses the general ones) */
@@ -250,13 +250,21 @@
           <tr><th>Button</th><th>Keyboard</th><th>Gamepad</th></tr>
         </thead>
         <tbody>
-          {#each ACTIONS as a (a.id)}
+          {#each [...ACTIONS, ...DIAGONALS] as a (a.id)}
+            {#if a.id === 'up_left'}
+              <tr class="sep">
+                <td colspan="3">
+                  <div class="act">Diagonal keys <small>keyboard only</small></div>
+                  <div class="hint">One key for two directions at once, for a keyboard without a numpad. Pick keys you can reach with your arrow hand. A gamepad uses its D-pad.</div>
+                </td>
+              </tr>
+            {/if}
             <tr>
               <td>
                 <div class="act">{a.label}</div>
                 <div class="hint">{a.hint}</div>
               </td>
-              {#each [['keyboard', keyLabel], ['gamepad', padLabel]] as [kind, fmt] (kind)}
+              {#each (DIAGONALS.some((d) => d.id === a.id) ? [['keyboard', keyLabel]] : [['keyboard', keyLabel], ['gamepad', padLabel]]) as [kind, fmt] (kind)}
                 <td>
                   <div class="chips">
                     {#each cfg.players[tab][kind][a.id] ?? [] as v (v)}
@@ -270,6 +278,7 @@
                   </div>
                 </td>
               {/each}
+              {#if DIAGONALS.some((d) => d.id === a.id)}<td class="muted">uses the D-pad</td>{/if}
             </tr>
           {/each}
         </tbody>
@@ -370,5 +379,7 @@
   .key .or { color: var(--muted); font-size: 12px; }
   kbd { font: 12px var(--font-mono); background: var(--surface-2); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 2px 8px; }
   .foot { color: var(--faint); margin-top: 12px; }
+  tr.sep td { padding-top: 22px; border-bottom: 0; }
+  tr.sep .act small { color: var(--faint); font-weight: 400; margin-left: 8px; }
   @media (max-width: 980px) { .players { grid-template-columns: 1fr; } }
 </style>
