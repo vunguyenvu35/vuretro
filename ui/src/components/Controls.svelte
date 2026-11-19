@@ -209,7 +209,10 @@
         </article>
       {/each}
     </div>
-    <button class="btn small swapbtn" onclick={swap} title="Swap the devices of player 1 and player 2">⇄ Swap player 1 and 2</button>
+    <!-- a block, so it lines up with the cards (a bare inline button ignores the column's auto margins) -->
+    <div class="swaprow">
+      <button class="btn small" onclick={swap} title="Swap the devices of player 1 and player 2">⇄ Swap player 1 and 2</button>
+    </div>
 
     <h2 class="sec">Connected gamepads</h2>
     {#if pads.length === 0}
@@ -306,7 +309,7 @@
   .muted { color: var(--muted); }
 
   .players { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; align-items: stretch; }
-  .swapbtn { margin-top: 12px; }
+  .swaprow { margin-top: 12px; }
   .players .card { display: flex; flex-direction: column; gap: 14px; }
   .players header { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
   .players header .muted { font-size: 12px; text-align: right; }
