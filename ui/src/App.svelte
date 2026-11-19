@@ -11,6 +11,8 @@
   import ContextMenu from './components/ContextMenu.svelte';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import Toasts from './components/Toasts.svelte';
+  import AboutDialog from './components/AboutDialog.svelte';
+  import SupportDialog from './components/SupportDialog.svelte';
   import { startGamepadNav } from './lib/gamepadNav.js';
 
   onMount(() => {
@@ -53,6 +55,11 @@
   </main>
   <ContextMenu />
   <ConfirmDialog />
+  {#if app.dialog === 'about'}
+    <AboutDialog onclose={() => (app.dialog = null)} />
+  {:else if app.dialog === 'support'}
+    <SupportDialog onclose={() => (app.dialog = null)} />
+  {/if}
   <Toasts />
 </div>
 

@@ -372,6 +372,25 @@
         </div>
       {/each}
 
+      <!-- ================= HELP AND SUPPORT ================= -->
+      <h2 class="group">Help and support</h2>
+      <div class="panel">
+        <div class="row">
+          <div class="txt">
+            <div class="t">About Vuretro</div>
+            <div class="d">The version, what it is, and where to report a bug.</div>
+          </div>
+          <button class="btn" onclick={() => (app.dialog = 'about')}>About…</button>
+        </div>
+        <div class="row">
+          <div class="txt">
+            <div class="t">Support Vuretro</div>
+            <div class="d">Vuretro is free and open source. If it saves you time, you can help keep it going.</div>
+          </div>
+          <button class="btn primary" onclick={() => (app.dialog = 'support')}>Support…</button>
+        </div>
+      </div>
+
       <footer class="foot">
         <button class="link" onclick={reset}>Reset to defaults</button>
       </footer>

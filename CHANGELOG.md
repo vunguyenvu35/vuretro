@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Support:** *Help ▸ Support Vuretro…* and *Help ▸ About Vuretro* (also in Settings), a Ko-fi link, issue forms for bugs and feature requests, `FUNDING.yml` and a Support section in the README. The app opens only its own GitHub and Ko-fi pages.
+
 ## 0.1.6
 
 Sharper and smoother pictures for 2D games. Still an early release with unsigned packages.

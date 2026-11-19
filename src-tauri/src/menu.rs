@@ -92,6 +92,9 @@ pub fn build(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::W
     let help = SubmenuBuilder::new(app, "Help")
         .item(&item("help-docs", "Vuretro Documentation", None)?)
         .item(&item("help-issue", "Report an Issue…", None)?)
+        .separator()
+        .item(&item("help-about", "About Vuretro", None)?)
+        .item(&item("help-support", "Support Vuretro…", None)?)
         .build()?;
 
     MenuBuilder::new(app)

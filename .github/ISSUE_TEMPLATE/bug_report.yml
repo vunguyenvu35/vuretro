@@ -1,0 +1,51 @@
+name: Bug report
+description: Something does not work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Please do not attach ROMs, BIOS files or any other copyrighted files.** Say which game it is by name instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got. Screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Import ...
+        2. Open ...
+        3. Press ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Vuretro version
+      description: Help ▸ About Vuretro shows it.
+      placeholder: "0.1.6"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: System
+      options: [macOS, Windows, Linux]
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Game, system and core
+      description: For example "Metal Slug, Neo Geo, fbneo". Cores & BIOS shows the core of each system.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log
+      description: If a game failed to start, the end of `logs/runner.log` in the Vuretro data folder (File ▸ Show Data Folder).
+      render: text

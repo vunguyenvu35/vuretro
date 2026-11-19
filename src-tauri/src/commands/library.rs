@@ -118,3 +118,14 @@ pub fn get_cheats(shell: State<'_, Shell>, path: String) -> String {
 pub fn set_cheats(shell: State<'_, Shell>, path: String, text: String) -> Result<(), String> {
     shell.app.set_cheats(&path, &text)
 }
+
+/// Open one of the project's own links (GitHub, Ko-fi) in the browser. Anything else is
+/// refused, so a page can never use this to open an arbitrary address.
+#[tauri::command]
+pub fn open_url(url: String) -> Result<(), String> {
+    if !vuretro_core::links::url_allowed(&url) {
+        return Err("this link is not allowed".into());
+    }
+    platform::open_external(&url);
+    Ok(())
+}

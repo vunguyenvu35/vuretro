@@ -29,6 +29,12 @@ export const api = {
   setScreenscraper: (user, password) => call('set_screenscraper', { user, password }),
   clearArt: (path) => call('clear_art', { path }),
   regeneratePreviews: () => call('regenerate_previews'),
+  openUrl: (url) => call('open_url', { url }),
+  async appVersion() {
+    if (!inTauri) return '0.0.0-dev';
+    const { getVersion } = await import('@tauri-apps/api/app');
+    return getVersion();
+  },
   async pickImage() {
     if (!inTauri) return null;
     const r = await open({ multiple: false, title: 'Choose a cover image', filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg'] }] });

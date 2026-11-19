@@ -86,6 +86,27 @@ Makefile          make dev, play, cores, scan, check, ci …
 
 Docs: [CHANGELOG](CHANGELOG.md) · [USAGE](docs/USAGE.md) · [BRAND](docs/assets/brand/README.md) · [DEVELOPMENT](docs/DEVELOPMENT.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [UI](docs/UI.md) · [PLAN](docs/PLAN.md)
 
+## Support Vuretro
+
+<p align="center">
+  Vuretro is free and open source, built and maintained in spare time.<br>
+  If it saves you time, you can help keep it going.
+</p>
+
+<table align="center">
+  <tr>
+    <td align="center" width="200"><h2>☕</h2><b>$3</b><br><sub>a cup of coffee</sub></td>
+    <td align="center" width="200"><h2>🍜</h2><b>$10</b><br><sub>a lunch</sub></td>
+    <td align="center" width="200"><h2>🚀</h2><b>$25</b><br><sub>fuel new features</sub></td>
+  </tr>
+</table>
+
+<p align="center">
+  <a href="https://ko-fi.com/vunguyenvu"><img src="https://img.shields.io/badge/Support%20on-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white&style=for-the-badge" alt="Support Vuretro on Ko-fi"></a>
+</p>
+
+Other ways to help: [report a bug](https://github.com/vunguyenvu35/vuretro/issues/new/choose), or star the project. In the app, **Help ▸ Support Vuretro…** and **Settings ▸ Help and support** show the same.
+
 ## License
 
 vuretro source: [MIT](LICENSE). Security reports: see [SECURITY.md](SECURITY.md).

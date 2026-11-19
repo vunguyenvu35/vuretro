@@ -35,12 +35,14 @@ export const app = $state({
   selecting: false, // choosing several games to remove at once
   picked: [], // paths of the chosen games
   capturing: false, // a key or button is being recorded on the Controls screen
+  dialog: null, // 'about' | 'support': a small dialog over the page
   scope: '', // system id the Settings and Controls screens edit; empty = all games
 });
 
 const hash = typeof location !== "undefined" ? location.hash.slice(1).split(",") : [];
 if (["cores", "controls", "macros", "settings"].includes(hash[0])) app.view = hash[0];
 export const startSelect = hash.includes("select");
+if (["about", "support"].includes(hash[1])) app.dialog = hash[1]; // for development: #settings,support
 
 export function setLayout(layout) {
   app.layout = layout;
@@ -276,6 +278,8 @@ export async function handleMenu(id) {
     case 'view-controls': return (app.view = 'controls');
     case 'view-settings': return (app.view = 'settings');
     case 'refresh': return refresh();
+    case 'help-about': return (app.dialog = 'about');
+    case 'help-support': return (app.dialog = 'support');
     case 'find':
       app.view = 'library';
       await new Promise((r) => setTimeout(r, 50));

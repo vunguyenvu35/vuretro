@@ -268,3 +268,11 @@ The game must have a two-player mode. Open **Controls** and set the device of ea
 Most keyboards register only a few keys at once, so two players pressing many buttons together (fighting games) can lose presses. A gamepad for at least one player avoids it. In arcade games, press Start `2` to join; **Insert a coin when Start is pressed** (Settings) takes care of the coin.
 
 You can give a system or a single game its own buttons in the **Applies to** box on Controls.
+
+## Help, about and support
+
+- **Help ▸ About Vuretro** (also **Settings ▸ Help and support**) shows the version and links: GitHub, Report a bug, License and Ko-fi.
+- **Help ▸ Support Vuretro…** explains how to support the project (Ko-fi) and other ways to help. Vuretro is free; nothing in the app is locked behind a donation.
+- **Help ▸ Report an Issue…** opens the issue form on GitHub. Please say which game and system it is, and never attach ROMs or BIOS files.
+
+The app only opens the project's own links (its GitHub page and its Ko-fi page); any other address is refused.

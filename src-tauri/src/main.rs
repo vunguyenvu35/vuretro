@@ -84,6 +84,7 @@ fn main() {
             get_scoped_settings,
             set_system_override,
             get_game_override,
+            open_url,
             set_game_override,
             get_controls_for_game,
             create_backup,
