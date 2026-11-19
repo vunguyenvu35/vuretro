@@ -29,7 +29,7 @@
   // Whatever the backend sends, fill in anything missing so a switch never gets stuck.
   const DEFAULTS = {
     window_scale: 2, sound: true, volume: 100, sync_display: true, pause_on_blur: false, crt: false, rewind: false,
-    fast_forward: 4, ff_sound: false, resume: false, lcd: false, integer_scale: false, fullscreen: false, rumble: true,
+    fast_forward: 4, ff_sound: false, resume: false, lcd: false, integer_scale: false, fullscreen: false, rumble: true, auto_coin: false,
   };
   const SPEEDS = [2, 3, 4, 8];
   const withDefaults = (v) => ({ ...DEFAULTS, ...v });
@@ -112,6 +112,7 @@
           load={() => api.scopedSettings(scope.id)}
           save={(ov) => api.setSystemOverride(scope.id, ov)}
           follows="the settings for All games"
+          coinOp={!!app.overview?.systems.find((x) => x.id === scope.id)?.coin_op}
         />
       {/key}
     {:else if scope.kind === 'game'}
@@ -121,6 +122,7 @@
           load={() => api.gameOverride(scope.id)}
           save={(ov) => api.setGameOverride(scope.id, ov)}
           follows="its system's settings"
+          coinOp={!!app.overview?.systems.find((x) => x.id === app.overview?.games.find((g) => g.path === scope.id)?.system)?.coin_op}
         />
       {/key}
     {:else if s}
@@ -287,6 +289,16 @@
             <div class="d">Saves the game when you close it and loads it again the next time you start that game. Press <kbd>F2</kbd> to start over. Works only with cores that support save states.</div>
           </div>
           <button class="switch" role="switch" aria-checked={s.resume} aria-label="Carry on where I left off" class:on={s.resume} onclick={() => flip('resume')}><span></span></button>
+        </div>
+        <div class="row">
+          <span class="tile green" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.8" /><path d="M12 8v8M9.5 10.5h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
+          </span>
+          <div class="txt">
+            <div class="t">Insert a coin when Start is pressed</div>
+            <div class="d">For arcade games (Neo Geo, MAME), which ignore Start until a coin is in. A coin goes in first, then Start follows a moment later, so Start always begins a game. Does nothing on consoles.</div>
+          </div>
+          <button class="switch" role="switch" aria-checked={s.auto_coin} aria-label="Insert a coin when Start is pressed" class:on={s.auto_coin} onclick={() => flip('auto_coin')}><span></span></button>
         </div>
         <div class="row">
           <span class="tile green" aria-hidden="true">

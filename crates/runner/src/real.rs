@@ -130,6 +130,10 @@ pub fn open(p: Params) -> Result<Session> {
     let screen = MiniFbScreen::open(&title, base_w, base_h, factor, view)?;
     appicon::apply();
 
+    let coin_op = vuretro_core::registry::by_id(&p.system).is_some_and(|s| s.coin_op);
+    if coin_op && p.settings.auto_coin {
+        log::info!("auto coin: a coin goes in whenever Start is pressed");
+    }
     if !p.macros.is_empty() {
         log::info!("{} macro button(s) for this game", p.macros.len());
     }
@@ -137,7 +141,9 @@ pub fn open(p: Params) -> Result<Session> {
         screen: Box::new(screen),
         emulator: Box::new(p.core),
         controller: Box::new(
-            input::Input::new(p.controls, p.macros, fps).with_rumble(p.settings.rumble),
+            input::Input::new(p.controls, p.macros, fps)
+                .with_rumble(p.settings.rumble)
+                .with_auto_coin(coin_op && p.settings.auto_coin),
         ),
         frames: Box::new(CoreFrames),
         gain,

@@ -1,6 +1,6 @@
 [
   {
-    "id": "neogeo", "name": "Neo Geo", "core": "fbneo_libretro",
+    "id": "neogeo", "name": "Neo Geo", "core": "fbneo_libretro", "coin_op": true,
     "thumbnails": "SNK - Neo Geo",
     "screenscraper": 142,
     "extensions": ["zip", "7z"],
@@ -157,7 +157,7 @@
     ]
   },
   {
-    "id": "arcade", "name": "Arcade (MAME)", "core": "mame2003_plus_libretro",
+    "id": "arcade", "name": "Arcade (MAME)", "core": "mame2003_plus_libretro", "coin_op": true,
     "alt_cores": ["mame_libretro", "mame2003_libretro"],
     "thumbnails": "MAME",
     "screenscraper": 75,

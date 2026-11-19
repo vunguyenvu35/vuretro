@@ -7,7 +7,7 @@
    * to the backend for that scope (both give { effective, inherited, overridden });
    * `follows` names what everything not changed here is inherited from.
    */
-  let { name, load, save, follows = 'the general settings' } = $props();
+  let { name, load, save, follows = 'the general settings', coinOp = false } = $props();
 
   const SCALES = [1, 2, 3, 4, 5, 6];
   const SPEEDS = [2, 3, 4, 8];
@@ -18,7 +18,9 @@
     { f: 'integer_scale', title: 'Whole-number scaling', d: 'Sharp pixels with black borders instead of a stretch.' },
     { f: 'rewind', title: 'Rewind', d: "Uses memory in proportion to the system's save states, so it suits small systems best." },
     { f: 'resume', title: 'Carry on where I left off', d: 'Saves when the game closes and loads it next time.' },
+    { f: 'auto_coin', title: 'Insert a coin when Start is pressed', d: 'Arcade games ignore Start until a coin is in.', arcade: true },
   ];
+  const shown = $derived(SWITCHES.filter((x) => !x.arcade || coinOp));
   const FIELDS = ['window_scale', 'fast_forward', ...SWITCHES.map((x) => x.f)];
   let data = $state(null);
   let saved = $state(false);
@@ -88,7 +90,7 @@
       {#if own('fast_forward')}<button class="link" onclick={() => set('fast_forward', null)}>Inherit</button>{/if}
     </div>
 
-    {#each SWITCHES as sw (sw.f)}
+    {#each shown as sw (sw.f)}
       <div class="row" class:own={own(sw.f)}>
         <div class="txt">
           <div class="t">{sw.title} {#if own(sw.f)}<span class="badge">customised</span>{/if}</div>

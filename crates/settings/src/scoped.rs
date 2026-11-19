@@ -23,6 +23,7 @@ pub struct Override {
     pub lcd: Option<bool>,
     pub integer_scale: Option<bool>,
     pub resume: Option<bool>,
+    pub auto_coin: Option<bool>,
 }
 
 impl Override {
@@ -52,6 +53,9 @@ impl Override {
         }
         if let Some(v) = self.resume {
             base.resume = v;
+        }
+        if let Some(v) = self.auto_coin {
+            base.auto_coin = v;
         }
         base.sanitized()
     }
@@ -238,6 +242,7 @@ mod tests {
                 lcd: Some(true),
                 integer_scale: Some(true),
                 resume: Some(true),
+                auto_coin: Some(true),
                 ..Override::default()
             },
         );
@@ -250,6 +255,7 @@ mod tests {
             (s.fast_forward, s.lcd, s.integer_scale, s.resume),
             (8, true, true, true)
         );
+        assert!(s.auto_coin);
         assert_eq!(o.resolve(&base, SNES), base);
         // an offered speed is enforced even on a hand-edited file
         o.set_system(

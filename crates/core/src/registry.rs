@@ -31,6 +31,8 @@ pub struct System {
     /// Needs a GPU renderer (3D systems): off until the user turns it on, with a check
     /// of the computer first.
     pub hardware: bool,
+    /// An arcade system: games need a coin (the Select button) before Start does anything.
+    pub coin_op: bool,
     /// Memory and CPU cores below which the system is unlikely to run (0: no requirement).
     pub min_ram_gb: u32,
     pub min_cores: u32,
@@ -75,6 +77,8 @@ struct RawSystem {
     folder_only: bool,
     #[serde(default)]
     hardware: bool,
+    #[serde(default)]
+    coin_op: bool,
     #[serde(default)]
     min_ram_gb: u32,
     #[serde(default)]
@@ -136,6 +140,7 @@ pub fn parse_systems(json: &str) -> Result<Vec<System>, String> {
             screenscraper: r.screenscraper,
             folder_only: r.folder_only,
             hardware: r.hardware,
+            coin_op: r.coin_op,
             min_ram_gb: r.min_ram_gb,
             min_cores: r.min_cores,
             extensions: leak_all(r.extensions),
@@ -198,5 +203,13 @@ mod tests {
         let none = r#"[{"id":"a","name":"A","core":"x","extensions":[]}]"#;
         assert!(parse_systems(none).unwrap_err().contains("no extensions"));
         assert!(parse_systems("nope").is_err());
+    }
+
+    #[test]
+    fn only_coin_operated_systems_are_marked() {
+        assert!(by_id("neogeo").unwrap().coin_op);
+        assert!(by_id("arcade").unwrap().coin_op);
+        assert!(!by_id("snes").unwrap().coin_op);
+        assert!(!by_id("psx").unwrap().coin_op);
     }
 }

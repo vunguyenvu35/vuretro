@@ -54,7 +54,7 @@ Each system card shows **Ready**, **BIOS missing**, **Core missing** or **Off**,
 
 Select a game and press **Play** (or double-click it, or press `Enter`). If **Play** is locked, the reason is shown: a missing BIOS or core, or the system is switched off.
 
-The Library has **All games**, **Recently played** and **Favorites**, plus one entry per system. Search with `⌘K` / `Ctrl+K` (or `⌘F`). Sort by recent, A–Z or size, and switch between grid and list. Preview images are made in the background by running each game for a short while, and appear after a moment.
+The Library has **All games**, **Recently played** and **Favorites**, plus one entry per system. Search with `⌘K` / `Ctrl+K` (or `⌘F`). Sort by recent, A–Z or size, and switch between grid and list. **Pictures.** A game shows the picture it already has: cover art you chose or downloaded, or a preview made before. Only a game with none gets a preview made, by running it for a short while in the background, and only while its card is on screen (or about to be): scroll to other games and those are made next, the ones you scrolled past are dropped. Closing a game does **not** replace its picture with the last frame.
 
 **Right-click** a game for *Play*, *Add to favorites*, *Show in folder*, *Select…* and *Remove from library…*.
 
@@ -123,6 +123,8 @@ Hold **Select** and press another button. While you do, the game does not see th
 | □ (West) | Screenshot |
 | ✕ (South) | Sound on / off |
 
+**Arcade coins.** Neo Geo and MAME games ignore Start until a coin is in (`5` or `Right Shift`, the Select button), so Start alone shows "INSERT COIN". Turn on **Insert a coin when Start is pressed** in Settings and every press of Start first puts a coin in, waits a moment (about a quarter of a second) and then lets Start through, so Start always begins a game. If you press Start at a moment the game is not ready, a coin may be spent without the game starting; press Start again. It does nothing on consoles, and can be set for one system or one game.
+
 **Vibration.** Games that ask for rumble make your gamepad vibrate (Settings ▸ **Gamepad vibration**). It works on Windows and Linux with gamepads that support it; macOS does not offer it to apps yet.
 
 On macOS and Windows the game window also has **Game**, **State** and **Size** menus with the same actions. A short message about what just happened appears in the title bar.
@@ -153,7 +155,7 @@ Settings apply the next time a game starts.
 - **Smooth motion**: match your screen's refresh rate. This removes the small periodic stutter on 60 Hz displays; the game may run up to 5% faster than the original.
 - **Start in full screen**, **Whole-number scaling**, **CRT scanlines**, **LCD pixel grid**.
 - **Pause when the window loses focus**: stops the game while you are in another app.
-- **Rewind**, **Fast-forward speed**, **Sound while fast-forwarding**, **Carry on where I left off**, **Gamepad vibration**.
+- **Rewind**, **Fast-forward speed**, **Sound while fast-forwarding**, **Carry on where I left off**, **Insert a coin when Start is pressed** (arcade games), **Gamepad vibration**.
 - **Game sound** and **Volume**.
 
 ## 9. Where things are stored
@@ -188,7 +190,7 @@ Everything lives in one data folder:
 | Game does not start | The app shows the end of `logs/runner.log`. Most often it is a missing BIOS or a damaged file. |
 | A `.zip` is not added ("cannot tell which system") | Select the system in the sidebar and import again, or put the file in a folder named after the system. |
 | "Game runner not found" | Run `make build` once, then restart the app. |
-| No preview image for a game | They are generated in the background; some games only show a title screen later or never produce a colourful frame. |
+| No preview image for a game | Previews are made one at a time, only for the games on screen; wait a moment or scroll a little. A game with a missing BIOS or core gets none. Some games never produce a good frame: choose a picture with **Set cover image…**. |
 | Gamepad not working | Check **Controls ▸ Connected gamepads**; press a button to see it react. Player 1 and 2 may be set to a different pad. |
 | Crackling sound or stutter | Try **Smooth motion** in **Settings**; run from a terminal with `RUST_LOG=debug` for details. |
 

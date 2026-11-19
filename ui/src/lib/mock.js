@@ -11,7 +11,7 @@ const fullMock = () => ({
   runner_found: true,
   demo_available: true,
   systems: [
-    { id: 'neogeo', name: 'Neo Geo', core: 'fbneo_libretro', core_choices: [{ name: 'fbneo_libretro', installed: true }], extensions: ['zip', '7z'], enabled: true, core_installed: true, bios_ready: true, game_count: 2, bios: [mockBios('neogeo', 'neogeo.zip', true, 'MVS / AES BIOS set', 'ok')] },
+    { id: 'neogeo', coin_op: true, name: 'Neo Geo', core: 'fbneo_libretro', core_choices: [{ name: 'fbneo_libretro', installed: true }], extensions: ['zip', '7z'], enabled: true, core_installed: true, bios_ready: true, game_count: 2, bios: [mockBios('neogeo', 'neogeo.zip', true, 'MVS / AES BIOS set', 'ok')] },
     { id: 'psx', name: 'PlayStation', core: 'pcsx_rearmed_libretro', core_choices: [{ name: 'pcsx_rearmed_libretro', installed: true }], extensions: ['chd', 'cue', 'pbp'], enabled: true, core_installed: true, bios_ready: false, game_count: 1, bios: [mockBios('psx', 'scph5501.bin', true, 'NTSC-U'), mockBios('psx', 'scph5500.bin', false, 'NTSC-J'), mockBios('psx', 'scph5502.bin', false, 'PAL')] },
     { id: 'snes', name: 'Super Nintendo', core: 'snes9x_libretro', core_choices: [{ name: 'snes9x_libretro', installed: true }], extensions: ['sfc', 'smc'], enabled: true, core_installed: true, bios_ready: true, game_count: 1, bios: [] },
     { id: 'gba', name: 'Game Boy Advance', core: 'mgba_libretro', core_choices: [{ name: 'mgba_libretro', installed: true }], extensions: ['gba'], enabled: true, core_installed: true, bios_ready: true, game_count: 1, bios: [mockBios('gba', 'gba_bios.bin', false, 'optional')] },
@@ -83,7 +83,7 @@ mock.set_controls = async ({ config }) => config;
 // ---- game settings ----
 const DEFAULT_GAME = {
   window_scale: 2, sound: true, volume: 100, sync_display: true, pause_on_blur: false, crt: false, rewind: false,
-  fast_forward: 4, ff_sound: false, resume: false, lcd: false, integer_scale: false, fullscreen: false, rumble: true,
+  fast_forward: 4, ff_sound: false, resume: false, lcd: false, integer_scale: false, fullscreen: false, rumble: true, auto_coin: false,
 };
 let mockGame = { ...DEFAULT_GAME };
 mock.import_roms = async () => [];

@@ -326,6 +326,8 @@ pub struct SystemView {
     pub game_count: usize,
     /// A 3D system: needs a GPU renderer and a fast computer.
     pub hardware: bool,
+    /// An arcade system: games need a coin before Start works.
+    pub coin_op: bool,
     /// How this computer is likely to cope (3D systems only, when it could be measured).
     pub assessment: Option<Assessment>,
     /// False while the runner cannot draw this kind of system.
@@ -357,6 +359,7 @@ impl SystemView {
             bios,
             game_count,
             hardware: sys.hardware,
+            coin_op: sys.coin_op,
             assessment: None,
             renderer_ready: !sys.hardware,
         }

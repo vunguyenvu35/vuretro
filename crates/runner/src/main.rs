@@ -9,6 +9,7 @@
 
 mod appicon;
 mod audio;
+mod autocoin;
 mod core;
 mod cover;
 mod crt;
@@ -129,6 +130,14 @@ fn core_options(
 fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let args = Args::parse();
+
+    // A game window shows up in the Dock as soon as the process first talks to the window
+    // system, which is long before the window opens (the core is loaded first). Setting the
+    // icon now means the Dock never shows the generic "exec" icon. Headless runs (previews,
+    // CI) have no window and must not appear in the Dock at all.
+    if args.headless_frames.is_none() && !args.list_options {
+        appicon::apply();
+    }
 
     let paths = Paths::system_default().context("no home directory")?;
     let system_dir = args.system_dir.unwrap_or_else(|| paths.system_dir());

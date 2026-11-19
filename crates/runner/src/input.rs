@@ -2,6 +2,7 @@
 //! `controls.json` (see the `vuretro-controls` crate). Defaults match the Controls
 //! screen: arrows = D-pad, Z/X/A/S = B/A/Y/X, Enter = Start, RShift = Select.
 
+use crate::autocoin::AutoCoin;
 use crate::frontend::{self, MAX_PORTS};
 use crate::padkeys::{self, PadKeys};
 use crate::ports::{Hotkeys, Keyboard};
@@ -194,6 +195,8 @@ pub struct Input {
     engine: Engine,
     triggers: Vec<(Option<Key>, Option<Button>)>,
     last: [[bool; JOYPAD_BUTTON_COUNT]; MAX_PORTS],
+    /// Puts a coin in before Start on arcade systems, per port; `None` when it is off.
+    auto_coin: Option<[AutoCoin; MAX_PORTS]>,
     /// Frontend hotkeys (Select + button), told apart per gamepad.
     pad_keys: HashMap<GamepadId, PadKeys>,
     /// Vibrate gamepads when the game asks for it.
@@ -233,11 +236,18 @@ impl Input {
                 .collect(),
             engine: Engine::new(macros, fps),
             last: [[false; JOYPAD_BUTTON_COUNT]; MAX_PORTS],
+            auto_coin: None,
             pad_keys: HashMap::new(),
             rumble_on: true,
             rumble: rumble::Tracker::default(),
             effects: Default::default(),
         }
+    }
+
+    /// Put a coin in whenever Start is pressed (for arcade systems).
+    pub fn with_auto_coin(mut self, on: bool) -> Self {
+        self.auto_coin = on.then(Default::default);
+        self
     }
 
     /// Switch gamepad vibration on or off (the `rumble` setting).
@@ -413,6 +423,12 @@ impl Input {
                 if let (Some(id), Some(port)) = (action_id(&action), state.get_mut(player)) {
                     port[id as usize] = true;
                 }
+            }
+        }
+
+        if let Some(coins) = self.auto_coin.as_mut() {
+            for (port, ac) in coins.iter_mut().enumerate() {
+                ac.apply(&mut state[port]);
             }
         }
 
