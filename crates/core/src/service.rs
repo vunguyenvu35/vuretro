@@ -63,6 +63,8 @@ pub struct App {
     art_missing: Mutex<HashSet<String>>,
     /// Cores being downloaded right now.
     installing: Mutex<HashSet<String>>,
+    /// The game that is open now (its name): only one can be at a time.
+    playing: Mutex<Option<String>>,
     launch_grace: Duration,
     settings: Mutex<Settings>,
     meta: Mutex<HashMap<String, GameMeta>>,
@@ -96,6 +98,7 @@ impl App {
             art: Vec::new(),
             art_missing: Mutex::new(HashSet::new()),
             installing: Mutex::new(HashSet::new()),
+            playing: Mutex::new(None),
             launch_grace: LAUNCH_GRACE,
             settings,
             meta,
@@ -1142,19 +1145,51 @@ impl App {
             .locator
             .runner()
             .ok_or("vuretro-runner not found. Run `make build` first.")?;
-        let mut process = self.launcher.spawn(&LaunchSpec {
+        // One game at a time: two windows would fight over the sound, the gamepad and the
+        // saves of the same game. The place is taken before the game starts, so two quick
+        // presses of Play cannot both get through.
+        let name = rom
+            .file_stem()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "a game".into());
+        {
+            let mut playing = self.playing.lock().unwrap();
+            if let Some(open) = playing.as_ref() {
+                return Err(format!(
+                    "{open} is already open. Close it before you open another game."
+                ));
+            }
+            *playing = Some(name);
+        }
+        let free = |app: &App| *app.playing.lock().unwrap() = None;
+        let mut process = match self.launcher.spawn(&LaunchSpec {
             runner,
             core: core.to_path_buf(),
             rom: rom.to_path_buf(),
             system_dir: self.paths.system_dir(),
             load_slot,
             system: system.to_string(),
-        })?;
+        }) {
+            Ok(p) => p,
+            Err(e) => {
+                free(self);
+                return Err(e);
+            }
+        };
 
         // Failing fast (missing BIOS, bad file) should be reported, not silently ignored.
         let started = Instant::now();
         loop {
-            if let Some(exit) = process.poll()? {
+            let polled = process.poll();
+            let exit = match polled {
+                Ok(exit) => exit,
+                Err(e) => {
+                    free(self);
+                    return Err(e);
+                }
+            };
+            if let Some(exit) = exit {
+                free(self);
                 return if exit.success {
                     Ok(None)
                 } else {
@@ -1186,6 +1221,7 @@ impl App {
     /// Block until the game ends, then add its play time to the library.
     pub fn wait_for_exit(&self, mut running: Running) {
         running.process.wait();
+        *self.playing.lock().unwrap() = None;
         if let Some(key) = running.track {
             self.meta.lock().unwrap().entry(key).or_default().play_secs +=
                 running.started.elapsed().as_secs();

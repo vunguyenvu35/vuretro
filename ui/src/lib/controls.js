@@ -49,6 +49,44 @@ export const NEOGEO_NAMES = {
   select: 'Coin',
 };
 
+/** How the buttons are called on a PlayStation pad (the RetroPad B is ✕, A is ○, Y is □, X is △). */
+export const PLAYSTATION_NAMES = {
+  b: '✕', a: '○', y: '□', x: '△',
+  l: 'L1', r: 'R1', l2: 'L2', r2: 'R2', l3: 'L3', r3: 'R3',
+};
+
+/**
+ * Keys for a PlayStation game played like an arcade one (a scrolling fighter): the first key
+ * attacks and the second jumps, as Z and X do on a Neo Geo. Attack is □ and jump is ✕.
+ */
+export const ARCADE_KEYS = { y: ['Z'], b: ['X'], a: ['A'], x: ['S'] };
+
+/** Give a player the keys of [ARCADE_KEYS]; each key is taken away from whatever had it. */
+export function useArcadeKeys(player) {
+  const kb = player.keyboard;
+  const keys = Object.values(ARCADE_KEYS).flat();
+  for (const action of Object.keys(kb)) {
+    kb[action] = (kb[action] ?? []).filter((k) => !keys.includes(k));
+  }
+  for (const [action, list] of Object.entries(ARCADE_KEYS)) kb[action] = [...list];
+}
+
+/** The label of a button in the naming of a system: `names` is one of the tables above. */
+export function nameOf(action, names) {
+  return names?.[action.id] ?? action.label;
+}
+
+/** Swap two buttons in the bindings of a player, keyboard and gamepad (✕ and ○ for instance). */
+export function swapButtons(player, one, other) {
+  for (const kind of ['keyboard', 'gamepad']) {
+    const m = player[kind];
+    if (!m) continue;
+    const [a, b] = [m[one] ?? [], m[other] ?? []];
+    m[one] = b;
+    m[other] = a;
+  }
+}
+
 /** The label of a button (an entry of [ACTIONS]) in the Neo Geo naming or the standard one. */
 export function actionLabel(action, neo) {
   return (neo && NEOGEO_NAMES[action.id]) || action.label;

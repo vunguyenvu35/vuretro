@@ -829,7 +829,10 @@ fn a_game_can_run_on_a_core_of_its_own() {
     let a = app(&f);
     let (mine, other) = ("/data/roms/nes/a.nes", "/data/roms/nes/b.nes");
     let core_used = |path: &str| {
-        a.launch_game(path.into(), None).unwrap();
+        // one game at a time: close it again
+        if let Some(running) = a.launch_game(path.into(), None).unwrap() {
+            a.wait_for_exit(running);
+        }
         f.0.lock().unwrap().spawned.last().unwrap().core.clone()
     };
     assert_eq!(core_used(mine), PathBuf::from("/cores/fceumm_libretro"));
@@ -871,6 +874,48 @@ fn a_system_whose_chosen_core_is_missing_plays_with_another_installed_one() {
         .unwrap();
     let err = a.launch_game(path.into(), None).err().unwrap();
     assert!(err.contains("mesen_libretro not installed"), "{err}");
+}
+
+#[test]
+fn only_one_game_can_be_open_at_a_time() {
+    let f = ready_world();
+    let a = app(&f);
+    let first = a
+        .launch_game("/data/roms/snes/a.sfc".into(), None)
+        .unwrap()
+        .expect("running");
+    // a second one is refused while the first is open, and nothing is started for it
+    let err = a
+        .launch_game("/data/roms/snes/b.sfc".into(), None)
+        .err()
+        .unwrap();
+    assert!(err.starts_with("a is already open"), "{err}");
+    assert!(a.launch_demo().is_err());
+    assert_eq!(f.0.lock().unwrap().spawned.len(), 1);
+
+    // once the first is closed the place is free again
+    a.wait_for_exit(first);
+    assert!(a
+        .launch_game("/data/roms/snes/b.sfc".into(), None)
+        .unwrap()
+        .is_some());
+    assert_eq!(f.0.lock().unwrap().spawned.len(), 2);
+}
+
+#[test]
+fn a_game_that_fails_to_start_does_not_keep_the_place() {
+    let f = ready_world();
+    f.0.lock().unwrap().runner_exit = Some(Exit {
+        success: false,
+        detail: "bad rom".into(),
+    });
+    let a = app(&f);
+    assert!(a.launch_game("/data/roms/snes/a.sfc".into(), None).is_err());
+    f.0.lock().unwrap().runner_exit = None;
+    assert!(a
+        .launch_game("/data/roms/snes/a.sfc".into(), None)
+        .unwrap()
+        .is_some());
 }
 
 struct FakeInstaller {
@@ -999,7 +1044,10 @@ fn a_game_starts_from_the_chosen_save_slot() {
         Some(vec![0x89, b'P'])
     );
 
-    a.launch_game("/data/roms/snes/a.sfc".into(), Some(2)).ok();
+    // one game at a time: the first is closed before the next
+    if let Ok(Some(first)) = a.launch_game("/data/roms/snes/a.sfc".into(), Some(2)) {
+        a.wait_for_exit(first);
+    }
     a.launch_game("/data/roms/snes/a.sfc".into(), None).ok();
     let spawned = f.0.lock().unwrap().spawned.clone();
     assert_eq!(spawned[0].load_slot, Some(2));

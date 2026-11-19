@@ -7,7 +7,8 @@
   import Select from './Select.svelte';
   import ScopeBar from './ScopeBar.svelte';
   import { parseScope } from '../lib/scope.js';
-  import { ACTIONS, DIAGONALS, HOTKEYS, PAD_HOTKEYS, RESERVED, keyName, keyLabel, padLabel, deviceValue, parseDevice } from '../lib/controls.js';
+  import PsGlyph from './PsGlyph.svelte';
+  import { ACTIONS, DIAGONALS, HOTKEYS, PAD_HOTKEYS, RESERVED, PLAYSTATION_NAMES, nameOf, swapButtons, useArcadeKeys, keyName, keyLabel, padLabel, deviceValue, parseDevice } from '../lib/controls.js';
 
   let cfg = $state(null);
   /** this system has key bindings of its own (otherwise it uses the general ones) */
@@ -70,6 +71,26 @@
     } catch (e) {
       toast(String(e), 'error');
     }
+  }
+
+  // the system the screen is about, to call the buttons by the names printed on its pad
+  const scopeSystem = $derived(
+    scope.kind === 'system' ? scope.id : scope.kind === 'game' ? (app.overview?.games.find((g) => g.path === scope.id)?.system ?? '') : '',
+  );
+  const names = $derived(scopeSystem === 'psx' ? PLAYSTATION_NAMES : null);
+  const shown = (a) => nameOf(a, names);
+  // the words for the symbols, for those who do not know them by sight
+  const PS_FACE = { b: 'Cross', a: 'Circle', y: 'Square', x: 'Triangle' };
+  function swapFaceButtons() {
+    swapButtons(cfg.players[tab], 'b', 'a');
+    save();
+    toast(`Player ${tab + 1}: ✕ and ○ swapped`);
+  }
+
+  function arcadeKeys() {
+    useArcadeKeys(cfg.players[tab]);
+    save();
+    toast(`Player ${tab + 1}: Z attacks (□), X jumps (✕), A is ○, S is △`);
   }
 
   function swap() {
@@ -242,6 +263,10 @@
           <button role="tab" aria-selected={tab === i} class:on={tab === i} onclick={() => ((tab = i), (capture = null))}>Player {i + 1}</button>
         {/each}
         <span class="grow"></span>
+        {#if names}
+          <button class="btn small" onclick={arcadeKeys} title="Like a Neo Geo game: Z attacks (□) and X jumps (✕); A is ○ and S is △">Arcade keys</button>
+          <button class="btn small" onclick={swapFaceButtons} title="Press the key that is now ○ to get ✕, and the other way round">⇄ Swap ✕ and ○</button>
+        {/if}
         <button class="btn small" onclick={() => resetPlayer(tab)}>Reset player {tab + 1}</button>
       </div>
 
@@ -261,8 +286,8 @@
             {/if}
             <tr>
               <td>
-                <div class="act">{a.label}</div>
-                <div class="hint">{a.hint}</div>
+                <div class="act">{#if names && ['b', 'a', 'y', 'x'].includes(a.id)}<PsGlyph id={a.id} size={22} /> <span class="psname">{PS_FACE[a.id]}</span>{:else}{shown(a)}{/if}</div>
+                <div class="hint">{names && shown(a) !== a.label ? `${a.label} on a standard pad · ` : ''}{a.hint}</div>
               </td>
               {#each (DIAGONALS.some((d) => d.id === a.id) ? [['keyboard', keyLabel]] : [['keyboard', keyLabel], ['gamepad', padLabel]]) as [kind, fmt] (kind)}
                 <td>
@@ -304,6 +329,7 @@
 </section>
 
 <style>
+  .psname { color: var(--muted); font-size: 12px; margin-left: 4px; }
   .scopenote { color: var(--muted); margin: -8px 0 18px; }
   .scopenote .link { background: none; border: 0; color: var(--accent); text-decoration: underline; padding: 0; font: inherit; }
   .page { flex: 1; overflow: auto; padding: 32px 40px 56px; min-width: 0; }
