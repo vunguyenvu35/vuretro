@@ -101,6 +101,8 @@ const MAX_PROFILE_NAME: usize = 40;
 pub struct MacroConfig {
     /// Played in every game.
     pub global: Vec<Macro>,
+    /// Per system (its registry id, e.g. `neogeo`): played in every game of that system.
+    pub systems: BTreeMap<String, Vec<Macro>>,
     /// Per game, by [`game_key`]: the macros every character of the game shares.
     pub games: BTreeMap<String, Vec<Macro>>,
     /// Per game: sets of macros you switch between (a character each).
@@ -163,6 +165,12 @@ impl MacroConfig {
     pub fn sanitized(mut self) -> Self {
         let fix = |v: Vec<Macro>| -> Vec<Macro> { v.into_iter().map(Macro::sanitized).collect() };
         self.global = fix(self.global);
+        self.systems = self
+            .systems
+            .into_iter()
+            .map(|(k, v)| (k.trim().to_ascii_lowercase(), fix(v)))
+            .filter(|(k, v)| !k.is_empty() && !v.is_empty())
+            .collect();
         self.games = self
             .games
             .into_iter()
@@ -208,10 +216,15 @@ impl MacroConfig {
         self
     }
 
-    /// The macros active in a game: its own (shared by every character), then the ones of the
-    /// profile in use, then the global ones.
-    pub fn for_game(&self, key: &str) -> Vec<Macro> {
-        let mut out = self.games.get(key).cloned().unwrap_or_default();
+    /// The macros active in a game: those of its system, its own (shared by every character),
+    /// then the ones of the profile in use, then the global ones.
+    pub fn for_game(&self, key: &str, system: &str) -> Vec<Macro> {
+        let mut out = self
+            .systems
+            .get(&system.trim().to_ascii_lowercase())
+            .cloned()
+            .unwrap_or_default();
+        out.extend(self.games.get(key).cloned().unwrap_or_default());
         if let Some(id) = self.active.get(key) {
             if let Some(p) = self
                 .profiles
@@ -586,7 +599,7 @@ mod tests {
             vec![profile("h", "Haohmaru", "H"), profile("n", "Nakoruru", "N")],
         );
         let ids = |c: &MacroConfig, game: &str| -> Vec<String> {
-            c.for_game(game).into_iter().map(|m| m.id).collect()
+            c.for_game(game, "").into_iter().map(|m| m.id).collect()
         };
         // no profile in use: the shared and the global macros only
         assert_eq!(ids(&cfg, "fswords"), ["shared", "g"]);
@@ -759,13 +772,37 @@ mod tests {
         assert_eq!(cfg.global[0].rate_hz, 30);
         assert_eq!(cfg.games["mslug2"][0].actions, a(&["b"]));
         // a game's own macros come first, then the global ones
-        let list = cfg.for_game("mslug2");
+        let list = cfg.for_game("mslug2", "");
         assert_eq!(list.len(), 2);
         assert_eq!(list[0].player, 1);
-        assert_eq!(cfg.for_game("aof").len(), 1);
+        assert_eq!(cfg.for_game("aof", "").len(), 1);
         let mut e = Engine::new(vec![list[0].clone()], 60.0);
         assert_eq!(e.step(&[true]), [(1, "b".to_string())]);
         assert_eq!(game_key("/x/y/Metal Slug.ZIP"), "metal slug");
+    }
+
+    #[test]
+    fn system_macros_play_in_every_game_of_that_system_only() {
+        let mut cfg = MacroConfig::default();
+        let m = |id: &str, key: &str| Macro {
+            id: id.into(),
+            key: Some(key.into()),
+            ..mac(Kind::Combo)
+        };
+        cfg.systems.insert(" NeoGeo ".into(), vec![m("sys", "S")]);
+        cfg.systems.insert("snes".into(), vec![]);
+        cfg.games.insert("aof".into(), vec![m("game", "G")]);
+        cfg.global.push(m("all", "A"));
+        let cfg = cfg.sanitized();
+        assert_eq!(cfg.systems.keys().collect::<Vec<_>>(), ["neogeo"]);
+        let ids = |g: &str, s: &str| -> Vec<String> {
+            cfg.for_game(g, s).into_iter().map(|m| m.id).collect()
+        };
+        // system first, then the game, then global
+        assert_eq!(ids("aof", "neogeo"), ["sys", "game", "all"]);
+        assert_eq!(ids("other", "neogeo"), ["sys", "all"]);
+        assert_eq!(ids("other", "snes"), ["all"]);
+        assert_eq!(ids("other", ""), ["all"]);
     }
 
     #[test]

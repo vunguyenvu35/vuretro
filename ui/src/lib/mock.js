@@ -97,7 +97,7 @@ mock.set_game_settings = async ({ settings }) => ((mockGame = { ...settings }), 
 // ---- preview images, macros, reveal ----
 mock.get_covers = async () => ({});
 mock.generate_covers = async () => {};
-let mockMacros = { global: [], games: {}, profiles: {}, active: {} };
+let mockMacros = { global: [], systems: {}, games: {}, profiles: {}, active: {} };
 mock.get_macros = async () => mockMacros;
 mock.set_macro_profile = async ({ game, profile }) => {
   const key = game.split(/[\\/]/).pop().replace(/\.[^.]*$/, '').toLowerCase();

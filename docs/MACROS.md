@@ -12,8 +12,11 @@ again.
 
 1. Open **Macros** in the sidebar (or, in the library, select the game and press **Macros for this
    game…**).
-2. Check **Macros for**: it should name the game you want the move for. Moves belong to one game, so
-   only the games where you add one get it. "Every game" is for macros that make sense everywhere.
+2. Check **Macros for**. There are three levels, played together while you play:
+   **All Neo Geo games** (every game of that system), **one game** (and its character profiles),
+   and **Every game**. Pick *All Neo Geo games* for moves shared by every fighter on the system, or
+   one game for that game's own. Moves are written with Neo Geo buttons, so **+ Move** only
+   appears for Neo Geo (the system, or a Neo Geo game); other systems get Combo, Turbo and Sequence.
 3. Press **+ Move**. A card appears and waits for its **trigger**: press the key you want to play the
    move with, for example `V`. (Esc cancels; **+ Gamepad button** uses a pad button instead.)
 4. In **Move**, type the move, for example `236P`, or press one of the buttons under **Start from**
@@ -93,8 +96,8 @@ Every character has different moves. Under **Macros for** there is a **Profile**
 - **All characters**: macros the whole game shares.
 - **+ New profile**: a set for one character. Give it a name (for example `Haohmaru`), add its moves,
   and press **Use this profile**.
-- Only **one profile is in use** at a time, shown as *in use*. While you play, the macros of **All
-  characters**, the profile in use and the macros for every game play together.
+- Only **one profile is in use** at a time, shown as *in use*. While you play, the macros of the
+  system, **All characters**, the profile in use and the macros for every game play together.
 - Change the profile before you play from the game's details in the library: **Macros ▸ Profile in
   use**. **Macros for this game…** there opens this screen for that game.
 

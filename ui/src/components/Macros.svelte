@@ -9,7 +9,7 @@
 
   let cfg = $state(null);
   let controls = $state(null);
-  let scope = $state(''); // '' = every game, otherwise a game key
+  let scope = $state(''); // '' = every game, 'sys:<id>' = every game of a system, else a game key
   let saved = $state(false);
   let capture = $state(null); // { id, kind: 'key' | 'pad' }
   let rec = $state(null); // { id, down: { [key code]: string[] }, last: number, started: boolean }
@@ -73,7 +73,11 @@
       /* a convenience only */
     }
   }
-  const scopeSystem = $derived(app.overview?.games.find((g) => gameKey(g.path) === scope)?.system ?? '');
+  const sysScope = $derived(scope.startsWith('sys:') ? scope.slice(4) : '');
+  const gameScope = $derived(sysScope ? '' : scope); // the game key, when a game is chosen
+  const scopeSystem = $derived(sysScope || (app.overview?.games.find((g) => gameKey(g.path) === gameScope)?.system ?? ''));
+  // Moves are written with Neo Geo buttons, so only Neo Geo macros can be one.
+  const kinds = $derived(KINDS.filter((k) => k.id !== 'move' || scopeSystem === 'neogeo'));
   const neo = $derived(namesPref === 'neogeo' || (namesPref === '' && scopeSystem === 'neogeo'));
   const lab = (a) => actionLabel(a, neo);
   const tip = (a) => `${a.label} on a standard pad · ${a.hint}`;
@@ -98,23 +102,33 @@
   // Which macros are shown: of every game, of one game (shared by its characters), or of one
   // profile of that game (a character).
   let profileId = $state(''); // '' = the macros shared by every character
-  const profileInfo = $derived(profilesOf(cfg, scope));
+  const profileInfo = $derived(profilesOf(cfg, gameScope));
   const profiles = $derived(profileInfo.profiles);
   const activeId = $derived(profileInfo.active);
   const profile = $derived(profiles.find((p) => p.id === profileId) ?? null);
   const list = $derived(
-    cfg ? (scope ? (profile ? profile.macros : (cfg.games[scope] ?? NONE)) : cfg.global) : NONE,
+    cfg
+      ? sysScope
+        ? (cfg.systems?.[sysScope] ?? NONE)
+        : gameScope
+          ? (profile ? profile.macros : (cfg.games[gameScope] ?? NONE))
+          : cfg.global
+      : NONE,
   );
   // choosing another game shows the profile that is in use for it
   let profileScope = null;
   $effect(() => {
-    const s = scope;
+    const s = gameScope;
     if (cfg && s !== profileScope) {
       profileScope = s;
       profileId = untrack(() => profilesOf(cfg, s).active);
     }
   });
-  const scopeName = $derived(scope ? (games.find((g) => g.key === scope)?.title ?? scope) : 'every game');
+  const systemName = (id) => app.overview?.systems.find((x) => x.id === id)?.name ?? id;
+  const systemsWithGames = $derived((app.overview?.systems ?? []).filter((x) => x.game_count > 0));
+  const scopeName = $derived(
+    sysScope ? `every ${systemName(sysScope)} game` : gameScope ? (games.find((g) => g.key === gameScope)?.title ?? gameScope) : 'every game',
+  );
 
   $effect(() => {
     app.capturing = !!capture || !!rec;
@@ -163,8 +177,9 @@
     // A game gets its own list the first time something is added to it. Read it back after
     // assigning: `x ??= []` gives the plain array, not the copy the state keeps, and a macro
     // pushed onto the plain one is lost.
-    if (scope && !profile && !cfg.games[scope]) cfg.games[scope] = [];
-    const target = scope ? (profile ? profile.macros : cfg.games[scope]) : cfg.global;
+    if (sysScope) (cfg.systems ??= {}), (cfg.systems[sysScope] ??= []);
+    else if (gameScope && !profile && !cfg.games[gameScope]) cfg.games[gameScope] = [];
+    const target = sysScope ? cfg.systems[sysScope] : gameScope ? (profile ? profile.macros : cfg.games[gameScope]) : cfg.global;
     target.push({
       id: uid, name: k.name, enabled: true, player: 0, key: null, pad: null, kind: asMove ? 'sequence' : kind,
       actions: [], rate_hz: 15, steps: kind === 'sequence' ? [{ actions: [], ms: 100 }] : [], repeat: false,
@@ -205,21 +220,21 @@
   // ---- profiles: a set of macros per character ----
   const newId = () => crypto?.randomUUID?.() ?? String(Math.random()).slice(2);
   function newProfile() {
-    if (!scope || !cfg) return;
+    if (!gameScope || !cfg) return;
     cfg.profiles ??= {};
     cfg.active ??= {};
-    if (!cfg.profiles[scope]) cfg.profiles[scope] = [];
-    if (cfg.profiles[scope].length >= 50) return toast('A game can have up to 50 profiles', 'error');
+    if (!cfg.profiles[gameScope]) cfg.profiles[gameScope] = [];
+    if (cfg.profiles[gameScope].length >= 50) return toast('A game can have up to 50 profiles', 'error');
     const id = newId();
-    cfg.profiles[scope].push({ id, name: `Profile ${cfg.profiles[scope].length + 1}`, macros: [] });
+    cfg.profiles[gameScope].push({ id, name: `Profile ${cfg.profiles[gameScope].length + 1}`, macros: [] });
     profileId = id;
-    if (!cfg.active[scope]) cfg.active[scope] = id; // the first one is used at once
+    if (!cfg.active[gameScope]) cfg.active[gameScope] = id; // the first one is used at once
     save();
   }
   function useProfile(id) {
     cfg.active ??= {};
-    if (id) cfg.active[scope] = id;
-    else delete cfg.active[scope];
+    if (id) cfg.active[gameScope] = id;
+    else delete cfg.active[gameScope];
     save();
   }
   async function deleteProfile() {
@@ -232,9 +247,9 @@
     });
     if (!yes) return;
     const id = profile.id;
-    cfg.profiles[scope] = cfg.profiles[scope].filter((p) => p.id !== id);
-    if (!cfg.profiles[scope].length) delete cfg.profiles[scope];
-    if (cfg.active?.[scope] === id) delete cfg.active[scope];
+    cfg.profiles[gameScope] = cfg.profiles[gameScope].filter((p) => p.id !== id);
+    if (!cfg.profiles[gameScope].length) delete cfg.profiles[gameScope];
+    if (cfg.active?.[gameScope] === id) delete cfg.active[gameScope];
     profileId = '';
     save();
   }
@@ -246,7 +261,8 @@
   function remove(m) {
     const i = list.indexOf(m);
     if (i >= 0) list.splice(i, 1);
-    if (scope && !profile && !list.length) delete cfg.games[scope];
+    if (sysScope && !list.length) delete cfg.systems[sysScope];
+    else if (gameScope && !profile && !list.length) delete cfg.games[gameScope];
     save();
   }
   const has = (arr, a) => arr.includes(a);
@@ -366,9 +382,9 @@
       <div class="scope">
         <span class="slabel">Macros for</span>
         <div class="scopesel">
-          <Select bind:value={scope} searchable ariaLabel="Macros for" options={[{ value: '', label: 'Every game', hint: 'global' }, ...games.map((g) => ({ value: g.key, label: g.title }))]} />
+          <Select bind:value={scope} searchable ariaLabel="Macros for" options={[{ value: '', label: 'Every game', hint: 'global' }, ...systemsWithGames.map((x) => ({ value: `sys:${x.id}`, label: `All ${x.name} games`, hint: 'system' })), ...games.map((g) => ({ value: g.key, label: g.title }))]} />
         </div>
-        <span class="muted">{scope ? 'Played together with the macros for every game.' : 'Available in all games.'}</span>
+        <span class="muted">{sysScope ? `Played in every ${systemName(sysScope)} game, together with the macros for every game.` : scope ? 'Played together with the macros of its system and for every game.' : 'Available in all games.'}</span>
         <span class="names" role="radiogroup" aria-label="How the buttons are named">
           <small>Buttons</small>
           <button role="radio" aria-checked={neo} class:on={neo} onclick={() => setNames('neogeo')} title="A B C D, as on a Neo Geo">Neo Geo</button>
@@ -376,7 +392,7 @@
         </span>
       </div>
 
-      {#if scope}
+      {#if gameScope}
         <div class="profiles">
           <span class="slabel">Profile</span>
           <div class="ptabs" role="tablist" aria-label="Macro profile">
@@ -544,7 +560,7 @@
       {/each}
 
       <div class="addrow">
-        {#each KINDS as k (k.id)}
+        {#each kinds as k (k.id)}
           <button class="newk" onclick={() => add(k.id)}>
             <b>+ {k.name}</b>
             <small>{k.hint}</small>

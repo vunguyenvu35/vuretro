@@ -249,7 +249,7 @@ fn main() -> Result<()> {
         }
     });
     let game_macros = vuretro_controls::macros::load(&paths.macros_file())
-        .for_game(&vuretro_controls::macros::game_key(&rom_name));
+        .for_game(&vuretro_controls::macros::game_key(&rom_name), &system);
 
     real::open(real::Params {
         core,
