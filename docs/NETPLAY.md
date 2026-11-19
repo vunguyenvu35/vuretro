@@ -150,7 +150,7 @@ sequenceDiagram
   rect rgb(10,127,191,0.08)
   Note over HR,GA: B. Tìm và tham gia
   HR-->>GA: UDP broadcast mỗi giây: game, system, tcp_port, tên máy, cần PIN
-  Note over GA: hiện danh sách phòng; người dùng chọn và nhập PIN
+  Note over GA: hiện danh sách phòng, người dùng chọn và nhập PIN
   GA->>GR: spawn --netplay-join IP:7845 --pin
   end
 
@@ -177,7 +177,7 @@ sequenceDiagram
   HR<<->>GR: UDP ggrs: SyncRequest và SyncReply, đến khi Synchronized
   end
 
-  Note over HR,GR: F. Chơi: mỗi khung gửi phím, ack, checksum; đoán sai thì rollback; mỗi 60 khung so checksum
+  Note over HR,GR: F. Chơi: mỗi khung gửi phím, ack, checksum. Đoán sai thì rollback, mỗi 60 khung so checksum
   Note over HR,GR: G. Kết thúc hoặc lỗi: Bye, mất liên lạc quá 5 giây, hoặc checksum lệch thì cả hai dừng và app hiện lý do
 ```
 
@@ -240,7 +240,7 @@ flowchart TD
     C6c --> C7
   end
   subgraph OUT["Màn hình và loa (sửa)"]
-    D8["⑧ Hiển thị khung cuối<br/>hình qua Scale2x, CRT, LCD; tiếng vào hàng đợi"]
+    D8["⑧ Hiển thị khung cuối<br/>hình qua Scale2x, CRT, LCD, tiếng vào hàng đợi"]
   end
 
   A2 -->|"u16"| B3
