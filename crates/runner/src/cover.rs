@@ -51,6 +51,20 @@ pub fn richness(buf: &[u32], w: usize) -> usize {
     counts.len().min(4096)
 }
 
+/// A glitch that shows for a single frame (the picture half drawn, memory shown as colours)
+/// is gone on the next frame. A real screen, even a moving one, mostly stays: this is the
+/// share of pixels that are the same in two frames one after the other.
+pub fn same_share(a: &[u32], b: &[u32]) -> f64 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+    let same = a.iter().zip(b).filter(|(x, y)| x == y).count();
+    same as f64 / a.len() as f64
+}
+
+/// A frame is kept only if at least this much of it is still there on the next frame.
+pub const MIN_STABLE: f64 = 0.5;
+
 pub fn write_png(path: &Path, buf: &[u32], w: usize, h: usize) -> Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
@@ -76,6 +90,13 @@ pub struct Best {
 }
 
 impl Best {
+    /// Offer `frame` together with the frame that followed it: it counts only if it lasted.
+    pub fn offer_stable(&mut self, frame: &[u32], next: &[u32], w: usize, h: usize) {
+        if same_share(frame, next) >= MIN_STABLE {
+            self.offer(frame, w, h);
+        }
+    }
+
     pub fn offer(&mut self, buf: &[u32], w: usize, h: usize) {
         let score = richness(buf, w);
         if score > self.score {
@@ -96,6 +117,24 @@ impl Best {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_one_frame_glitch_is_not_kept_but_a_lasting_screen_is() {
+        let good = scene();
+        let glitch: Vec<u32> = (0..W * H).map(|i| (i as u32).wrapping_mul(2654435761) >> 8).collect();
+        let mut best = Best::default();
+        best.offer_stable(&glitch, &good, W, H);
+        assert!(best.frame.is_none(), "the next frame is nothing like it");
+        best.offer_stable(&good, &good, W, H);
+        assert!(best.frame.is_some());
+        // a screen that moves a little still counts
+        let mut moved = good.clone();
+        for p in moved.iter_mut().take(W * H / 5) {
+            *p ^= 0x00ff00;
+        }
+        assert!(same_share(&good, &moved) >= MIN_STABLE);
+        assert_eq!(same_share(&good, &good[1..]), 0.0, "frames of different sizes differ");
+    }
 
     const W: usize = 64;
     const H: usize = 48;

@@ -12,11 +12,17 @@ pub fn run_headless(
 ) -> Result<()> {
     let start = std::time::Instant::now();
     let mut best = cover::Best::default();
+    let mut candidate: Option<Vec<u32>> = None;
     for i in 0..frames {
         core.run();
-        // Boot screens are dull: look for the most colourful frame in the later part.
-        if cover.is_some() && i >= frames / 4 && i % 30 == 0 {
-            frontend::with(|fe| best.offer(&fe.frame, fe.width, fe.height));
+        // Boot screens are dull (and some games show memory as coloured tiles for a few seconds
+        // while they start): look for the most colourful frame in the later part. A
+        // frame counts once the next one has shown that it lasted (a glitch does not).
+        if let Some(before) = candidate.take() {
+            frontend::with(|fe| best.offer_stable(&before, &fe.frame, fe.width, fe.height));
+        }
+        if cover.is_some() && i >= frames * 2 / 5 && i % 30 == 0 {
+            candidate = Some(frontend::with(|fe| fe.frame.clone()));
         }
     }
     if let Some(path) = cover {
