@@ -51,6 +51,8 @@ pub struct GameSettings {
     pub resume: bool,
     /// Handheld LCD look: a pixel grid. CRT wins when both are on.
     pub lcd: bool,
+    /// Scale2x: doubles the picture and smooths the stairs on diagonal edges (CPU filter).
+    pub scale2x: bool,
     /// Scale the picture by whole numbers only, with black borders instead of blur.
     pub integer_scale: bool,
     /// Start in a full-screen window.
@@ -76,6 +78,7 @@ impl Default for GameSettings {
             ff_sound: false,
             resume: false,
             lcd: false,
+            scale2x: false,
             integer_scale: false,
             fullscreen: false,
             rumble: true,
@@ -187,6 +190,7 @@ mod tests {
             ff_sound: true,
             resume: true,
             lcd: true,
+            scale2x: true,
             integer_scale: true,
             fullscreen: true,
             rumble: false,

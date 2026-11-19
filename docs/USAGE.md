@@ -98,6 +98,7 @@ On Windows and Linux use `Ctrl` in place of `⌘`.
 | `Alt`+`Enter` | Full screen on / off |
 | `F4` | CRT scanlines on or off (remembered) |
 | `Shift`+`F4` | LCD pixel grid on or off (remembered). It replaces CRT scanlines, and the other way round |
+| `Shift`+`F9` | Smooth pixels (Scale2x) on or off (remembered). It combines with CRT and LCD |
 | `F11` | Change disc (multi-disc games, e.g. a PlayStation `.m3u`) |
 | `F12` | Screenshot |
 
@@ -153,7 +154,7 @@ Settings apply the next time a game starts.
 
 - **Window size**: a multiple of the game's own resolution (1× to 8×).
 - **Smooth motion**: match your screen's refresh rate. This removes the small periodic stutter on 60 Hz displays; the game may run up to 5% faster than the original.
-- **Start in full screen**, **Whole-number scaling**, **CRT scanlines**, **LCD pixel grid**.
+- **Start in full screen**, **Whole-number scaling**, **CRT scanlines**, **LCD pixel grid**, **Smooth pixels (Scale2x)**.
 - **Pause when the window loses focus**: stops the game while you are in another app.
 - **Rewind**, **Fast-forward speed**, **Sound while fast-forwarding**, **Carry on where I left off**, **Insert a coin when Start is pressed** (arcade games), **Gamepad vibration**.
 - **Game sound** and **Volume**.

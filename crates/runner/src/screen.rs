@@ -69,6 +69,7 @@ pub fn install_menus(window: &mut Window) {
         item(m, "Bigger (F10)", Act::SizeStep(1), Some(Key::Equal));
         item(m, "CRT Effect (F4)", Act::Crt, None);
         item(m, "LCD Effect (Shift+F4)", Act::Lcd, None);
+        item(m, "Smooth Pixels, Scale2x (Shift+F9)", Act::Scale2x, None);
         item(m, "Full Screen (Alt+Enter)", Act::Fullscreen, Some(Key::F));
         m.add_separator();
         for n in 1..=4u8 {

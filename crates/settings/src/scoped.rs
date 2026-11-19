@@ -21,6 +21,7 @@ pub struct Override {
     pub rewind: Option<bool>,
     pub fast_forward: Option<u8>,
     pub lcd: Option<bool>,
+    pub scale2x: Option<bool>,
     pub integer_scale: Option<bool>,
     pub resume: Option<bool>,
     pub auto_coin: Option<bool>,
@@ -47,6 +48,9 @@ impl Override {
         }
         if let Some(v) = self.lcd {
             base.lcd = v;
+        }
+        if let Some(v) = self.scale2x {
+            base.scale2x = v;
         }
         if let Some(v) = self.integer_scale {
             base.integer_scale = v;
@@ -82,6 +86,7 @@ pub enum Change {
     WindowScale(u8),
     Crt(bool),
     Lcd(bool),
+    Scale2x(bool),
     FastForward(u8),
     /// Full screen is a habit of the player, not of a system: always the general setting.
     Fullscreen(bool),
@@ -134,6 +139,7 @@ impl Overrides {
             Change::WindowScale(_) => o.is_some_and(|o| o.window_scale.is_some()),
             Change::Crt(_) => o.is_some_and(|o| o.crt.is_some()),
             Change::Lcd(_) => o.is_some_and(|o| o.lcd.is_some()),
+            Change::Scale2x(_) => o.is_some_and(|o| o.scale2x.is_some()),
             Change::FastForward(_) => o.is_some_and(|o| o.fast_forward.is_some()),
             Change::Fullscreen(_) => false,
         };
@@ -141,6 +147,7 @@ impl Overrides {
             Change::WindowScale(v) => o.window_scale = Some(v),
             Change::Crt(v) => o.crt = Some(v),
             Change::Lcd(v) => o.lcd = Some(v),
+            Change::Scale2x(v) => o.scale2x = Some(v),
             Change::FastForward(v) => o.fast_forward = Some(crate::snap_fast_forward(v)),
             Change::Fullscreen(_) => {}
         };
@@ -153,6 +160,7 @@ impl Overrides {
                 Change::WindowScale(v) => base.window_scale = v,
                 Change::Crt(v) => base.crt = v,
                 Change::Lcd(v) => base.lcd = v,
+                Change::Scale2x(v) => base.scale2x = v,
                 Change::FastForward(v) => base.fast_forward = crate::snap_fast_forward(v),
                 Change::Fullscreen(v) => base.fullscreen = v,
             }

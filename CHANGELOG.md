@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Smooth pixels (Scale2x):** a filter that doubles the picture and rounds the stairs on diagonal edges without blurring or adding colours, for 2D pixel art. Settings, `Shift`+`F9` in a game, and per system or per game; it combines with the CRT and LCD looks and is skipped for tall pictures.
+
 ## 0.1.5
 
 More to play with and a few Neo Geo and arcade improvements. Still an early release with unsigned packages.

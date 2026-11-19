@@ -28,6 +28,7 @@ mod real;
 mod rewind;
 mod rumble;
 mod scale;
+mod scale2x;
 mod screen;
 mod session;
 mod speed;

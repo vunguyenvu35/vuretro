@@ -15,6 +15,7 @@
   const SWITCHES = [
     { f: 'crt', title: 'CRT scanlines', d: 'Looks best on low-resolution systems.' },
     { f: 'lcd', title: 'LCD pixel grid', d: 'A handheld look, for Game Boy and similar systems. CRT wins if both are on.' },
+    { f: 'scale2x', title: 'Smooth pixels (Scale2x)', d: 'Doubles the picture and rounds the stairs on diagonal edges without blurring. Suits 2D pixel art.' },
     { f: 'integer_scale', title: 'Whole-number scaling', d: 'Sharp pixels with black borders instead of a stretch.' },
     { f: 'rewind', title: 'Rewind', d: "Uses memory in proportion to the system's save states, so it suits small systems best." },
     { f: 'resume', title: 'Carry on where I left off', d: 'Saves when the game closes and loads it next time.' },

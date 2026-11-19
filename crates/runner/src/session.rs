@@ -7,7 +7,7 @@ use crate::ports::{Controller, Emulator, Frame, FrameSource, Screen, View};
 use crate::rewind::Rewind;
 use crate::speed::{self, Mode};
 use crate::window::{self, clamp_scale, gain_for, pace, paused_overlay, window_title, Act, SLOTS};
-use crate::{cover, crt, lcd, scale};
+use crate::{cover, crt, lcd, scale, scale2x};
 use anyhow::Result;
 use minifb::Key;
 use std::path::{Path, PathBuf};
@@ -102,6 +102,7 @@ pub struct Session {
     frames_run: u64,
     crt: bool,
     lcd: bool,
+    scale2x: bool,
     /// Fast-forward key (or pad chord) is down right now.
     ff_held: bool,
     /// Fast-forward was switched on and stays on.
@@ -129,6 +130,7 @@ impl Session {
         let title = format!("Vuretro — {}", cfg.rom_name);
         let crt = cfg.settings.crt;
         let lcd = cfg.settings.lcd;
+        let scale2x = cfg.settings.scale2x;
         let rewind = cfg.settings.rewind.then(|| Rewind::new(REWIND_BYTES));
         let view = parts.screen.view();
         Session {
@@ -167,6 +169,7 @@ impl Session {
             slow_fps: None,
             crt,
             lcd,
+            scale2x,
             ff_held: false,
             ff_latched: false,
             slow_motion: false,
@@ -254,7 +257,14 @@ impl Session {
             (Key::F7, Act::LoadState),
             (Key::F6, Act::NextSlot),
             (Key::F8, Act::Mute),
-            (Key::F9, Act::SizeStep(-1)),
+            (
+                Key::F9,
+                if shift {
+                    Act::Scale2x
+                } else {
+                    Act::SizeStep(-1)
+                },
+            ),
             (Key::F10, Act::SizeStep(1)),
             (Key::F2, Act::Reset),
             (Key::F3, Act::Pause),
@@ -403,6 +413,15 @@ impl Session {
                 Some(format!(
                     "LCD effect {}",
                     if self.lcd { "on" } else { "off" }
+                ))
+            }
+            Act::Scale2x => {
+                self.scale2x = !self.scale2x;
+                self.settings.scale2x = self.scale2x;
+                self.persist(Change::Scale2x(self.scale2x));
+                Some(format!(
+                    "Scale2x smoothing {}",
+                    if self.scale2x { "on" } else { "off" }
                 ))
             }
             Act::FastForwardToggle => {
@@ -571,6 +590,19 @@ impl Session {
 
     /// The picture as it is sent to the window.
     fn compose(&self, buf: &[u32], w: usize, h: usize) -> Frame {
+        // Scale2x first: the picture is doubled and smoothed, then the looks and the whole-number
+        // enlargement work on the doubled picture.
+        if self.scale2x {
+            let (big, bw, bh) = scale2x::apply(buf, w, h);
+            if bw != w {
+                return self.finish_compose(&big, bw, bh);
+            }
+        }
+        self.finish_compose(buf, w, h)
+    }
+
+    /// The looks (CRT or LCD) and whole-number scaling of an already prepared picture.
+    fn finish_compose(&self, buf: &[u32], w: usize, h: usize) -> Frame {
         let effect = self.crt || self.lcd;
         if self.view.integer {
             let (win_w, win_h) = self.screen.size();
@@ -1504,5 +1536,49 @@ mod tests {
         }
         s.frame().unwrap();
         assert!(s.lcd && !s.crt);
+    }
+
+    #[test]
+    fn shift_f9_toggles_scale2x_and_plain_f9_still_shrinks_the_window() {
+        let (mut s, r) = rig(100);
+        let before = s.factor;
+        {
+            let mut l = r.log.borrow_mut();
+            l.down.insert(Key::LeftShift);
+            l.pressed.insert(Key::F9);
+        }
+        s.frame().unwrap();
+        assert!(s.scale2x, "Shift+F9 turns it on");
+        assert_eq!(s.factor, before, "and does not touch the window size");
+        assert!(vuretro_settings::load(&r.dir.path().join("game.json")).scale2x);
+        assert!(s
+            .notice
+            .as_ref()
+            .unwrap()
+            .0
+            .contains("Scale2x smoothing on"));
+
+        {
+            let mut l = r.log.borrow_mut();
+            l.down.clear();
+            l.pressed.insert(Key::F9);
+        }
+        s.frame().unwrap();
+        assert!(s.scale2x, "plain F9 leaves it alone");
+        assert_eq!(s.factor, before - 1, "plain F9 makes the window smaller");
+    }
+
+    #[test]
+    fn scale2x_doubles_the_picture_before_the_looks_and_off_leaves_it_as_it_is() {
+        let (mut s, _r) = rig(100);
+        let pic = vec![0x00ff_0000u32; 6 * 4];
+        assert_eq!(s.compose(&pic, 6, 4).1, 6);
+        s.scale2x = true;
+        let (out, w, h) = s.compose(&pic, 6, 4);
+        assert_eq!((w, h, out.len()), (12, 8, 96));
+        // a look on top works on the doubled picture, so it is bigger again
+        s.crt = true;
+        let (_, cw, ch) = s.compose(&pic, 6, 4);
+        assert!(cw >= 12 && ch >= 8, "{cw}x{ch}");
     }
 }

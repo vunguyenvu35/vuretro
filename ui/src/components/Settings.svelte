@@ -29,7 +29,7 @@
   // Whatever the backend sends, fill in anything missing so a switch never gets stuck.
   const DEFAULTS = {
     window_scale: 2, sound: true, volume: 100, sync_display: true, pause_on_blur: false, crt: false, rewind: false,
-    fast_forward: 4, ff_sound: false, resume: false, lcd: false, integer_scale: false, fullscreen: false, rumble: true, auto_coin: true,
+    fast_forward: 4, ff_sound: false, resume: false, lcd: false, scale2x: false, integer_scale: false, fullscreen: false, rumble: true, auto_coin: true,
   };
   const SPEEDS = [2, 3, 4, 8];
   const withDefaults = (v) => ({ ...DEFAULTS, ...v });
@@ -255,6 +255,16 @@
             <div class="d">A handheld look: a fine grid between the pixels, for Game Boy and similar systems. Press <kbd>Shift</kbd> + <kbd>F4</kbd> in a game. If CRT scanlines are on too, only one is used.</div>
           </div>
           <button class="switch" role="switch" aria-checked={s.lcd} aria-label="LCD pixel grid" class:on={s.lcd} onclick={() => flip('lcd')}><span></span></button>
+        </div>
+        <div class="row">
+          <span class="tile green" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 18V6h6v6h4v6H4zM14 12V6h6v12h-6v-6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" /></svg>
+          </span>
+          <div class="txt">
+            <div class="t">Smooth pixels (Scale2x)</div>
+            <div class="d">Doubles the picture and rounds the stairs on diagonal edges without blurring or adding colours. It suits 2D pixel art (Neo Geo, SNES, Game Boy) and is not applied to tall, detailed pictures. Press <kbd>Shift</kbd> + <kbd>F9</kbd> in a game. It combines with the CRT and LCD looks.</div>
+          </div>
+          <button class="switch" role="switch" aria-checked={s.scale2x} aria-label="Smooth pixels (Scale2x)" class:on={s.scale2x} onclick={() => flip('scale2x')}><span></span></button>
         </div>
         <div class="row">
           <span class="tile green" aria-hidden="true">

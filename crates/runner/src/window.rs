@@ -41,6 +41,8 @@ pub enum Act {
     Screenshot,
     Crt,
     Lcd,
+    /// Scale2x smoothing on or off.
+    Scale2x,
     NextDisc,
     /// Fast-forward stays on until pressed again.
     FastForwardToggle,
@@ -73,6 +75,7 @@ pub fn act_id(a: Act) -> usize {
         Act::SlowMotion => 43,
         Act::Fullscreen => 44,
         Act::Lcd => 45,
+        Act::Scale2x => 47,
         Act::PrevSlot => 46,
         Act::Speed(n) => 50 + n as usize,
         Act::Quit => 30,
@@ -92,6 +95,7 @@ pub fn act_from_id(id: usize) -> Option<Act> {
         Act::Screenshot,
         Act::Crt,
         Act::Lcd,
+        Act::Scale2x,
         Act::NextDisc,
         Act::FastForwardToggle,
         Act::SlowMotion,
@@ -179,6 +183,7 @@ mod pause_tests {
             Act::Screenshot,
             Act::Crt,
             Act::Lcd,
+            Act::Scale2x,
             Act::NextDisc,
             Act::FastForwardToggle,
             Act::SlowMotion,
