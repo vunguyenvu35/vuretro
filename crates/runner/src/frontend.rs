@@ -137,7 +137,19 @@ pub unsafe extern "C" fn environment_cb(cmd: c_uint, data: *mut c_void) -> bool 
                 defs.push(crate::options::parse_definition(&k, &v));
                 p = p.add(1);
             }
-            with(|fe| fe.definitions = defs);
+            with(|fe| {
+                // A value the user has not chosen is the core's default, its first one. Cores
+                // like MAME 2003-Plus do not pick it themselves: asked for nothing they take a
+                // sound rate of 0 Hz and play no sound.
+                for d in &defs {
+                    if let (false, Some(v)) = (fe.options.contains_key(&d.key), d.values.first()) {
+                        if let Ok(c) = CString::new(v.as_str()) {
+                            fe.options.insert(d.key.clone(), c);
+                        }
+                    }
+                }
+                fe.definitions = defs;
+            });
             true
         }
         // Many cores take for granted that the frontend offers logging, and crash on a null

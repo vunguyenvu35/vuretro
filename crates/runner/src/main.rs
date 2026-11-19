@@ -181,7 +181,14 @@ fn main() -> Result<()> {
         return Ok(());
     }
     let rom = args.rom.clone().context("--rom is required")?;
-    let av = core.load_game(&rom)?;
+    let mut av = core.load_game(&rom)?;
+    if core_stem.starts_with("mame") || av.timing.sample_rate < 1.0 || av.geometry.base_width == 0 {
+        // MAME reports its largest picture (512x256) until it has run a frame, which would
+        // stretch a 384x224 game: run one frame, then ask again.
+        core.run();
+        av = core.av_info();
+        audio_buf.lock().unwrap().clear();
+    }
     if args.list_options {
         let defs = frontend::with(|fe| fe.definitions.clone());
         print!("{}", options::template(&defs));

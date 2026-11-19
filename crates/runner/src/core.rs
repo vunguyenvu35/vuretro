@@ -168,9 +168,15 @@ impl Core {
                 (self.retro_set_controller_port_device)(port, RETRO_DEVICE_JOYPAD);
             }
         }
+        Ok(self.av_info())
+    }
+
+    /// The video and audio the core produces now. Some cores (MAME) only know the real picture
+    /// size and sound rate once they have run a frame, so this is asked again after one.
+    pub fn av_info(&self) -> retro_system_av_info {
         let mut av = retro_system_av_info::default();
         unsafe { (self.retro_get_system_av_info)(&mut av) };
-        Ok(av)
+        av
     }
 
     pub fn run(&self) {
