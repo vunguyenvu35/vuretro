@@ -52,6 +52,10 @@
     ['Motions', [['QCF  QCB', '236  214'], ['DP  RDP', '623  421'], ['HCF  HCB', '41236  63214'], ['[4]6', 'charge back, then forward']]],
     ['Moves in a combo', [[',', 'link: wait for the first move'], ['>', 'cancel: press at once'], ['x3', 'repeat three times'], ['j.  cr.  cl.', 'jumping, crouching, standing']]],
   ];
+  // Cards fold away so a long list stays short: folded by default; open one to edit it.
+  let opened = $state({});
+  const isOpen = (m) => opened[m.id] ?? false;
+  const toggleOpen = (m) => (opened[m.id] = !isOpen(m));
   const isMove = (m) => m.notation != null;
 
   // What the buttons are called: the standard pad names, or a Neo Geo's A B C D. A Neo Geo
@@ -186,6 +190,7 @@
       notation: asMove ? '' : null, mirror: false, auto_facing: asMove, ...extra,
     });
     // the next thing to do is choose the trigger, so wait for that key right away
+    opened[uid] = true;
     capture = { id: uid, kind: 'key' };
     save();
   }
@@ -423,12 +428,17 @@
       {#each list as m (m.id)}
         <article class="card" class:off={!m.enabled}>
           <header class="mh">
+            <button class="fold" onclick={() => toggleOpen(m)} aria-expanded={isOpen(m)} aria-label={isOpen(m) ? 'Collapse' : 'Expand'} title={isOpen(m) ? 'Collapse' : 'Expand'}>{isOpen(m) ? '▾' : '▸'}</button>
             <span class="badge {isMove(m) ? 'move' : m.kind}">{isMove(m) ? 'Move' : KINDS.find((k) => k.id === m.kind)?.name}</span>
             <input class="name" bind:value={m.name} oninput={save} maxlength="60" aria-label="Macro name" />
+            {#if !isOpen(m)}
+              <span class="sum">{[m.key && keyLabel(m.key), m.pad && padLabel(m.pad)].filter(Boolean).join(' · ') || 'no trigger'}{#if isMove(m) && m.notation} · <code>{m.notation}</code>{/if}</span>
+            {/if}
             <button class="switch" role="switch" aria-checked={m.enabled} aria-label="Enabled" class:on={m.enabled} onclick={() => { m.enabled = !m.enabled; save(); }}><span></span></button>
             <button class="del" onclick={() => remove(m)} aria-label="Delete macro" title="Delete">✕</button>
           </header>
 
+          {#if isOpen(m)}
           <div class="trig">
             <span class="lbl">Trigger</span>
             <span class="chips">
@@ -551,6 +561,7 @@
               <label class="check"><input type="checkbox" bind:checked={m.repeat} onchange={save} /> Keep repeating while the trigger is held</label>
             </div>
           {/if}
+          {/if}
         </article>
       {:else}
         <div class="empty">
@@ -608,6 +619,9 @@
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
   .card.off { opacity: .55; }
   .mh { display: flex; align-items: center; gap: 12px; }
+  .fold { background: none; border: 0; color: var(--muted, inherit); cursor: pointer; font-size: 14px; padding: 2px 6px; flex: none; }
+  .sum { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; opacity: .75; }
+  .sum code { font: 12px var(--font-mono); }
   .badge { font: 700 11px var(--font-body); text-transform: uppercase; letter-spacing: .07em; padding: 4px 9px; border-radius: 999px; flex: none; }
   .badge.combo { color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
   .badge.turbo { color: var(--brand-magenta); background: color-mix(in srgb, var(--brand-magenta) 16%, transparent); }
