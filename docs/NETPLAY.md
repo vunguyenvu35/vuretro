@@ -21,6 +21,8 @@ Hai máy trong cùng mạng LAN chơi chung một game, mỗi người một tay
 13. [Rủi ro](#13-rủi-ro)
 14. [Phương án đã cân nhắc](#14-phương-án-đã-cân-nhắc)
 15. [Cần quyết định](#15-cần-quyết-định)
+16. [Phòng 2 đến 4 máy](#16-phòng-2-đến-4-máy)
+17. [Internet và lớp truyền dữ liệu](#17-internet-và-lớp-truyền-dữ-liệu)
 
 ## 1. Tóm tắt và quyết định
 
@@ -31,8 +33,9 @@ Hai máy trong cùng mạng LAN chơi chung một game, mỗi người một tay
 | **Dữ liệu qua mạng** | 2 byte mỗi người mỗi khung (16 nút joypad libretro); với 60 khung/giây và gửi lại các phím chưa được xác nhận chỉ vài KB/giây. |
 | **Đo trên máy này** | Trạng thái FBNeo (Neo Geo) khoảng 415 KB; core chạy 1174 khung/giây ở bản debug, nên chạy lại 8 khung mất khoảng 7 ms (một khung là 16,7 ms). |
 | **Độ trễ phím** | 1 đến 2 khung trên LAN (ping dưới 2 ms), gần như không có rollback. |
-| **Phạm vi v1** | 2 người, LAN, các core 2D mà kiểm tra tính tất định đạt (dự kiến Neo Geo, SNES, NES, Genesis, GBA). |
-| **Ngoài phạm vi v1** | Internet và xuyên NAT, 3 đến 4 người, khán giả, hệ 3D và PS1, tạm dừng, tua lại, tua nhanh và nạp state trong lúc chơi mạng. |
+| **Mục tiêu dài hạn** | Một **phòng** có 2 đến 4 máy cùng chơi một game, trên LAN và trên Internet (xem [mục 16](#16-phòng-2-đến-4-máy) và [mục 17](#17-internet-và-lớp-truyền-dữ-liệu)). |
+| **Phạm vi v1** | Phòng 2 người, LAN, các core 2D mà kiểm tra tính tất định đạt (dự kiến Neo Geo, SNES, NES, Genesis, GBA). Thiết kế đã chừa chỗ cho 4 người và Internet. |
+| **Ngoài phạm vi v1** | Internet và xuyên NAT, 3 đến 4 người (làm ở giai đoạn P6, P7), khán giả, vào giữa chừng, hệ 3D và PS1, tạm dừng, tua lại, tua nhanh và nạp state trong lúc chơi mạng. |
 | **Ước lượng** | Khoảng 16 ngày công cho một developer (dự đoán, chưa kiểm chứng). |
 
 ## 2. Bức tranh tổng thể
@@ -508,8 +511,119 @@ Những lỗi phải có test chặn:
 
 1. **Bắt đầu từ P0?** P0 mất 1,5 ngày và cho biết ngay core nào dùng được. Đề nghị làm trước, rồi mới cam kết các giai đoạn sau.
 2. **PIN mặc định?** Đề nghị bật PIN 4 số mặc định, cho phép tắt trong cài đặt (LAN gia đình hay quán thường có người lạ).
-3. **Phạm vi người chơi.** v1 hai người. ggrs hỗ trợ tới 4 và khán giả, có thể mở sau nếu cần chơi bốn người (Neo Geo thường chỉ 2).
-4. **Internet.** Chưa nằm trong kế hoạch này. Nếu cần, thiết kế đã để chỗ cho một đường truyền khác (WebRTC) mà không đổi phần rollback.
+3. **Phạm vi người chơi.** Mục tiêu là phòng 2 hoặc 4 máy ([mục 16](#16-phòng-2-đến-4-máy)). Đề nghị v1 làm hai người nhưng viết mã theo số người tuỳ ý ngay từ đầu, để bốn người chỉ còn là kiểm thử và giao diện.
+4. **Internet.** Đã vào kế hoạch như giai đoạn sau ([mục 17](#17-internet-và-lớp-truyền-dữ-liệu)). Cần chọn giữa Steam và WebRTC với máy chủ báo hiệu tự chạy; đề nghị chọn sau khi có số đo từ P0 và P2.
+5. **Cần Steam không?** Chỉ cần nếu chọn Steam cho Internet (phải có AppID và người dùng cài Steam). LAN không cần.
+
+## 16. Phòng 2 đến 4 máy
+
+Một **phòng** là đơn vị người dùng thấy: Host mở phòng cho một game, chọn số chỗ, người khác vào, rồi tất cả bắt đầu cùng lúc.
+
+```mermaid
+flowchart TB
+  subgraph ROOM["Phòng (Host chọn game và số chỗ)"]
+    direction LR
+    S1["Chỗ 1<br/>Host"]
+    S2["Chỗ 2"]
+    S3["Chỗ 3<br/>(nếu phòng 4)"]
+    S4["Chỗ 4<br/>(nếu phòng 4)"]
+  end
+  S1 <--> S2
+  S1 <--> S3
+  S1 <--> S4
+  S2 <--> S3
+  S2 <--> S4
+  S3 <--> S4
+```
+
+Mỗi cặp máy nối trực tiếp với nhau (lưới đầy đủ): 2 máy có 1 đường, 4 máy có 6 đường. ggrs hỗ trợ nhiều người chơi theo mô hình này; mỗi người điều khiển một cổng của core.
+
+**Các quy tắc**
+
+- Phòng có số chỗ 2 hoặc 4. Chỉ cho chọn 4 khi game thật sự có từ bốn cổng điều khiển (xem bảng dưới); không thì giao diện chỉ cho 2.
+- Chỗ trống có thể bỏ trống: phòng 4 chỗ vẫn bắt đầu được khi Host bấm Bắt đầu, nhưng ở v1 số người chơi phải đúng số chỗ đã chọn (đơn giản hoá; cổng bỏ trống có thể làm sau).
+- Mọi người nhận **cùng một state đầu** từ Host (cơ chế ở mục 4, giai đoạn D, mở rộng sang N người: Host gửi cho từng người, mỗi người trả `StateAck`; chỉ khi tất cả xong Host mới phát `Start`).
+- Hai đến bốn máy đều phải qua kiểm tra `compat` giống hệt Host (mục 8). Ai lệch thì bị loại khỏi phòng kèm lý do.
+- Ai mất kết nối trong lúc chơi: v1 kết thúc cả phiên (đơn giản, không làm lệch trạng thái). Sau này có thể cho phép bên còn lại tiếp tục với cổng đó để trống.
+- Vào giữa chừng: v1 không hỗ trợ. Có thể làm sau bằng cách gửi state hiện tại ở một điểm đồng bộ.
+
+**Game nào chơi được bốn người**
+
+| Hệ máy | Đa số game | Bốn người cần |
+|---|---|---|
+| Neo Geo | 2 người | Không có (chỉ chọn phòng 2). |
+| SNES | 1 đến 2 | Bộ chia tay cầm (multitap) và game hỗ trợ (ví dụ Super Bomberman). |
+| NES | 1 đến 2 | Four Score hoặc Satellite và game hỗ trợ. |
+| Genesis, Master System | 1 đến 2 | Bộ chia tay cầm (EA 4-Way Play, Team Player) và game hỗ trợ. |
+| Arcade (CPS1, CPS2 và MAME) | 2 đến 4 | Game beat 'em up 3 đến 4 người như Cadillacs and Dinosaurs (3 người), Knights of the Round, X-Men (tuỳ bản). |
+| Game Boy, GBA | 1 | Cáp link chưa được mô phỏng, nên chưa có. |
+
+Danh sách này là hiểu biết chung, chưa kiểm chứng từng core trong Vuretro; số cổng thật sẽ lấy từ core (`retro_set_controller_port_device` và thông tin cổng) và từ bảng hệ máy trong dữ liệu `systems.json`, rồi kiểm tra bằng P0 và thử thật.
+
+**Thay đổi trong mã so với kế hoạch hai người**
+
+- `Hello`, `StateOffer`: thêm `slot` (chỗ của người gửi) và `players` (số chỗ của phòng).
+- `RollbackDriver`: tạo ggrs với `num_players = N`; ánh xạ chỗ sang cổng core (chỗ 1 là cổng 0, và cứ thế); `fe.buttons` cần chứa đủ N cổng.
+- Giao diện Host: chọn số chỗ (2 hoặc 4), danh sách người đã vào, nút Bắt đầu chỉ bật khi đủ người và mọi `StateAck` đã về.
+- Chi phí mạng: mỗi máy gửi phím cho N-1 máy. Với 4 máy, vẫn chỉ vài KB/giây mỗi đường.
+- Độ trễ phím và dự đoán: ggrs dùng cùng một độ trễ cho cả phòng; đường yếu nhất quyết định độ mượt chung, nên trên Wi-Fi tệ phòng 4 người sẽ giật rõ hơn phòng 2 người.
+
+## 17. Internet và lớp truyền dữ liệu
+
+Để LAN và Internet dùng chung phần rollback, tách thành ba lớp, mỗi lớp thay được độc lập:
+
+```mermaid
+flowchart TB
+  subgraph L1["Lớp 1: Tìm và vào phòng (Signaling, Lobby)"]
+    direction LR
+    A1["LAN: UDP broadcast 7847"]
+    A2["Internet, hướng A: Steam Lobby (bạn bè, mời)"]
+    A3["Internet, hướng B: máy chủ báo hiệu tự chạy"]
+  end
+  subgraph L2["Lớp 2: Đường truyền game (Transport)"]
+    direction LR
+    B1["UDP trực tiếp (LAN)"]
+    B2["Steam Networking Sockets (xuyên NAT, relay của Valve)"]
+    B3["WebRTC data channel (xuyên NAT, TURN dự phòng)"]
+  end
+  subgraph L3["Lớp 3: Rollback (dùng chung)"]
+    C1["ggrs + NetSession: đoán, lưu, nạp, chạy lại, checksum"]
+  end
+  L1 --> L2 --> L3
+```
+
+- Lớp 3 không biết gì về đường truyền: chỉ nhận và gửi gói qua một giao diện `Transport` (với ggrs là trait `NonBlockingSocket`).
+- Lớp 1 trả về danh sách phòng và thông tin để nối (địa chỉ, mã phòng).
+- Lớp 2 lo kết nối thật giữa các cặp máy, kể cả xuyên NAT.
+
+**Hai hướng cho Internet**
+
+| | Steam (Lobby, Sockets, Relay) | WebRTC và máy chủ báo hiệu tự chạy |
+|---|---|---|
+| Xuyên NAT, relay | Có sẵn (relay của Valve) | Có (STUN), relay cần TURN và tự vận hành |
+| Tìm bạn, mời | Danh sách bạn Steam, Lobby | Mã phòng hoặc liên kết; tự làm |
+| Vận hành | Gần như không | Phải chạy và trả tiền máy chủ nhỏ |
+| Ràng buộc | Cần Steam AppID (phát hành thật cần đăng ký app, theo điều khoản Valve); người dùng phải cài Steam | Không phụ thuộc nền tảng nào |
+| Độ trễ | Đường trực tiếp nếu xuyên NAT được; qua relay thì thêm vài ms | Tương tự |
+| Rủi ro | Phụ thuộc Valve; điều kiện phát hành tôi chưa kiểm tra lại | Tự chịu trách nhiệm vận hành và bảo mật |
+
+Chưa chọn hướng. LAN không cần lớp 2 và 3 nào ngoài UDP trực tiếp, nên làm trước; quyết định Internet sau khi có số đo thật.
+
+**Đặc thù của Internet cần tính trước**
+
+- Ping 30 đến 150 ms nên rollback xảy ra thường xuyên; cần đo CPU cho các lần chạy lại dài (xem mục 7) và có thể tăng độ trễ phím tự động theo ping.
+- Phòng 4 người qua Internet cần xuyên NAT cho 3 đường mỗi máy; chỉ cần một đường hỏng là cả phòng bị ảnh hưởng, nên cần hiển thị chất lượng từng đường.
+- Lộ địa chỉ IP cho người trong phòng: relay hoặc mã phòng có thể giảm điều này; cần ghi rõ cho người dùng.
+- Bảo mật: PIN hoặc mã mời ngắn hạn; giới hạn kích thước gói; không tin dữ liệu từ máy khác.
+
+**Giai đoạn bổ sung**
+
+| Giai đoạn | Nội dung | Ước lượng (dự đoán) |
+|---|---|---|
+| P6. Phòng 4 người | Tổng quát hoá giao thức và giao diện lên N người, test với bản giả 4 tiến trình trên localhost, thử một game 4 người thật | khoảng 3 ngày |
+| P7. Internet | Giao diện `Transport` và `Lobby`, một hướng (Steam hoặc WebRTC), xuyên NAT, chỉ báo chất lượng đường, thử trên mạng thật | khoảng 8 đến 12 ngày, tuỳ hướng chọn |
+
+Hai giai đoạn này làm sau P5; P6 có thể làm ngay sau P3 nếu bạn muốn chơi bốn người trên LAN sớm hơn.
 
 ---
 
