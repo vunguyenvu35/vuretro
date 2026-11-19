@@ -18,6 +18,7 @@ mod frontend;
 mod headless;
 mod input;
 mod lcd;
+mod neogeo;
 mod options;
 mod padkeys;
 mod perf;
@@ -94,7 +95,11 @@ struct Args {
 }
 
 /// User options for a core, plus the frontend's own defaults for specific cores.
-fn core_options(path: &std::path::Path, core_stem: &str) -> HashMap<String, String> {
+fn core_options(
+    path: &std::path::Path,
+    core_stem: &str,
+    system_dir: &std::path::Path,
+) -> HashMap<String, String> {
     let mut user_options = std::fs::read_to_string(path)
         .map(|t| options::parse_config(&t))
         .unwrap_or_default();
@@ -105,13 +110,18 @@ fn core_options(path: &std::path::Path, core_stem: &str) -> HashMap<String, Stri
             path.display()
         );
     }
-    // FBNeo's default Neo Geo mode boots the MVS BIOS, which shows several seconds of
-    // garbled green memory-test screens (and needs coins). AES boots straight to the
-    // logo and starts with Start; still overridable in the core's .cfg.
+    // FBNeo's default Neo Geo mode boots the MVS BIOS, which shows a green, garbled system
+    // check (and needs coins). AES boots straight to the logo; when the zip has no AES BIOS
+    // the Universe BIOS is the next best, because a mode whose BIOS is missing falls back to
+    // MVS. Still overridable in the core's .cfg.
     if core_stem.starts_with("fbneo") {
+        let mode = std::fs::read(system_dir.join("neogeo.zip"))
+            .map(|zip| neogeo::default_mode(&zip))
+            .unwrap_or("AES_EUR");
         user_options
             .entry("fbneo-neogeo-mode".to_string())
-            .or_insert_with(|| "AES_EUR".to_string());
+            .or_insert_with(|| mode.to_string());
+        log::info!("Neo Geo BIOS mode: {mode} (unless the core options file says otherwise)");
     }
     user_options
 }
@@ -136,7 +146,7 @@ fn main() -> Result<()> {
     let options_path = args
         .options
         .unwrap_or_else(|| paths.core_options_file(&core_stem));
-    let user_options = core_options(&options_path, &core_stem);
+    let user_options = core_options(&options_path, &core_stem, &system_dir);
 
     let audio_buf = Arc::new(Mutex::new(VecDeque::<i16>::new()));
     frontend::init(
