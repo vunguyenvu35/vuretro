@@ -1,7 +1,7 @@
 //! Importing ROMs into the app's own library folder (`<library>/<system folder>/file`)
 //! and removing them again. Importing copies; the original files are never touched.
 
-use crate::scan;
+use crate::{scan, unpack};
 use std::path::{Path, PathBuf};
 use vuretro_core::detect::{detect_system, is_bios_file};
 pub use vuretro_core::model::ImportedRom as Imported;
@@ -40,12 +40,17 @@ fn companions(src: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(out)
 }
 
-fn copy_into(src: &Path, dir: &Path) -> Result<(PathBuf, bool), String> {
+/// Put `src` into `dir`: a copy, or (for files unpacked from an archive, which are ours to
+/// spend) a move, which does not write a big disc image twice.
+fn copy_into(src: &Path, dir: &Path, moving: bool) -> Result<(PathBuf, bool), String> {
     let name = src.file_name().ok_or("not a file")?;
     let dest = dir.join(name);
     let size = std::fs::metadata(src).map_err(|e| e.to_string())?.len();
     if std::fs::metadata(&dest).is_ok_and(|m| m.len() == size) {
         return Ok((dest, true));
+    }
+    if moving && std::fs::rename(src, &dest).is_ok() {
+        return Ok((dest, false));
     }
     // Copy under a temporary name so an interrupted import never leaves a broken ROM.
     let tmp = dir.join(format!(".{}.part", name.to_string_lossy()));
@@ -57,6 +62,47 @@ fn copy_into(src: &Path, dir: &Path) -> Result<(PathBuf, bool), String> {
 /// Copy one ROM into `library`. `hint` is a system id chosen by the user; it settles
 /// archives (`.zip`) whose system cannot be told from the file.
 pub fn import_file(src: &Path, library: &Path, hint: Option<&str>) -> Result<Imported, String> {
+    // A disc that comes in an archive is unpacked first: no one has to do it by hand.
+    if unpack::is_archive(src) {
+        if let Ok(list) = unpack::names(src) {
+            if unpack::holds_disc(&list) {
+                return import_disc_archive(src, library, hint);
+            }
+        }
+    }
+    import_inner(src, library, hint, false)
+}
+
+/// Unpack an archive that holds a disc image beside the library, mend the `.cue`, import what
+/// is in it, and clean up. The first game imported is the answer.
+fn import_disc_archive(src: &Path, library: &Path, hint: Option<&str>) -> Result<Imported, String> {
+    let tmp = library.join(format!(".unpack-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let result = (|| {
+        unpack::extract(src, &tmp)?;
+        unpack::mend_cues(&tmp);
+        let mut first: Option<Imported> = None;
+        let mut error = None;
+        for entry in unpack::entry_points(&tmp) {
+            match import_inner(&entry, library, hint, true) {
+                Ok(i) => {
+                    first.get_or_insert(i);
+                }
+                Err(e) => error = error.or(Some(e)),
+            }
+        }
+        first.ok_or_else(|| error.unwrap_or_else(|| "no disc image found in the archive".into()))
+    })();
+    let _ = std::fs::remove_dir_all(&tmp);
+    result
+}
+
+fn import_inner(
+    src: &Path,
+    library: &Path,
+    hint: Option<&str>,
+    moving: bool,
+) -> Result<Imported, String> {
     let name = src
         .file_name()
         .and_then(|n| n.to_str())
@@ -88,9 +134,9 @@ pub fn import_file(src: &Path, library: &Path, hint: Option<&str>) -> Result<Imp
     let dir = library.join(sys.folders[0]);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     for p in &extra {
-        copy_into(p, &dir)?;
+        copy_into(p, &dir, moving)?;
     }
-    let (dest, already_there) = copy_into(src, &dir)?;
+    let (dest, already_there) = copy_into(src, &dir, moving)?;
     Ok(Imported {
         system: sys.id,
         dest,
@@ -211,6 +257,54 @@ mod tests {
         // wrong system for the extension, and BIOS files are refused
         assert!(import_file(&src.path().join("game.sfc"), lib.path(), Some("gba")).is_err());
         assert!(import_file(&src.path().join("neogeo.zip"), lib.path(), Some("neogeo")).is_err());
+    }
+
+    #[test]
+    fn a_disc_in_an_archive_is_unpacked_and_its_cue_mended_on_import() {
+        use std::io::Write;
+        let tmp = tempfile::tempdir().unwrap();
+        let lib = tempfile::tempdir().unwrap();
+        // the .cue names a file that is not the one that was packed
+        let zip = tmp.path().join("Game (Japan).zip");
+        let mut w = zip::ZipWriter::new(fs::File::create(&zip).unwrap());
+        for (name, data) in [
+            ("Game (Japan).cue", "FILE \"Game [SLPS-1].bin\" BINARY\n  TRACK 01 MODE2/2352\n"),
+            ("Game (Japan).bin", "disc data"),
+            ("readme.html", "x"),
+        ] {
+            w.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+            w.write_all(data.as_bytes()).unwrap();
+        }
+        w.finish().unwrap();
+
+        let done = import_file(&zip, lib.path(), None).unwrap();
+        assert_eq!(done.system, "psx");
+        assert!(done.dest.ends_with("psx/Game (Japan).cue"), "{:?}", done.dest);
+        assert!(lib.path().join("psx/Game (Japan).bin").is_file());
+        let cue = fs::read_to_string(&done.dest).unwrap();
+        assert!(cue.contains("\"Game (Japan).bin\""), "{cue}");
+        assert!(!lib.path().join("psx/readme.html").exists(), "only the disc is imported");
+        // nothing is left behind, and doing it again finds the game already there
+        let left: Vec<_> = fs::read_dir(lib.path()).unwrap().flatten().map(|e| e.file_name()).collect();
+        assert_eq!(left.len(), 1, "{left:?}");
+        assert!(import_file(&zip, lib.path(), None).unwrap().already_there);
+    }
+
+    #[test]
+    fn an_archive_of_a_rom_set_is_still_imported_as_it_is() {
+        use std::io::Write;
+        let tmp = tempfile::tempdir().unwrap();
+        let lib = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("neogeo");
+        fs::create_dir_all(&dir).unwrap();
+        let zip = dir.join("mslug.zip");
+        let mut w = zip::ZipWriter::new(fs::File::create(&zip).unwrap());
+        w.start_file("201-p1.p1", zip::write::SimpleFileOptions::default()).unwrap();
+        w.write_all(b"rom").unwrap();
+        w.finish().unwrap();
+        let done = import_file(&zip, lib.path(), None).unwrap();
+        assert!(done.dest.ends_with("neogeo/mslug.zip"));
+        assert!(done.dest.is_file());
     }
 
     #[test]

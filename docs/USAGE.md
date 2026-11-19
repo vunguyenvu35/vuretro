@@ -34,7 +34,7 @@ How vuretro decides which system a file is for:
 
 Fan translations and ROM hacks come as small **IPS**, **UPS** or **BPS** patch files. **Right-click a game ▸ Apply patch…**, pick the patch, and vuretro adds a patched copy to the library next to the game, named `<game> [<patch>].<ext>`. **The original game is not changed**, and the patched copy is a game like any other. Patches check that they fit your copy of the game; if they do not, you are told and nothing is added. Cartridge games only: a game inside a `.zip`, or a disc image, has to be unpacked and patched outside vuretro. Applying the same patch twice does not add a second copy.
 
-`.cue` and `.m3u` files bring the `.bin` / disc files they point to. If one is missing, the import is refused and nothing is copied. If a BIOS file is among what you import (a file you picked, or one inside a folder), vuretro installs it as a BIOS and says so, so a whole collection can be imported in one go. You can also add BIOS files yourself as described next.
+A disc that comes in a `.zip` or `.7z` (a `.cue` with its `.bin`, or a `.chd`, `.iso`…) is unpacked for you: import the archive as it is. If its `.cue` names a different `.bin` than the one packed (common in shared dumps), the sheet is mended. Archives of arcade or Neo Geo ROM sets are kept as they are. `.cue` and `.m3u` files bring the `.bin` / disc files they point to. If one is missing, the import is refused and nothing is copied. If a BIOS file is among what you import (a file you picked, or one inside a folder), vuretro installs it as a BIOS and says so, so a whole collection can be imported in one go. You can also add BIOS files yourself as described next.
 
 ## 3. Add BIOS files
 

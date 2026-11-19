@@ -24,6 +24,8 @@ ureq = "3"
 crc32fast = "1"
 sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
+sevenz-rust2 = { version = "0.25.0", default-features = false, features = ["util"] }
 
 [dev-dependencies]
+sevenz-rust2 = { version = "0.25.0", default-features = false, features = ["util", "compress"] }
 tempfile = "3"
