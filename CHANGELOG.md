@@ -4,6 +4,7 @@
 
 - **Recommended look:** a button on each system in Settings (**Use the recommended look**) that turns on whole-number scaling plus the LCD grid for handhelds or CRT scanlines for TV and arcade systems. It changes nothing until pressed and can be undone.
 - **Smooth pixels (Scale2x):** a filter that doubles the picture and rounds the stairs on diagonal edges without blurring or adding colours, for 2D pixel art. Settings, `Shift`+`F9` in a game, and per system or per game; it combines with the CRT and LCD looks and is skipped for tall pictures.
+- Fix: with **Whole-number scaling** on, turning Smooth pixels on could make the picture smaller (an odd window size such as 3× came out 2×). The picture now keeps the size it has without smoothing; the CRT scanlines and LCD grid keep their cells on the smoothed picture. At an odd size the smoothed pixels are picked nearest-neighbour, so they are 1 or 2 screen pixels wide in turn. A window with room for the picture only once shows it unsmoothed.
 
 ## 0.1.5
 

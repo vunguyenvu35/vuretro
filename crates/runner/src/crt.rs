@@ -47,6 +47,19 @@ pub fn apply_with(buf: &[u32], w: usize, h: usize, k: usize) -> (Vec<u32>, usize
     (out, ow, oh)
 }
 
+/// Darken the last row of every group of `k` rows of an already enlarged picture, as [`apply_with`]
+/// does while enlarging. For pictures that were enlarged by something else (Scale2x).
+pub fn darken_rows(buf: &mut [u32], w: usize, h: usize, k: usize) {
+    if k < 2 || w == 0 || buf.len() < w * h {
+        return;
+    }
+    for y in (k - 1..h).step_by(k) {
+        for p in &mut buf[y * w..(y + 1) * w] {
+            *p = dim(*p, GAP);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,6 +98,18 @@ mod tests {
         assert_eq!(out[0], 0xFFFFFF); // first row of a group: full
         assert!(out[4] < 0xFFFFFF); // last row of a group: the gap
         assert_eq!(apply_with(&buf, 2, 2, 1).0, buf, "1x: nothing to do");
+    }
+
+    #[test]
+    fn the_gap_rows_can_be_drawn_on_a_picture_that_was_enlarged_elsewhere() {
+        let lit = 0x00FF_FFFF;
+        let mut buf = vec![lit; 6 * 6];
+        darken_rows(&mut buf, 6, 6, 3);
+        let (reference, ..) = apply_with(&[lit, lit, lit, lit], 2, 2, 3);
+        assert_eq!(buf, reference);
+        let mut tiny = vec![lit; 4];
+        darken_rows(&mut tiny, 2, 2, 1);
+        assert_eq!(tiny, vec![lit; 4]);
     }
 
     #[test]

@@ -49,6 +49,22 @@ pub fn apply_with(buf: &[u32], w: usize, h: usize, k: usize) -> (Vec<u32>, usize
     (out, ow, oh)
 }
 
+/// Dim the last row and column of every `k` x `k` cell of an already enlarged picture, as
+/// [`apply_with`] does while enlarging. For pictures enlarged by something else (Scale2x).
+pub fn grid_in_place(buf: &mut [u32], w: usize, h: usize, k: usize) {
+    if k < 2 || w == 0 || buf.len() < w * h {
+        return;
+    }
+    for y in 0..h {
+        let line = y % k == k - 1;
+        for (x, p) in buf[y * w..(y + 1) * w].iter_mut().enumerate() {
+            if line || x % k == k - 1 {
+                *p = dim(*p, GRID);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -65,6 +81,21 @@ mod tests {
         assert_eq!(&out[0..3], &[lit, lit, line]);
         assert_eq!(&out[3..6], &[lit, lit, line]);
         assert_eq!(&out[6..9], &[line, line, line]);
+    }
+
+    #[test]
+    fn the_grid_can_be_drawn_on_a_picture_that_was_enlarged_elsewhere() {
+        let lit = 0x00FF_FFFF;
+        let mut buf = vec![lit; 6 * 6];
+        grid_in_place(&mut buf, 6, 6, 3);
+        let (reference, ..) = apply_with(&[lit, lit, lit, lit], 2, 2, 3);
+        assert_eq!(
+            buf, reference,
+            "same cells as when the grid is drawn while enlarging"
+        );
+        let mut tiny = vec![lit; 4];
+        grid_in_place(&mut tiny, 2, 2, 1);
+        assert_eq!(tiny, vec![lit; 4], "a factor of 1 has no room for a grid");
     }
 
     #[test]

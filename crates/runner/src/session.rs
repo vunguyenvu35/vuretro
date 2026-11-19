@@ -590,33 +590,58 @@ impl Session {
 
     /// The picture as it is sent to the window.
     fn compose(&self, buf: &[u32], w: usize, h: usize) -> Frame {
-        // Scale2x first: the picture is doubled and smoothed, then the looks and the whole-number
-        // enlargement work on the doubled picture.
+        if self.view.integer {
+            // The whole factor is always worked out for the picture as the game made it, so
+            // turning Scale2x on never makes the picture smaller: it only changes what the
+            // enlarged pixels look like.
+            let (win_w, win_h) = self.screen.size();
+            let k = scale::integer_factor(w, h, win_w, win_h);
+            if self.scale2x && k >= 2 {
+                let (big, bw, bh) = scale2x::apply(buf, w, h);
+                if bw != w {
+                    // The smoothed picture is twice the size; bring it to k times the original.
+                    // An even k is a whole enlargement of it, an odd k picks the nearest pixel.
+                    let (mut out, ow, oh) = if k.is_multiple_of(2) {
+                        scale::enlarge(&big, bw, bh, k / 2)
+                    } else {
+                        scale::resample(&big, bw, bh, w * k, h * k)
+                    };
+                    // the look is drawn on the final picture, in cells of k x k
+                    if self.crt {
+                        crt::darken_rows(&mut out, ow, oh, k);
+                    } else if self.lcd {
+                        lcd::grid_in_place(&mut out, ow, oh, k);
+                    }
+                    return (out, ow, oh);
+                }
+            }
+            return self.enlarge_with_look(buf, w, h, k);
+        }
+        // In a window that stretches the picture, Scale2x first, then the look
         if self.scale2x {
             let (big, bw, bh) = scale2x::apply(buf, w, h);
             if bw != w {
-                return self.finish_compose(&big, bw, bh);
+                return self.look_without_whole_numbers(&big, bw, bh);
             }
         }
-        self.finish_compose(buf, w, h)
+        self.look_without_whole_numbers(buf, w, h)
     }
 
-    /// The looks (CRT or LCD) and whole-number scaling of an already prepared picture.
-    fn finish_compose(&self, buf: &[u32], w: usize, h: usize) -> Frame {
-        let effect = self.crt || self.lcd;
-        if self.view.integer {
-            let (win_w, win_h) = self.screen.size();
-            let k = scale::integer_factor(w, h, win_w, win_h);
-            return if effect && k >= 2 {
-                if self.crt {
-                    crt::apply_with(buf, w, h, k)
-                } else {
-                    lcd::apply_with(buf, w, h, k)
-                }
+    /// The CRT or LCD look at a factor chosen by the whole-number scaling, or a plain enlargement.
+    fn enlarge_with_look(&self, buf: &[u32], w: usize, h: usize, k: usize) -> Frame {
+        if (self.crt || self.lcd) && k >= 2 {
+            if self.crt {
+                crt::apply_with(buf, w, h, k)
             } else {
-                scale::enlarge(buf, w, h, k)
-            };
+                lcd::apply_with(buf, w, h, k)
+            }
+        } else {
+            scale::enlarge(buf, w, h, k)
         }
+    }
+
+    /// The CRT or LCD look at the size that suits the picture, for a window that stretches it.
+    fn look_without_whole_numbers(&self, buf: &[u32], w: usize, h: usize) -> Frame {
         if self.crt {
             crt::apply(buf, w, h)
         } else if self.lcd {
@@ -751,6 +776,8 @@ mod tests {
         presented: usize,
         /// Size of each picture sent to the window.
         presented_dims: Vec<(usize, usize)>,
+        /// The pixels of the last picture sent to the window.
+        last_pixels: Vec<u32>,
         idled: usize,
         reopened: Vec<usize>,
         /// The view of each window opened, and the one the window has now.
@@ -795,9 +822,10 @@ mod tests {
         fn is_active(&mut self) -> bool {
             self.0.borrow().active
         }
-        fn present(&mut self, _: &[u32], w: usize, h: usize) -> Result<()> {
+        fn present(&mut self, pixels: &[u32], w: usize, h: usize) -> Result<()> {
             let mut l = self.0.borrow_mut();
             l.presented += 1;
+            l.last_pixels = pixels.to_vec();
             l.presented_dims.push((w, h));
             Ok(())
         }
@@ -1508,6 +1536,63 @@ mod tests {
         r.log.borrow_mut().new_frame = Some((vec![0x00FF_FFFF; 4], 2, 2));
         s.frame().unwrap();
         assert_eq!(*r.log.borrow().presented_dims.last().unwrap(), (4, 4));
+    }
+
+    /// A session with whole-number scaling in a window of `win` pixels.
+    fn integer_rig(win: (usize, usize), f: impl FnOnce(&mut GameSettings)) -> (Session, Rig) {
+        let view = View {
+            integer: true,
+            fullscreen: false,
+        };
+        let (s, r) = rig_in(tempfile::tempdir().unwrap(), 100, settings_with(f), view);
+        r.log.borrow_mut().win_size = win;
+        (s, r)
+    }
+
+    fn presented(s: &mut Session, r: &Rig, pic: (Vec<u32>, usize, usize)) -> (usize, usize) {
+        r.log.borrow_mut().new_frame = Some(pic);
+        s.frame().unwrap();
+        *r.log.borrow().presented_dims.last().unwrap()
+    }
+
+    #[test]
+    fn smoothing_never_makes_the_picture_smaller_whatever_the_whole_factor() {
+        let pic = || (vec![5u32; 3 * 2], 3, 2);
+        // window 9x6 fits the 3x2 picture 3 times: an odd factor (the bug: it came out 2 times)
+        let (mut plain, r) = integer_rig((9, 6), |_| {});
+        let plain_dims = presented(&mut plain, &r, pic());
+        let (mut smooth, r) = integer_rig((9, 6), |s| s.scale2x = true);
+        assert_eq!(presented(&mut smooth, &r, pic()), plain_dims);
+        assert_eq!(plain_dims, (9, 6));
+        // an even factor, and a bigger odd one
+        for win in [(12, 8), (15, 10), (6, 4)] {
+            let (mut p, r) = integer_rig(win, |_| {});
+            let want = presented(&mut p, &r, pic());
+            let (mut s, r) = integer_rig(win, |s| s.scale2x = true);
+            assert_eq!(presented(&mut s, &r, pic()), want, "window {win:?}");
+        }
+        // a window with room for the picture only once cannot show a doubled one: as before
+        let (mut s, r) = integer_rig((3, 2), |s| s.scale2x = true);
+        assert_eq!(presented(&mut s, &r, pic()), (3, 2));
+    }
+
+    #[test]
+    fn the_looks_keep_their_cells_on_a_smoothed_picture_at_an_odd_factor() {
+        // 2x2 white picture, window 6x6: factor 3, cells of 3x3 with the last row dimmed
+        let white = || (vec![0x00FF_FFFFu32; 4], 2, 2);
+        let (mut s, r) = integer_rig((6, 6), |s| {
+            s.scale2x = true;
+            s.crt = true;
+        });
+        assert_eq!(presented(&mut s, &r, white()), (6, 6));
+        let f = r.log.borrow().last_pixels.clone();
+        let row = |y: usize| f[y * 6];
+        assert_eq!((row(0), row(1)), (0x00FF_FFFF, 0x00FF_FFFF));
+        assert!(
+            row(2) < 0x00FF_FFFF,
+            "the last row of each cell is the scanline gap"
+        );
+        assert_eq!(row(5), row(2));
     }
 
     #[test]

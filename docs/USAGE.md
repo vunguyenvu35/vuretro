@@ -99,6 +99,7 @@ On Windows and Linux use `Ctrl` in place of `⌘`.
 | `F4` | CRT scanlines on or off (remembered) |
 | `Shift`+`F4` | LCD pixel grid on or off (remembered). It replaces CRT scanlines, and the other way round |
 | `Shift`+`F9` | Smooth pixels (Scale2x) on or off (remembered). It combines with CRT and LCD |
+
 | `F11` | Change disc (multi-disc games, e.g. a PlayStation `.m3u`) |
 | `F12` | Screenshot |
 

@@ -30,6 +30,20 @@ pub fn enlarge(buf: &[u32], w: usize, h: usize, k: usize) -> (Vec<u32>, usize, u
     (out, ow, oh)
 }
 
+/// Resize to `ow` x `oh` by picking the nearest source pixel. Used when a smoothed picture has
+/// to reach an odd whole factor: its doubled pixels then get 1 or 2 output pixels in turn.
+pub fn resample(buf: &[u32], w: usize, h: usize, ow: usize, oh: usize) -> (Vec<u32>, usize, usize) {
+    if w == 0 || h == 0 || ow == 0 || oh == 0 || buf.len() < w * h {
+        return (buf.to_vec(), w, h);
+    }
+    let mut out = Vec::with_capacity(ow * oh);
+    for y in 0..oh {
+        let row = &buf[(y * h / oh) * w..][..w];
+        out.extend((0..ow).map(|x| row[x * w / ow]));
+    }
+    (out, ow, oh)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -53,6 +67,16 @@ mod tests {
         let (out, w, h) = enlarge(&[1, 2, 3, 4], 2, 2, 2);
         assert_eq!((w, h), (4, 4));
         assert_eq!(out, vec![1, 1, 2, 2, 1, 1, 2, 2, 3, 3, 4, 4, 3, 3, 4, 4]);
+    }
+
+    #[test]
+    fn resampling_picks_the_nearest_pixel_so_odd_factors_alternate_one_and_two() {
+        // 2 pixels stretched to 5: 1 1 1 2 2 (each source pixel gets 2 or 3, none is lost)
+        let (out, w, h) = resample(&[1, 2], 2, 1, 5, 1);
+        assert_eq!((w, h, out), (5, 1, vec![1, 1, 1, 2, 2]));
+        // equal size is the identity; bad input comes back unchanged
+        assert_eq!(resample(&[1, 2, 3, 4], 2, 2, 2, 2).0, vec![1, 2, 3, 4]);
+        assert_eq!(resample(&[1], 2, 2, 4, 4).0, vec![1]);
     }
 
     #[test]
