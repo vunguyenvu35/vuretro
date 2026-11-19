@@ -1,8 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.1.7
 
-- **Support:** *Help ▸ Support Vuretro…* and *Help ▸ About Vuretro* (also in Settings), a Ko-fi link, issue forms for bugs and feature requests, `FUNDING.yml` and a Support section in the README. The app opens only its own GitHub and Ko-fi pages.
+Help, About and Support in the app. Still an early release with unsigned packages.
+
+| System | File |
+|---|---|
+| macOS (Apple Silicon and Intel) | `Vuretro_0.1.7_universal.dmg` |
+| Windows | `Vuretro_0.1.7_x64-setup.exe` or `Vuretro_0.1.7_x64_en-US.msi` |
+| Linux | `Vuretro_0.1.7_amd64.AppImage`, `.deb` or `.rpm` |
+
+### New
+- **Help ▸ About Vuretro** (also in Settings ▸ Help and support): the version, what Vuretro is, and links to GitHub, Report a bug, License and Ko-fi.
+- **Help ▸ Support Vuretro…**: how to support the project on Ko-fi, and other ways to help. Vuretro is free; nothing in the app is locked behind a donation.
+- The app opens only the project's own pages (its GitHub and Ko-fi). Any other address is refused.
+- **For contributors:** issue forms for bug reports and feature requests (they ask for the version, system, game and `runner.log`, and tell people not to attach ROMs or BIOS files), a GitHub Sponsor button, and a Support section in the README.
 
 ## 0.1.6
 
