@@ -1,10 +1,23 @@
 # Changelog
 
-## Unreleased
+## 0.1.6
 
-- **Recommended look:** a button on each system in Settings (**Use the recommended look**) that turns on whole-number scaling plus the LCD grid for handhelds or CRT scanlines for TV and arcade systems. It changes nothing until pressed and can be undone.
-- **Smooth pixels (Scale2x):** a filter that doubles the picture and rounds the stairs on diagonal edges without blurring or adding colours, for 2D pixel art. Settings, `Shift`+`F9` in a game, and per system or per game; it combines with the CRT and LCD looks and is skipped for tall pictures.
-- Fix: with **Whole-number scaling** on, turning Smooth pixels on could make the picture smaller (an odd window size such as 3× came out 2×). The picture now keeps the size it has without smoothing; the CRT scanlines and LCD grid keep their cells on the smoothed picture. At an odd size the smoothed pixels are picked nearest-neighbour, so they are 1 or 2 screen pixels wide in turn. A window with room for the picture only once shows it unsmoothed.
+Sharper and smoother pictures for 2D games. Still an early release with unsigned packages.
+
+| System | File |
+|---|---|
+| macOS (Apple Silicon and Intel) | `Vuretro_0.1.6_universal.dmg` |
+| Windows | `Vuretro_0.1.6_x64-setup.exe` or `Vuretro_0.1.6_x64_en-US.msi` |
+| Linux | `Vuretro_0.1.6_amd64.AppImage`, `.deb` or `.rpm` |
+
+### New
+- **Smooth pixels (Scale2x):** a filter that doubles the picture and rounds the stairs on diagonal edges without blurring or adding colours, for 2D pixel art. Turn it on in Settings or with `Shift`+`F9` in a game; it can be set per system or per game and combines with the CRT scanlines and the LCD grid. It is skipped for tall, detailed pictures.
+- **Recommended look:** pick a system in Settings and press **Use the recommended look**. It turns on whole-number scaling (sharp pixels) plus the LCD grid for handhelds (Game Boy family, Game Gear, Lynx, Neo Geo Pocket, WonderSwan, Nintendo DS) or CRT scanlines for TV and arcade systems. Nothing changes until you press it, only those settings are touched, and it can be undone.
+
+### Fixes
+- With **Whole-number scaling** on, turning Smooth pixels on could make the picture smaller (a window of 3× came out 2×). The picture now keeps the size it has without smoothing, and the scanlines and LCD grid keep their cells on the smoothed picture. At an odd size the smoothed pixels are 1 or 2 screen pixels wide in turn.
+
+Earlier versions are listed below. How to use the app: [docs/USAGE.md](docs/USAGE.md).
 
 ## 0.1.5
 
