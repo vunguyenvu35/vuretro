@@ -33,7 +33,7 @@
           onchange={choose}
           ariaLabel="Core for this game"
           options={[
-            { value: '', label: `${short(system.core)} (system)` },
+            { value: '', label: `${short(system.core)} (system${system.core_installed ? '' : ', not installed'})` },
             ...choices.filter((c) => c.name !== system.core).map((c) => ({ value: c.name, label: short(c.name) + (c.installed ? '' : ' (not installed)') })),
           ]}
         />

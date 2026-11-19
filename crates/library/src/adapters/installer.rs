@@ -5,8 +5,8 @@ use vuretro_core::ports::CoreInstaller;
 use vuretro_core::registry::core_filename;
 
 const BASE: &str = "https://buildbot.libretro.com/nightly";
-/// No libretro core comes close to this; a bigger download is not a core.
-const MAX_BYTES: u64 = 200 * 1024 * 1024;
+/// The biggest download or unpacked core accepted (the current MAME core is a few hundred MB).
+const MAX_BYTES: u64 = 800 * 1024 * 1024;
 
 /// Fetches `url` and reports `(received, total)` while doing so.
 pub type Fetch =
@@ -59,12 +59,12 @@ fn platform_dir() -> &'static str {
 
 fn http_get(url: &str, progress: &dyn Fn(u64, Option<u64>)) -> Result<Vec<u8>, String> {
     // Without limits a stalled connection waits for ever, and the core stays "being
-    // installed" until the app is restarted.
+    // installed" until the app is restarted. The body has no limit of its own (it is the
+    // time for the whole download, and a big core takes minutes): the global one covers it.
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_connect(Some(std::time::Duration::from_secs(15)))
         .timeout_recv_response(Some(std::time::Duration::from_secs(30)))
-        .timeout_recv_body(Some(std::time::Duration::from_secs(30)))
-        .timeout_global(Some(std::time::Duration::from_secs(600)))
+        .timeout_global(Some(std::time::Duration::from_secs(7200)))
         .build()
         .into();
     let mut resp = agent

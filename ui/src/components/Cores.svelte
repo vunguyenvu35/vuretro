@@ -234,7 +234,8 @@
     background: var(--surface); border: 1px solid color-mix(in srgb, var(--c) 55%, var(--border));
     border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px;
   }
-  article .btn { margin-top: auto; }
+  /* the buttons sit together at the bottom of every card, so they line up across the row */
+  article dl + .btn { margin-top: auto; }
   article.off { opacity: .55; border-color: var(--border); }
   header { display: flex; justify-content: space-between; align-items: baseline; }
   header h3 { color: var(--c); font-size: 16px; }

@@ -851,6 +851,24 @@ fn a_game_can_run_on_a_core_of_its_own() {
     assert_eq!(core_used(mine), PathBuf::from("/cores/fceumm_libretro"));
 }
 
+#[test]
+fn a_system_whose_chosen_core_is_missing_plays_with_another_installed_one() {
+    let f = ready_world(); // only the default core of each system is installed
+    let a = app(&f);
+    a.set_system_core("nes", "mesen_libretro").unwrap(); // chosen, but not installed
+    let path = "/data/roms/nes/a.nes";
+    a.launch_game(path.into(), None).unwrap();
+    assert_eq!(
+        f.0.lock().unwrap().spawned.last().unwrap().core,
+        PathBuf::from("/cores/fceumm_libretro")
+    );
+    // a core the user picked for the game itself is not swapped
+    a.set_game_core(path.into(), Some("mesen_libretro".into()))
+        .unwrap();
+    let err = a.launch_game(path.into(), None).err().unwrap();
+    assert!(err.contains("mesen_libretro not installed"), "{err}");
+}
+
 struct FakeInstaller {
     fail: bool,
     calls: Arc<Mutex<Vec<String>>>,

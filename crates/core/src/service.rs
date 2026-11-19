@@ -1094,10 +1094,29 @@ impl App {
             return Err("BIOS missing: add it in Cores & BIOS".into());
         }
         let chosen = self.core_of(&path, sys);
-        let core = self
-            .locator
-            .core(chosen)
-            .ok_or_else(|| format!("core {chosen} not installed (install it in Cores & BIOS)"))?;
+        let own = self
+            .meta
+            .lock()
+            .unwrap()
+            .get(&path)
+            .is_some_and(|m| m.core.is_some());
+        // The system's core may still be downloading (or was never installed): play with
+        // another of its cores that is there rather than not at all. A core picked for this
+        // game alone is the user's decision, so that one is never swapped.
+        let core = match self.locator.core(chosen) {
+            Some(c) => c,
+            None if !own => sys
+                .all_cores()
+                .find_map(|c| self.locator.core(c))
+                .ok_or_else(|| {
+                    format!("core {chosen} not installed (install it in Cores & BIOS)")
+                })?,
+            None => {
+                return Err(format!(
+                    "core {chosen} not installed (install it in Cores & BIOS)"
+                ))
+            }
+        };
         self.start(&core, &rom, Some(path), slot, sys.id)
     }
 

@@ -293,6 +293,7 @@ mod tests {
                 favorite: true,
                 name: Some("Official".into()),
                 tags: vec!["Favorites 2".into()],
+                core: Some("mame2003_libretro".into()),
             },
         );
         store.save_meta(&m);
