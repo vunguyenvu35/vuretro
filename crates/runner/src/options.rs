@@ -32,11 +32,34 @@ pub fn parse_definition(key: &str, value: &str) -> OptionDef {
     }
 }
 
-/// Definitions as JSON for the app: `[{"key","description","values"}]`.
-pub fn to_json(defs: &[OptionDef]) -> String {
+/// Options the frontend sets itself unless the user chose otherwise: `(key, value)`. They are
+/// what a game really runs with, so the app shows them as the default.
+///
+/// FBNeo's own default Neo Geo mode boots the MVS BIOS (a garbled green system check, and it
+/// needs coins). The mode is picked from what `neogeo.zip` in `system_dir` contains, so the
+/// BIOS the user has decides (see `neogeo::default_mode`).
+pub fn frontend_defaults(core_stem: &str, system_dir: &std::path::Path) -> Vec<(String, String)> {
+    if core_stem.starts_with("fbneo") {
+        let mode = std::fs::read(system_dir.join("neogeo.zip"))
+            .map(|zip| crate::neogeo::default_mode(&zip))
+            .unwrap_or("AES_EUR");
+        vec![("fbneo-neogeo-mode".to_string(), mode.to_string())]
+    } else {
+        Vec::new()
+    }
+}
+
+/// Definitions as JSON for the app: `[{"key","description","values","frontend_default"?}]`.
+pub fn to_json(defs: &[OptionDef], defaults: &[(String, String)]) -> String {
     let list: Vec<_> = defs
         .iter()
-        .map(|d| serde_json::json!({ "key": d.key, "description": d.description, "values": d.values }))
+        .map(|d| {
+            let mut o = serde_json::json!({ "key": d.key, "description": d.description, "values": d.values });
+            if let Some((_, v)) = defaults.iter().find(|(k, _)| *k == d.key) {
+                o["frontend_default"] = serde_json::json!(v);
+            }
+            o
+        })
         .collect();
     serde_json::Value::Array(list).to_string()
 }
@@ -67,8 +90,22 @@ mod tests {
         assert_eq!(d.values, ["off", "auto", "manual"]);
         assert!(template(std::slice::from_ref(&d)).contains("k = off"));
         assert_eq!(
-            to_json(&[d]),
+            to_json(std::slice::from_ref(&d), &[]),
             r#"[{"description":"Frameskip","key":"k","values":["off","auto","manual"]}]"#
         );
+        assert_eq!(
+            to_json(
+                std::slice::from_ref(&d),
+                &[("k".to_string(), "auto".to_string())]
+            ),
+            r#"[{"description":"Frameskip","frontend_default":"auto","key":"k","values":["off","auto","manual"]}]"#
+        );
+        // no BIOS to look at: AES, as before
+        let nowhere = std::path::Path::new("/nonexistent");
+        assert_eq!(
+            frontend_defaults("fbneo_libretro", nowhere),
+            [("fbneo-neogeo-mode".to_string(), "AES_EUR".to_string())]
+        );
+        assert!(frontend_defaults("snes9x_libretro", nowhere).is_empty());
     }
 }

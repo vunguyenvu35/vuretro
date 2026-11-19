@@ -35,6 +35,8 @@ struct World {
     captured: Vec<String>,
     core_options: HashMap<String, BTreeMap<String, String>>,
     offered: Vec<CoreOptionDef>,
+    /// The sample ROM the last options request carried (`None` inside = no ROM).
+    options_rom: Option<Option<PathBuf>>,
     slots: Vec<SlotInfo>,
     /// Official names the fake DAT knows, by file path.
     names: HashMap<PathBuf, String>,
@@ -346,8 +348,15 @@ impl Launcher for Fake {
         w.captured.push(job.key.clone());
         w.cover_ok
     }
-    fn list_core_options(&self, _: &Path, _: &Path) -> Result<Vec<CoreOptionDef>, String> {
-        Ok(self.0.lock().unwrap().offered.clone())
+    fn list_core_options(
+        &self,
+        _: &Path,
+        _: &Path,
+        rom: Option<&Path>,
+    ) -> Result<Vec<CoreOptionDef>, String> {
+        let mut w = self.0.lock().unwrap();
+        w.options_rom = Some(rom.map(Path::to_path_buf));
+        Ok(w.offered.clone())
     }
 }
 
@@ -861,6 +870,7 @@ fn offered(key: &str, values: &[&str]) -> CoreOptionDef {
         key: key.into(),
         description: format!("{key} option"),
         values: values.iter().map(|v| v.to_string()).collect(),
+        frontend_default: None,
     }
 }
 
@@ -1603,4 +1613,54 @@ fn applying_a_patch_reports_the_new_file_or_why_not() {
     let bad = a.apply_patch("/data/roms/gba/game.gba".into(), "/p/notes.txt".into());
     assert!(!bad.ok);
     assert!(bad.message.contains("not a patch"));
+}
+
+#[test]
+fn core_options_use_a_sample_game_and_show_the_runners_own_defaults() {
+    let f = ready_world();
+    f.0.lock().unwrap().scans.insert(
+        "/data/roms".into(),
+        vec![
+            entry("gba", "/data/roms/gba/m.gba"),
+            entry("neogeo", "/data/roms/neogeo/mslug.zip"),
+        ],
+    );
+    let mut mode = offered("neogeo-mode", &["DIPSWITCH", "MVS", "AES"]);
+    mode.frontend_default = Some("AES".into());
+    let mut bad = offered("other", &["a", "b"]);
+    bad.frontend_default = Some("not-a-value".into());
+    f.0.lock().unwrap().offered = vec![mode, bad];
+    let a = app(&f);
+
+    let opts = a.core_options("fbneo_libretro").unwrap();
+    // the sample is a game of the system that uses this core, not just any game
+    assert_eq!(
+        f.0.lock().unwrap().options_rom,
+        Some(Some(PathBuf::from("/data/roms/neogeo/mslug.zip")))
+    );
+    // the runner's default is what is shown and what counts as "not changed"
+    assert_eq!(
+        (opts[0].default.as_str(), opts[0].value.as_str()),
+        ("AES", "AES")
+    );
+    // a default the core does not list is ignored
+    assert_eq!(opts[1].default, "a");
+
+    // choosing the core's own first value is a real change: it is saved, so the runner
+    // does not put its own default back
+    a.set_core_options(
+        "fbneo_libretro",
+        [("neogeo-mode".to_string(), "DIPSWITCH".to_string())].into(),
+    )
+    .unwrap();
+    let opts = a.core_options("fbneo_libretro").unwrap();
+    assert_eq!(
+        (opts[0].value.as_str(), opts[0].default.as_str()),
+        ("DIPSWITCH", "AES")
+    );
+
+    // a core no game uses gets no sample
+    f.0.lock().unwrap().scans.clear();
+    a.core_options("snes9x_libretro").unwrap();
+    assert_eq!(f.0.lock().unwrap().options_rom, Some(None));
 }

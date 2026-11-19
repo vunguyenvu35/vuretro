@@ -156,8 +156,14 @@ pub trait Launcher: Send + Sync {
     fn spawn(&self, spec: &LaunchSpec) -> Result<Box<dyn GameProcess>, String>;
     /// Run a game headless and keep its best frame. True when the image exists afterwards.
     fn capture_cover(&self, job: &CoverJob) -> bool;
-    /// Ask a core which options it offers (loads it without a game).
-    fn list_core_options(&self, runner: &Path, core: &Path) -> Result<Vec<CoreOptionDef>, String>;
+    /// Ask a core which options it offers. Some cores announce most of them only once a game
+    /// is loaded, so a sample `rom` of the core's system can be given.
+    fn list_core_options(
+        &self,
+        runner: &Path,
+        core: &Path,
+        rom: Option<&Path>,
+    ) -> Result<Vec<CoreOptionDef>, String>;
 }
 
 /// Measures the computer the app runs on.

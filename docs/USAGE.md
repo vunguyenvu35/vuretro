@@ -232,3 +232,9 @@ On **Settings** (All games), the **Backup and export** section has three buttons
 - **Export…** writes the game list as a CSV spreadsheet: title, system, file, size, minutes played, last played, favorite, duplicate and collections.
 
 Restoring only writes files of the kinds a backup holds, inside the data folder; anything else in the zip is ignored.
+
+## Neo Geo: BIOS mode and coins
+
+Neo Geo games do not start in the arcade (MVS) mode, which shows a long system check. Vuretro picks the mode from your `neogeo.zip`: **AES** (home console) if the set has the AES BIOS, otherwise the **Universe BIOS**. In AES mode there is no coin at all: press **Start** (`Enter` or `1`) and play. In the Universe BIOS, and in the arcade modes, a coin is needed first; **Insert a coin when Start is pressed** (Settings, on by default) does that for you.
+
+To choose a mode yourself, open **Cores & BIOS → Core options** on the Neo Geo card and change **Neo-Geo mode** (`MVS_USA`, `MVS_EUR`, `MVS_JAP`, `AES_EUR`, `AES_JAP`, `UNIBIOS` or `DIPSWITCH`). The screen reads the options of the core by loading one of your Neo Geo games, so it needs at least one in the library. The value marked *default* is the one Vuretro picked for your BIOS; a value you choose is kept.

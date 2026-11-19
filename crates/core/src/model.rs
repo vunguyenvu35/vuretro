@@ -264,6 +264,10 @@ pub struct CoreOptionDef {
     pub key: String,
     pub description: String,
     pub values: Vec<String>,
+    /// What the runner sets for this option unless the user chose otherwise (for example
+    /// FBNeo in Neo Geo AES mode). It replaces the core's own default in what is shown.
+    #[serde(default)]
+    pub frontend_default: Option<String>,
 }
 
 /// An option as the options screen shows it.
@@ -284,7 +288,12 @@ impl CoreOptionView {
         defs.into_iter()
             .filter(|d| !d.values.is_empty())
             .map(|d| {
-                let default = d.values[0].clone();
+                // what a game really runs with: the runner's own default, else the core's
+                let default = d
+                    .frontend_default
+                    .clone()
+                    .filter(|v| d.values.contains(v))
+                    .unwrap_or_else(|| d.values[0].clone());
                 let value = saved
                     .get(&d.key)
                     .filter(|v| d.values.contains(v))

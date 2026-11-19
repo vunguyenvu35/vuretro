@@ -122,11 +122,18 @@ impl Launcher for ProcessLauncher {
         matches!(status, Ok(s) if s.success()) && job.out.exists()
     }
 
-    fn list_core_options(&self, runner: &Path, core: &Path) -> Result<Vec<CoreOptionDef>, String> {
-        let out = Command::new(runner)
-            .arg("--core")
-            .arg(core)
-            .arg("--options-json")
+    fn list_core_options(
+        &self,
+        runner: &Path,
+        core: &Path,
+        rom: Option<&Path>,
+    ) -> Result<Vec<CoreOptionDef>, String> {
+        let mut cmd = Command::new(runner);
+        cmd.arg("--core").arg(core).arg("--options-json");
+        if let Some(rom) = rom {
+            cmd.arg("--rom").arg(rom);
+        }
+        let out = cmd
             .stdin(Stdio::null())
             .stderr(Stdio::null())
             .output()
@@ -134,6 +141,13 @@ impl Launcher for ProcessLauncher {
         if !out.status.success() {
             return Err("the core could not be loaded".into());
         }
-        serde_json::from_slice(&out.stdout).map_err(|e| format!("unreadable option list: {e}"))
+        // a core may print to stdout too: the list is the last line that looks like JSON
+        let text = String::from_utf8_lossy(&out.stdout);
+        let line = text
+            .lines()
+            .rev()
+            .find(|l| l.trim_start().starts_with('['))
+            .ok_or("the core gave no option list")?;
+        serde_json::from_str(line).map_err(|e| format!("unreadable option list: {e}"))
     }
 }

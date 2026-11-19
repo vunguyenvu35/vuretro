@@ -111,18 +111,9 @@ fn core_options(
             path.display()
         );
     }
-    // FBNeo's default Neo Geo mode boots the MVS BIOS, which shows a green, garbled system
-    // check (and needs coins). AES boots straight to the logo; when the zip has no AES BIOS
-    // the Universe BIOS is the next best, because a mode whose BIOS is missing falls back to
-    // MVS. Still overridable in the core's .cfg.
-    if core_stem.starts_with("fbneo") {
-        let mode = std::fs::read(system_dir.join("neogeo.zip"))
-            .map(|zip| neogeo::default_mode(&zip))
-            .unwrap_or("AES_EUR");
-        user_options
-            .entry("fbneo-neogeo-mode".to_string())
-            .or_insert_with(|| mode.to_string());
-        log::info!("Neo Geo BIOS mode: {mode} (unless the core options file says otherwise)");
+    // the frontend's own defaults (see `options::frontend_defaults`); the .cfg still wins
+    for (key, value) in options::frontend_defaults(core_stem, system_dir) {
+        user_options.entry(key).or_insert(value);
     }
     user_options
 }
@@ -135,7 +126,7 @@ fn main() -> Result<()> {
     // system, which is long before the window opens (the core is loaded first). Setting the
     // icon now means the Dock never shows the generic "exec" icon. Headless runs (previews,
     // CI) have no window and must not appear in the Dock at all.
-    if args.headless_frames.is_none() && !args.list_options {
+    if args.headless_frames.is_none() && !args.list_options && !args.options_json {
         appicon::apply();
     }
 
@@ -173,8 +164,19 @@ fn main() -> Result<()> {
         core.info.extensions
     );
     if args.options_json {
+        // Some cores (FBNeo) announce most of their options only once a game is loaded: with
+        // a ROM given, load it first. A game that fails to load still leaves the options
+        // announced so far.
+        if let Some(rom) = &args.rom {
+            if let Err(e) = core.load_game(rom) {
+                log::warn!("could not load {} to read its options: {e}", rom.display());
+            }
+        }
         let defs = frontend::with(|fe| fe.definitions.clone());
-        println!("{}", options::to_json(&defs));
+        println!(
+            "{}",
+            options::to_json(&defs, &options::frontend_defaults(&core_stem, &system_dir))
+        );
         return Ok(());
     }
     let rom = args.rom.clone().context("--rom is required")?;

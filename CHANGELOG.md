@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Core options for FBNeo and similar cores:** the options screen now loads one of your games of that system to read the options (FBNeo announces most of them only after a game is loaded, so the screen was empty), and shows Vuretro's own defaults. For Neo Geo that is the mode picked from your `neogeo.zip` (AES, or the Universe BIOS); switch **Neo-Geo mode** for the arcade way.
+
 ## 0.1.4
 
 New since 0.1.3: backup and restore, a better choice of preview pictures, and a crash fix for the arcade core. Still an early release with unsigned packages.

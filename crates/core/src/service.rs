@@ -395,7 +395,19 @@ impl App {
             .locator
             .core(stem)
             .ok_or_else(|| format!("core {stem} not installed"))?;
-        let defs = self.launcher.list_core_options(&runner, &core)?;
+        // a game of a system that uses this core, so cores that announce their options only
+        // after loading one (FBNeo) can tell them
+        let settings = self.settings.lock().unwrap().clone();
+        let sample = self
+            .scan_all(&settings)
+            .into_iter()
+            .find(|g| {
+                crate::registry::by_id(&g.system).is_some_and(|s| s.all_cores().any(|c| c == stem))
+            })
+            .map(|g| g.path);
+        let defs = self
+            .launcher
+            .list_core_options(&runner, &core, sample.as_deref())?;
         Ok(CoreOptionView::merge(
             defs,
             &self.store.load_core_options(stem),
