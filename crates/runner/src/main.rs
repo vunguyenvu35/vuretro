@@ -19,6 +19,7 @@ mod frontend;
 mod headless;
 mod input;
 mod lcd;
+mod mamebios;
 mod neogeo;
 mod options;
 mod padkeys;
@@ -144,6 +145,9 @@ fn main() -> Result<()> {
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();
+    if core_stem == "mame_libretro" {
+        mamebios::expose(&system_dir);
+    }
     let options_path = args
         .options
         .unwrap_or_else(|| paths.core_options_file(&core_stem));
