@@ -818,6 +818,39 @@ fn a_system_can_be_switched_to_another_listed_core() {
     assert!(a.set_system_core("nope", "x").is_err());
 }
 
+#[test]
+fn a_game_can_run_on_a_core_of_its_own() {
+    let f = ready_world();
+    f.0.lock().unwrap().cores.insert("mesen_libretro");
+    let a = app(&f);
+    let (mine, other) = ("/data/roms/nes/a.nes", "/data/roms/nes/b.nes");
+    let core_used = |path: &str| {
+        a.launch_game(path.into(), None).unwrap();
+        f.0.lock().unwrap().spawned.last().unwrap().core.clone()
+    };
+    assert_eq!(core_used(mine), PathBuf::from("/cores/fceumm_libretro"));
+
+    a.set_game_core(mine.into(), Some("mesen_libretro".into()))
+        .unwrap();
+    assert_eq!(core_used(mine), PathBuf::from("/cores/mesen_libretro"));
+    // the other games of the system keep the system's core
+    assert_eq!(core_used(other), PathBuf::from("/cores/fceumm_libretro"));
+    assert_eq!(
+        f.0.lock().unwrap().meta[mine].core.as_deref(),
+        Some("mesen_libretro")
+    );
+
+    // a core that cannot run the system is refused, and the pick stays
+    assert!(a
+        .set_game_core(mine.into(), Some("snes9x_libretro".into()))
+        .is_err());
+    assert_eq!(core_used(mine), PathBuf::from("/cores/mesen_libretro"));
+
+    // back to the system's core
+    a.set_game_core(mine.into(), None).unwrap();
+    assert_eq!(core_used(mine), PathBuf::from("/cores/fceumm_libretro"));
+}
+
 struct FakeInstaller {
     fail: bool,
     calls: Arc<Mutex<Vec<String>>>,

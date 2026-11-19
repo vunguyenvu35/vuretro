@@ -10,6 +10,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   import SaveSlots from './SaveSlots.svelte';
   import Cheats from './Cheats.svelte';
   import MacroProfile from './MacroProfile.svelte';
+  import GameCore from './GameCore.svelte';
   import ScopedSettingsEditor from './ScopedSettingsEditor.svelte';
   let newTag = $state('');
   async function setTags(game, tags) {
@@ -369,6 +370,8 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
       {/each}
       <input class="taginput" placeholder="Add to a collection…" bind:value={newTag} onkeydown={(e) => e.key === 'Enter' && addTag(selected)} aria-label="Add to a collection" />
     </div>
+
+    <GameCore game={selected} />
 
     <Cheats game={selected} />
 

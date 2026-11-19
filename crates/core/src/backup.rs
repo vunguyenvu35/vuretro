@@ -222,6 +222,7 @@ mod tests {
             identified: false,
             duplicate: false,
             tags: tags.iter().map(|t| t.to_string()).collect(),
+            core: None,
         }
     }
 

@@ -21,6 +21,7 @@ export const api = {
   importDats: (paths) => call('import_dats', { paths }),
   identifyGames: () => call('identify_games'),
   setTags: (path, tags) => call('set_tags', { path, tags }),
+  setGameCore: (path, core) => call('set_game_core', { path, core }),
   setFetchArt: (enabled) => call('set_fetch_art', { enabled }),
   cheats: (path) => call('get_cheats', { path }),
   setCheats: (path, text) => call('set_cheats', { path, text }),

@@ -108,6 +108,16 @@ pub fn set_tags(shell: State<'_, Shell>, path: String, tags: Vec<String>) -> Vec
     shell.app.set_tags(path, tags)
 }
 
+/// Run one game on another core (`None`: its system's).
+#[tauri::command]
+pub fn set_game_core(
+    shell: State<'_, Shell>,
+    path: String,
+    core: Option<String>,
+) -> Result<(), String> {
+    shell.app.set_game_core(path, core)
+}
+
 /// A game's cheat codes as text.
 #[tauri::command]
 pub fn get_cheats(shell: State<'_, Shell>, path: String) -> String {

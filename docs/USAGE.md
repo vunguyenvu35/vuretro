@@ -58,6 +58,10 @@ The Library has **All games**, **Recently played** and **Favorites**, plus one e
 
 **Right-click** a game for *Play*, *Add to favorites*, *Show in folder*, *Select…* and *Remove from library…*.
 
+### Choosing the core of one game
+
+A system runs on one core (chosen on its card in **Cores & BIOS**), but some systems have several, for example Arcade: `mame2003_plus`, `mame2003` and `mame`. A ROM set fits one version, so a game that does not run on the system's core can have its own: select the game and open **Core ▸ Runs on** in its details. Only that game changes; the others keep the system's core. The core has to be installed first (**Cores & BIOS**).
+
 ### Removing games
 
 Removing deletes the copy in vuretro's library together with its play history and preview. Games read from a linked folder cannot be removed from here.

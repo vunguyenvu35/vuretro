@@ -364,6 +364,14 @@ impl Input {
             .unwrap_or_default()
     }
 
+    /// Whether an enabled macro of this player is started by `key`.
+    fn is_macro_key(&self, port: usize, key: Key) -> bool {
+        self.triggers
+            .iter()
+            .zip(self.engine.macros())
+            .any(|((k, _), m)| m.player == port && *k == Some(key))
+    }
+
     /// Sample keyboard + gamepads into the frontend button table.
     pub fn poll<K: Keyboard + ?Sized>(&mut self, window: &K) {
         let mut state = [[false; JOYPAD_BUTTON_COUNT]; MAX_PORTS];
@@ -389,6 +397,11 @@ impl Input {
             };
             if src.keyboard {
                 for &(key, id) in &b.keys {
+                    // a key that triggers a macro of this player only starts the macro: its
+                    // own button would be pressed along with it and spoil the move
+                    if self.is_macro_key(port, key) {
+                        continue;
+                    }
                     if window.key_down(key) {
                         state[port][id as usize] = true;
                     }
@@ -586,6 +599,19 @@ mod tests {
         let held = play(move_macro("V", "236P", false), Key::V, 30, 30);
         let presses = held.iter().filter(|f| f.contains(&NEO_A)).count();
         assert_eq!(presses, 3, "the punch is down for its three frames only");
+    }
+
+    #[test]
+    fn a_trigger_key_only_starts_the_macro_and_does_not_press_its_own_button() {
+        let _guard = POLLING.lock().unwrap_or_else(|e| e.into_inner());
+        // Z is the B button of the default keys: held as the trigger it must not add that
+        // button to the motion (it would spoil it), but the keys of the move still work.
+        let frames = play(move_macro("Z", "236P", false), Key::Z, 40, 12);
+        assert_eq!(frames[0], vec![DOWN], "{frames:?}");
+        assert_eq!(frames[3], vec![DOWN, RIGHT]);
+        // and the key is a plain button again in a game with no macro on it
+        let plain = play(move_macro("V", "236P", false), Key::Z, 1, 2);
+        assert_eq!(plain[0], vec![NEO_A]);
     }
 
     #[test]

@@ -56,6 +56,9 @@ pub struct GameMeta {
     /// Collections the user put the game in.
     #[serde(default)]
     pub tags: Vec<String>,
+    /// The core this game runs on instead of its system's (stem, e.g. `mame2003_libretro`).
+    #[serde(default)]
+    pub core: Option<String>,
 }
 
 /// A ROM found on disk.
@@ -424,6 +427,8 @@ pub struct GameView {
     /// Another file in the library has the same official title.
     pub duplicate: bool,
     pub tags: Vec<String>,
+    /// The core chosen for this game alone; `None` = the one of its system.
+    pub core: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -475,6 +480,7 @@ pub fn game_views(
                 identified: m.name.is_some(),
                 duplicate: false,
                 tags: m.tags,
+                core: m.core,
             })
         })
         .collect();

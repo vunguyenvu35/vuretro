@@ -37,6 +37,7 @@ const mock = {
   import_dats: async (a) => a.paths.map((p) => ({ source: p, ok: true, message: "3 dumps added" })),
   identify_games: async () => 0,
   set_tags: async (a) => a.tags,
+  set_game_core: async () => {},
   set_fetch_art: async () => {},
   fetch_art: async () => {},
   set_custom_art: async () => {},

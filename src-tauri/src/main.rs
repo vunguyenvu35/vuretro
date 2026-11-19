@@ -76,6 +76,7 @@ fn main() {
             fetch_art,
             identify_games,
             set_tags,
+            set_game_core,
             get_cheats,
             set_cheats,
             get_controls_for,

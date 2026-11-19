@@ -58,7 +58,17 @@ fn platform_dir() -> &'static str {
 }
 
 fn http_get(url: &str, progress: &dyn Fn(u64, Option<u64>)) -> Result<Vec<u8>, String> {
-    let mut resp = ureq::get(url)
+    // Without limits a stalled connection waits for ever, and the core stays "being
+    // installed" until the app is restarted.
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_connect(Some(std::time::Duration::from_secs(15)))
+        .timeout_recv_response(Some(std::time::Duration::from_secs(30)))
+        .timeout_recv_body(Some(std::time::Duration::from_secs(30)))
+        .timeout_global(Some(std::time::Duration::from_secs(600)))
+        .build()
+        .into();
+    let mut resp = agent
+        .get(url)
         .call()
         .map_err(|e| format!("download failed: {e}"))?;
     let total = resp.body().content_length();

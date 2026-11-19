@@ -52,14 +52,24 @@
 
   async function install(core) {
     installing[core] = 0;
+    let stillRunning = false;
     try {
       await api.installCore(core);
       toast(`Installed ${core.replace(/_libretro$/, '')}`, 'info');
     } catch (e) {
+      if (String(e).includes('already being installed')) {
+        // a download started earlier is still running (the screen was left and reopened):
+        // show its progress instead of an error, and leave the flag to the first call
+        toast('Still downloading… the progress shows on the button', 'info');
+        stillRunning = true;
+        return; // `finally` must not clear the flag: the download is still going
+      }
       toast(String(e), 'error');
     } finally {
-      delete installing[core];
-      refresh();
+      if (!stillRunning) {
+        delete installing[core];
+        refresh();
+      }
     }
   }
 

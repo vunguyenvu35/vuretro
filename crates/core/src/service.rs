@@ -12,7 +12,7 @@ use crate::ports::{
     Archive, ArtQuery, ArtSource, Catalog, CoreInstaller, CoverJob, GameProcess, LaunchSpec,
     Launcher, Locator, Machine, Store,
 };
-use crate::registry::systems;
+use crate::registry::{systems, System};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -879,6 +879,34 @@ impl App {
         clean
     }
 
+    /// Run one game on a core other than its system's (`None` goes back to the system's).
+    /// Only cores the registry lists for the game's system are accepted.
+    pub fn set_game_core(&self, path: String, core: Option<String>) -> Result<(), String> {
+        let rom_dir = self.settings.lock().unwrap().rom_dir.clone().unwrap_or_default();
+        let sys = detect::detect_system(Path::new(&rom_dir), Path::new(&path))
+            .ok_or("unknown system for this file")?;
+        let core = match core.filter(|c| !c.is_empty()) {
+            Some(c) if sys.all_cores().any(|k| k == c) => Some(c),
+            Some(c) => return Err(format!("{c} cannot run {}", sys.name)),
+            None => None,
+        };
+        self.meta.lock().unwrap().entry(path).or_default().core = core;
+        self.save_meta();
+        Ok(())
+    }
+
+    /// The core a game runs on: its own pick, else the one of its system.
+    fn core_of(&self, path: &str, sys: &System) -> &'static str {
+        let own = self
+            .meta
+            .lock()
+            .unwrap()
+            .get(path)
+            .and_then(|m| m.core.clone());
+        own.and_then(|c| sys.all_cores().find(|k| *k == c))
+            .unwrap_or_else(|| self.settings.lock().unwrap().core_for(sys))
+    }
+
     /// Copy ROM files, or every ROM found inside the folders given, into the app's library.
     /// `system` is the system chosen in the sidebar; it settles archives (.zip) whose
     /// system cannot be told from the file.
@@ -1004,11 +1032,10 @@ impl App {
         for (path, system) in games {
             let rom = PathBuf::from(&path);
             let failed = self.cover_failed.lock().unwrap().contains(&path);
-            let chosen = self.settings.lock().unwrap().clone();
             let core = systems()
                 .iter()
                 .find(|s| s.id == system)
-                .and_then(|s| self.locator.core(chosen.core_for(s)));
+                .and_then(|s| self.locator.core(self.core_of(&path, s)));
             if let (false, false, Some(core)) = (failed, self.store.cover_exists(&rom), core) {
                 jobs.push(CoverJob {
                     key: path,
@@ -1066,7 +1093,7 @@ impl App {
         if !crate::model::bios_ready(&self.catalog.bios_status(sys)) {
             return Err("BIOS missing: add it in Cores & BIOS".into());
         }
-        let chosen = self.settings.lock().unwrap().core_for(sys);
+        let chosen = self.core_of(&path, sys);
         let core = self
             .locator
             .core(chosen)
