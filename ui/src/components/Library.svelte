@@ -1,7 +1,8 @@
 <script>
   import { chooseCover, resetCover, regenerateCovers } from '../lib/store.svelte.js';
 import { gameScope } from '../lib/scope.js';
-import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, applyPatch, covers, setLayout, pickRomFiles, pickRomFolder } from '../lib/store.svelte.js';
+import { lazyCover } from '../lib/lazyCovers.js';
+import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, applyPatch, covers, setLayout, pinCovers, pickRomFiles, pickRomFolder } from '../lib/store.svelte.js';
   import { openMenu, confirmDialog } from '../lib/ui.svelte.js';
   import { visibleGames, heroFor, headingFor, pickRange, formatSize } from '../lib/library.js';
   import Welcome from "./Welcome.svelte";
@@ -46,6 +47,8 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   const hero = $derived(heroFor(ov, app));
   // the details panel only shows a game that is in the list you are looking at
   const selected = $derived(visible.find((g) => g.path === app.selected) ?? null);
+  // the hero and the details panel show a picture whether or not their card is in view
+  $effect(() => pinCovers([hero?.path, selected?.path]));
   const sel = $derived(selected ? ov.systems.find((s) => s.id === selected.system) : null);
   const heading = $derived(headingFor(ov, app));
 
@@ -300,7 +303,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
             <span></span><span>Game</span><span>System</span><span class="r">Size</span><span>Last played</span><span class="r">Time played</span><span></span>
           </div>
           {#each visible as g (g.path)}
-            <button class="card lrow" class:sel={app.selected === g.path && !app.selecting} class:picked={app.picked.includes(g.path)} class:locked={app.selecting && !g.imported} title={app.selecting && !g.imported ? 'Games read from a linked folder cannot be removed here' : ''} onclick={(e) => cardClick(g, e)} oncontextmenu={(e) => gameMenu(e, g)} ondblclick={() => !app.selecting && play(g)}>
+            <button use:lazyCover={g.path} class="card lrow" class:sel={app.selected === g.path && !app.selecting} class:picked={app.picked.includes(g.path)} class:locked={app.selecting && !g.imported} title={app.selecting && !g.imported ? 'Games read from a linked folder cannot be removed here' : ''} onclick={(e) => cardClick(g, e)} oncontextmenu={(e) => gameMenu(e, g)} ondblclick={() => !app.selecting && play(g)}>
               {#if app.selecting}
                 <span class="rtick" class:on={app.picked.includes(g.path)} class:off={!g.imported} aria-hidden="true">{#if app.picked.includes(g.path)}<svg viewBox="0 0 16 16" width="11" height="11"><path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg>{/if}</span>
               {/if}
@@ -319,7 +322,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
       {:else}
         <div class="grid">
           {#each visible as g (g.path)}
-            <button class="card" class:sel={app.selected === g.path && !app.selecting} class:picked={app.picked.includes(g.path)} class:locked={app.selecting && !g.imported} title={app.selecting && !g.imported ? 'Games read from a linked folder cannot be removed here' : ''} onclick={(e) => cardClick(g, e)} oncontextmenu={(e) => gameMenu(e, g)} ondblclick={() => !app.selecting && play(g)}>
+            <button use:lazyCover={g.path} class="card" class:sel={app.selected === g.path && !app.selecting} class:picked={app.picked.includes(g.path)} class:locked={app.selecting && !g.imported} title={app.selecting && !g.imported ? 'Games read from a linked folder cannot be removed here' : ''} onclick={(e) => cardClick(g, e)} oncontextmenu={(e) => gameMenu(e, g)} ondblclick={() => !app.selecting && play(g)}>
               <div class="cover scan" style="--c:{colorOf(g.system)}">
                 {#if app.selecting && g.imported}<span class="tick" aria-hidden="true">{#if app.picked.includes(g.path)}<svg viewBox="0 0 16 16" width="12" height="12"><path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg>{/if}</span>{/if}
                 {#if covers[g.path]}<img src={covers[g.path]} alt="" loading="lazy" />{:else}<span>{g.title.slice(0, 22)}</span>{/if}
@@ -378,6 +381,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
           load={() => api.gameOverride(selected.path)}
           save={(ov) => api.setGameOverride(selected.path, ov)}
           follows="its system's settings"
+          coinOp={!!sel?.coin_op}
         />
       {/key}
     </details>

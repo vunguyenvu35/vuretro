@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { visibleGames, heroFor, lastPlayed, headingFor, pickRange, formatSize, summarizeImport, summarizeRemoval, summarizeBios } from './library.js';
+import { visibleGames, heroFor, missingCovers, lastPlayed, headingFor, pickRange, formatSize, summarizeImport, summarizeRemoval, summarizeBios } from './library.js';
 
 const game = (title, o = {}) => ({ system: 'snes', title, path: `/lib/${title}`, size: 1e6, last_played: 0, favorite: false, imported: true, ...o });
 const overview = (games, disabled = []) => ({
@@ -148,4 +148,17 @@ test('the hero is the latest game of the chosen system, not of the whole library
   // favorites view: only favorites count; the search box does not narrow it
   const fav = overview([game('A', { last_played: 5 }), game('B', { last_played: 2, favorite: true })]);
   assert.equal(heroFor(fav, { filter: 'favorites', query: 'zzz' }).title, 'B');
+});
+
+test('only games without a picture that can run need one made', () => {
+  const games = [
+    { path: '/a', blocked: null },
+    { path: '/b', blocked: null },
+    { path: '/c', blocked: 'BIOS missing' },
+    { path: '/d', blocked: null },
+  ];
+  const have = { '/b': 'data:image/png;base64,xx' };
+  assert.deepEqual(missingCovers(games, have).map((g) => g.path), ['/a', '/d']);
+  assert.deepEqual(missingCovers(games, {}).map((g) => g.path), ['/a', '/b', '/d']);
+  assert.deepEqual(missingCovers([], have), []);
 });

@@ -25,17 +25,18 @@ pub struct CoverRequest {
     system: String,
 }
 
-/// Make preview images in the background. Emits `covers-updated` after every image and
+/// Make preview images of the games asked for, in the background (a new request replaces
+/// the one still waiting, so only what is on screen is made). Emits `covers-updated` after every image and
 /// `covers-done` at the end.
 #[tauri::command]
 pub fn generate_covers(app: AppHandle, shell: State<'_, Shell>, games: Vec<CoverRequest>) {
     let games = games.into_iter().map(|g| (g.path, g.system)).collect();
-    let Some(jobs) = shell.app.start_covers(games) else {
+    if !shell.app.request_covers(games) {
         return;
-    };
+    }
     let core = shell.app.clone();
     std::thread::spawn(move || {
-        core.run_covers(jobs, |key| {
+        core.run_covers(|key| {
             let _ = app.emit("covers-updated", key);
         });
         let _ = app.emit("covers-done", ());

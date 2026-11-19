@@ -15,7 +15,6 @@ use crate::ports::{
 use crate::registry::systems;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use vuretro_controls::{macros::MacroConfig, ControlsConfig};
@@ -42,6 +41,13 @@ pub struct Running {
     started: Instant,
 }
 
+/// Previews waiting to be made, and whether a worker is making them.
+#[derive(Default)]
+struct CoverQueue {
+    pending: std::collections::VecDeque<CoverJob>,
+    running: bool,
+}
+
 pub struct App {
     paths: Paths,
     store: Box<dyn Store>,
@@ -61,7 +67,7 @@ pub struct App {
     settings: Mutex<Settings>,
     meta: Mutex<HashMap<String, GameMeta>>,
     /// A background run that makes preview images is going.
-    covering: AtomicBool,
+    covers: Mutex<CoverQueue>,
     /// Games a preview could not be made for (not retried until the app restarts).
     cover_failed: Mutex<HashSet<String>>,
     /// Games already looked up in the DAT files (cleared when a DAT is added).
@@ -93,7 +99,7 @@ impl App {
             launch_grace: LAUNCH_GRACE,
             settings,
             meta,
-            covering: AtomicBool::new(false),
+            covers: Mutex::new(CoverQueue::default()),
             cover_failed: Mutex::new(HashSet::new()),
             identify_checked: Mutex::new(HashSet::new()),
         }
@@ -922,18 +928,21 @@ impl App {
             .collect()
     }
 
-    /// Decide which games still need a preview. Returns `None` when a run is already going
-    /// or there is nothing to do; otherwise the caller must pass the jobs to [`App::run_covers`].
-    pub fn start_covers(&self, games: Vec<(String, String)>) -> Option<Vec<CoverJob>> {
-        if self.covering.swap(true, Ordering::SeqCst) {
-            return None; // already running; the page asks again when it finishes
-        }
+    /// Ask for previews of the games on screen. A game that already has a picture (downloaded,
+    /// chosen, or made before) is skipped; the rest are made one at a time in the background,
+    /// in the order given. **A new request replaces the one still waiting**: scrolling to other
+    /// games makes those the next ones made, and the ones scrolled past are dropped. Returns
+    /// true when the caller must start a worker thread that calls [`App::run_covers`]; false
+    /// when nothing is needed or a worker is already running and will pick the new list up.
+    pub fn request_covers(&self, games: Vec<(String, String)>) -> bool {
         let jobs = self.plan_covers(games);
-        if jobs.is_empty() {
-            self.covering.store(false, Ordering::SeqCst);
-            return None; // nothing to do, and no event: the page would only ask again
+        let mut q = self.covers.lock().unwrap();
+        q.pending = jobs.into();
+        if q.pending.is_empty() || q.running {
+            return false;
         }
-        Some(jobs)
+        q.running = true;
+        true
     }
 
     /// `games` are `(path, system id)` pairs.
@@ -965,10 +974,22 @@ impl App {
         jobs
     }
 
-    /// Make the previews (slow: run it on a thread). `on_made` gets the key of each game
-    /// whose image now exists.
-    pub fn run_covers(&self, jobs: Vec<CoverJob>, on_made: impl Fn(&str)) {
-        for job in jobs {
+    /// The worker of [`App::request_covers`] (slow: run it on a thread). Makes each waiting
+    /// preview in turn until none is left; `on_made` gets the key of each game whose image now
+    /// exists. A request that arrives meanwhile changes what is made next.
+    pub fn run_covers(&self, on_made: impl Fn(&str)) {
+        loop {
+            let job = {
+                let mut q = self.covers.lock().unwrap();
+                match q.pending.pop_front() {
+                    Some(job) => job,
+                    None => {
+                        // decided under the lock, so a request cannot slip in unseen
+                        q.running = false;
+                        break;
+                    }
+                }
+            };
             if self.launcher.capture_cover(&job) {
                 on_made(&job.key);
             } else {
@@ -976,7 +997,6 @@ impl App {
             }
         }
         self.store.clear_cover_scratch();
-        self.covering.store(false, Ordering::SeqCst);
     }
 
     // ---------- launching ----------
@@ -1031,7 +1051,6 @@ impl App {
             core: core.to_path_buf(),
             rom: rom.to_path_buf(),
             system_dir: self.paths.system_dir(),
-            cover: self.paths.cover_file(rom),
             load_slot,
             system: system.to_string(),
         })?;

@@ -1,5 +1,5 @@
 import { api } from './api.js';
-import { summarizeBios, summarizeImport, summarizeRemoval } from './library.js';
+import { missingCovers, summarizeBios, summarizeImport, summarizeRemoval } from './library.js';
 import { toast, confirmDialog } from './ui.svelte.js';
 import { clampSidebar, parseSidebar } from './layout.js';
 
@@ -92,18 +92,42 @@ export async function importDats(paths) {
   await refresh();
 }
 
-/** Show the previews that exist and make the ones that are missing, in the background. */
-export async function syncCovers() {
-  const games = app.overview?.games ?? [];
-  await loadCovers(games.filter((g) => !(g.path in covers)).map((g) => g.path));
-  const todo = games.filter((g) => !covers[g.path] && !g.blocked);
-  if (todo.length) api.generateCovers(todo.map((g) => ({ path: g.path, system: g.system }))).catch(() => {});
+/*
+ * Previews are read and made only for the games on screen (plus the one in the hero and the
+ * details panel), so a library of hundreds does not start hundreds of background runs. A game
+ * that already has a picture (downloaded, chosen, or made before) just shows it; the others
+ * are made one at a time, and scrolling elsewhere makes the backend drop what was waiting.
+ */
+const onScreen = new Set(); // paths of the cards that are in view or about to be
+let pinned = []; // the hero and the details panel
+let coverTimer;
+
+/** A card scrolled into view (or out of it). */
+export function setOnScreen(path, yes) {
+  if (!path) return;
+  if (yes) onScreen.add(path);
+  else onScreen.delete(path);
+  scheduleCovers();
 }
 
-/** A game just closed: its last frame replaced the preview. */
-export async function reloadLastPlayed() {
-  const last = [...(app.overview?.games ?? [])].sort((a, b) => b.last_played - a.last_played)[0];
-  if (last?.last_played) await loadCovers([last.path]);
+/** Games that must have a picture whether or not their card is in view. */
+export function pinCovers(paths) {
+  pinned = paths.filter(Boolean);
+  scheduleCovers();
+}
+
+/** Look at what is on screen soon, not on every scroll event. */
+export function scheduleCovers() {
+  clearTimeout(coverTimer);
+  coverTimer = setTimeout(requestCovers, 200);
+}
+
+async function requestCovers() {
+  const byPath = new Map((app.overview?.games ?? []).map((g) => [g.path, g]));
+  const games = [...new Set([...pinned, ...onScreen])].map((p) => byPath.get(p)).filter(Boolean);
+  await loadCovers(games.filter((g) => !(g.path in covers)).map((g) => g.path));
+  // an empty list is a request too: it drops what was still waiting
+  api.generateCovers(missingCovers(games, covers).map((g) => ({ path: g.path, system: g.system }))).catch(() => {});
 }
 
 export async function refresh() {
@@ -115,7 +139,7 @@ export async function refresh() {
     toast(String(e), 'error');
   }
   app.loaded = true;
-  syncCovers();
+  scheduleCovers();
 }
 
 function report(results) {
@@ -276,7 +300,7 @@ export async function resetCover(game) {
   await api.clearArt(game.path);
   delete covers[game.path];
   await loadCovers([game.path]);
-  syncCovers();
+  scheduleCovers();
 }
 
 /** Set the sidebar width (px); `save` also remembers it for the next start. */
@@ -300,6 +324,6 @@ export async function regenerateCovers() {
   if (!ok) return;
   const n = await api.regeneratePreviews();
   for (const k of Object.keys(covers)) delete covers[k];
-  await syncCovers();
+  scheduleCovers();
   toast(`${n} previews are being made again`);
 }

@@ -31,6 +31,8 @@ struct World {
     spawned: Vec<LaunchSpec>,
     cover_ok: bool,
     scratch_cleared: bool,
+    /// Keys of the previews the fake runner was asked to make, in order.
+    captured: Vec<String>,
     core_options: HashMap<String, BTreeMap<String, String>>,
     offered: Vec<CoreOptionDef>,
     slots: Vec<SlotInfo>,
@@ -339,8 +341,10 @@ impl Launcher for Fake {
         w.spawned.push(spec.clone());
         Ok(Box::new(FakeProcess(w.runner_exit.clone())))
     }
-    fn capture_cover(&self, _job: &CoverJob) -> bool {
-        self.0.lock().unwrap().cover_ok
+    fn capture_cover(&self, job: &CoverJob) -> bool {
+        let mut w = self.0.lock().unwrap();
+        w.captured.push(job.key.clone());
+        w.cover_ok
     }
     fn list_core_options(&self, _: &Path, _: &Path) -> Result<Vec<CoreOptionDef>, String> {
         Ok(self.0.lock().unwrap().offered.clone())
@@ -598,20 +602,20 @@ fn covers_are_planned_once_and_failures_are_not_retried() {
         .covers
         .insert("/data/roms/snes/b.sfc".into()); // already has one
 
-    let jobs = a.start_covers(games.clone()).expect("one job");
-    assert_eq!(jobs.len(), 1);
-    // a second request while the first is running does nothing
-    assert!(a.start_covers(games.clone()).is_none());
+    assert!(
+        a.request_covers(games.clone()),
+        "one job: a worker must run"
+    );
+    // a second request while the first is running needs no second worker
+    assert!(!a.request_covers(games.clone()));
 
     // the capture fails: reported nowhere, but remembered
     let made = Mutex::new(Vec::new());
-    a.run_covers(jobs, |k| made.lock().unwrap().push(k.to_string()));
+    a.run_covers(|k| made.lock().unwrap().push(k.to_string()));
     assert!(made.lock().unwrap().is_empty());
+    assert_eq!(f.0.lock().unwrap().captured, vec!["/data/roms/snes/a.sfc"]);
     assert!(f.0.lock().unwrap().scratch_cleared);
-    assert!(
-        a.start_covers(games).is_none(),
-        "failed game is not retried"
-    );
+    assert!(!a.request_covers(games), "failed game is not retried");
 }
 
 #[test]
@@ -619,14 +623,64 @@ fn covers_that_succeed_are_announced() {
     let f = ready_world();
     f.0.lock().unwrap().cover_ok = true;
     let a = app(&f);
-    let jobs = a
-        .start_covers(vec![("/g.sfc".into(), "snes".into())])
-        .unwrap();
+    assert!(a.request_covers(vec![("/g.sfc".into(), "snes".into())]));
     let made = Mutex::new(Vec::new());
-    a.run_covers(jobs, |k| made.lock().unwrap().push(k.to_string()));
+    a.run_covers(|k| made.lock().unwrap().push(k.to_string()));
     assert_eq!(*made.lock().unwrap(), vec!["/g.sfc"]);
-    // finished: a new run may start
-    assert!(a.covers(vec!["/g.sfc".into()]).is_empty());
+    // finished: a new worker may start for a new request
+    assert!(a.request_covers(vec![("/h.sfc".into(), "snes".into())]));
+}
+
+fn snes(path: &str) -> (String, String) {
+    (path.to_string(), "snes".to_string())
+}
+
+#[test]
+fn a_newer_request_replaces_the_waiting_one_so_only_what_is_on_screen_is_made() {
+    let f = ready_world();
+    f.0.lock().unwrap().cover_ok = true;
+    let a = app(&f);
+    // the first screen of games asks; a worker is needed
+    assert!(a.request_covers(vec![snes("/a"), snes("/b"), snes("/c")]));
+    // before it gets to work the user scrolls: other games are on screen now
+    assert!(
+        !a.request_covers(vec![snes("/x"), snes("/y")]),
+        "the worker is already running"
+    );
+    a.run_covers(|_| {});
+    assert_eq!(
+        f.0.lock().unwrap().captured,
+        vec!["/x", "/y"],
+        "the games scrolled past are not made, the new ones go in the order given"
+    );
+}
+
+#[test]
+fn an_empty_request_drops_what_was_waiting() {
+    let f = ready_world();
+    f.0.lock().unwrap().cover_ok = true;
+    let a = app(&f);
+    assert!(a.request_covers(vec![snes("/a"), snes("/b")]));
+    // everything on screen already has a picture
+    f.0.lock().unwrap().covers.insert("/n".into());
+    assert!(!a.request_covers(vec![snes("/n")]));
+    a.run_covers(|_| {});
+    assert!(
+        f.0.lock().unwrap().captured.is_empty(),
+        "nothing is made for nothing"
+    );
+    // and the worker stopped: the next request starts a new one
+    assert!(a.request_covers(vec![snes("/z")]));
+}
+
+#[test]
+fn games_that_have_art_or_cannot_run_are_not_planned() {
+    let f = ready_world();
+    f.0.lock().unwrap().covers.insert("/has".into());
+    f.0.lock().unwrap().cores.remove("snes9x_libretro");
+    let a = app(&f);
+    // no core for snes: nothing can be made, so no worker
+    assert!(!a.request_covers(vec![snes("/has"), snes("/none")]));
 }
 
 #[test]

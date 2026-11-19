@@ -62,8 +62,6 @@ impl Launcher for ProcessLauncher {
             .arg(&spec.rom)
             .arg("--system-dir")
             .arg(&spec.system_dir)
-            .arg("--cover")
-            .arg(&spec.cover)
             .arg("--system")
             .arg(&spec.system)
             .args(

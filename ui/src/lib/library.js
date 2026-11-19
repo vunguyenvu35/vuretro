@@ -37,6 +37,11 @@ export function heroFor(overview, view) {
   return lastPlayed(visibleGames(overview, { ...view, query: '' }));
 }
 
+/** The games that have no picture (and can run, so one can be made for them). */
+export function missingCovers(games, have) {
+  return games.filter((g) => !have[g.path] && !g.blocked);
+}
+
 export function headingFor(overview, { system, filter, collection }) {
   if (collection) return `Collection: ${collection}`;
   if (system) return overview?.systems.find((s) => s.id === system)?.name ?? system;

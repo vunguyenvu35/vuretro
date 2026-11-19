@@ -116,8 +116,6 @@ pub struct LaunchSpec {
     pub core: PathBuf,
     pub rom: PathBuf,
     pub system_dir: PathBuf,
-    /// Where the runner stores the game's preview image on exit.
-    pub cover: PathBuf,
     /// Save slot to load as the game starts.
     pub load_slot: Option<u8>,
     /// Id of the system, so the runner applies that system's settings and key bindings.

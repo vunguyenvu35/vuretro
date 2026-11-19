@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { app, refresh, covers, loadCovers, syncCovers, reloadLastPlayed, handleMenu } from './lib/store.svelte.js';
+  import { app, refresh, covers, loadCovers, scheduleCovers, handleMenu } from './lib/store.svelte.js';
   import { api } from './lib/api.js';
   import Sidebar from './components/Sidebar.svelte';
   import Library from './components/Library.svelte';
@@ -16,13 +16,11 @@
   onMount(() => {
     refresh();
     let off = [];
-    api.onGameExited(async () => {
-      await refresh();
-      reloadLastPlayed();
-    }).then((f) => off.push(f));
+    // closing a game no longer replaces its picture: it keeps the one it had
+    api.onGameExited(() => refresh()).then((f) => off.push(f));
     api.onCoversUpdated((path) => loadCovers([path])).then((f) => off.push(f));
     api.onMenu(handleMenu).then((f) => off.push(f));
-    api.onCoversDone(() => syncCovers()).then((f) => off.push(f));
+    api.onCoversDone(() => scheduleCovers()).then((f) => off.push(f));
     // a pad on the Controls screen is being recorded, not used to move around
     const stopNav = startGamepadNav(() => app.capturing);
     return () => {
