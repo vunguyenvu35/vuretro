@@ -11,6 +11,7 @@ path = "src/bin/scan.rs"
 
 [dependencies]
 vuretro-core = { path = "../core" }
+log.workspace = true
 vuretro-controls = { path = "../controls" }
 vuretro-settings = { path = "../settings" }
 directories = "5"

@@ -114,6 +114,11 @@ impl Paths {
     pub fn library_file(&self) -> PathBuf {
         self.data_dir.join("library.json")
     }
+    /// A small app bundle the runner is started from on macOS, so the Dock shows Vuretro's
+    /// icon from the first moment instead of the generic one.
+    pub fn runner_app(&self) -> PathBuf {
+        self.data_dir.join("runner").join("Vuretro.app")
+    }
     pub fn runner_log(&self) -> PathBuf {
         self.data_dir.join("logs/runner.log")
     }
@@ -230,6 +235,14 @@ mod tests {
         assert_eq!(
             p.core_options_file("snes9x_libretro"),
             PathBuf::from("/d/config/snes9x_libretro.cfg")
+        );
+    }
+
+    #[test]
+    fn the_runner_bundle_lives_in_the_data_folder() {
+        assert_eq!(
+            Paths::new("/d").runner_app(),
+            PathBuf::from("/d/runner/Vuretro.app")
         );
     }
 }

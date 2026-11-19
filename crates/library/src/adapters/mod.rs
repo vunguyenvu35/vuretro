@@ -2,6 +2,7 @@
 
 mod archive;
 mod art;
+mod bundle;
 mod catalog;
 mod installer;
 mod launcher;

@@ -4292,6 +4292,7 @@ dependencies = [
  "anyhow",
  "crc32fast",
  "directories",
+ "log",
  "md5",
  "serde",
  "serde_json",

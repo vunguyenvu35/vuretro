@@ -1,3 +1,4 @@
+use super::bundle;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use vuretro_core::model::CoreOptionDef;
@@ -48,6 +49,25 @@ impl GameProcess for Runner {
     }
 }
 
+impl ProcessLauncher {
+    /// Where to start the runner from. On macOS a bare executable gets the generic "exec" Dock
+    /// icon at first, so it is started from a small app bundle that carries Vuretro's icon
+    /// (unless it already sits inside an app). Elsewhere, or when the bundle cannot be made,
+    /// the runner itself.
+    fn start_path(&self, runner: &std::path::Path) -> PathBuf {
+        if !cfg!(target_os = "macos") || bundle::inside_bundle(runner) {
+            return runner.to_path_buf();
+        }
+        match bundle::ensure(&self.paths.runner_app(), runner, bundle::ICON_PNG) {
+            Ok(exe) => exe,
+            Err(e) => {
+                log::warn!("cannot make the runner's app bundle ({e}); starting it directly");
+                runner.to_path_buf()
+            }
+        }
+    }
+}
+
 impl Launcher for ProcessLauncher {
     fn spawn(&self, spec: &LaunchSpec) -> Result<Box<dyn GameProcess>, String> {
         let log_path = self.paths.runner_log();
@@ -55,7 +75,8 @@ impl Launcher for ProcessLauncher {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
         let log = std::fs::File::create(&log_path).map_err(|e| e.to_string())?;
-        let child = Command::new(&spec.runner)
+        let runner = self.start_path(&spec.runner);
+        let child = Command::new(&runner)
             .arg("--core")
             .arg(&spec.core)
             .arg("--rom")
