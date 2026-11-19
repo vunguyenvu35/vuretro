@@ -238,3 +238,30 @@ Restoring only writes files of the kinds a backup holds, inside the data folder;
 Neo Geo games do not start in the arcade (MVS) mode, which shows a long system check. Vuretro picks the mode from your `neogeo.zip`: **AES** (home console) if the set has the AES BIOS, otherwise the **Universe BIOS**. In AES mode there is no coin at all: press **Start** (`Enter` or `1`) and play. In the Universe BIOS, and in the arcade modes, a coin is needed first; **Insert a coin when Start is pressed** (Settings, on by default) does that for you.
 
 To choose a mode yourself, open **Cores & BIOS → Core options** on the Neo Geo card and change **Neo-Geo mode** (`MVS_USA`, `MVS_EUR`, `MVS_JAP`, `AES_EUR`, `AES_JAP`, `UNIBIOS` or `DIPSWITCH`). The screen reads the options of the core by loading one of your Neo Geo games, so it needs at least one in the library. The value marked *default* is the one Vuretro picked for your BIOS; a value you choose is kept.
+
+## Two players
+
+The game must have a two-player mode. Open **Controls** and set the device of each player, then start the game (changes apply at the next start).
+
+| You have | Player 1 | Player 2 |
+|---|---|---|
+| Two gamepads | Automatic | Automatic |
+| One gamepad and a keyboard | the gamepad (choose it by name) | Keyboard only |
+| Only a keyboard | Automatic | Keyboard only |
+| One gamepad, the other person on the gamepad too | not possible: one gamepad is one player |
+
+**Automatic** gives Player 1 the keyboard plus the first free gamepad, and every other player the next free gamepad. It never gives Player 2 the keyboard, so for a keyboard player set **Keyboard only**. A gamepad named explicitly is taken first; Automatic players share the rest in the order they were plugged in. **Controls → Connected gamepads** shows which pad is which (press a button and its row lights up), and **Swap players** exchanges the two.
+
+**Two people on one keyboard** (default keys)
+
+| | Player 1 | Player 2 |
+|---|---|---|
+| Move | arrow keys | `I` up, `K` down, `J` left, `L` right |
+| B / A | `Z` / `X` | `N` / `M` |
+| Y / X | `A` / `S` | `H` / `G` |
+| Coin (Select) | `5` or `Right Shift` | `6` |
+| Start | `1` or `Enter` | `2` |
+
+Most keyboards register only a few keys at once, so two players pressing many buttons together (fighting games) can lose presses. A gamepad for at least one player avoids it. In arcade games, press Start `2` to join; **Insert a coin when Start is pressed** (Settings) takes care of the coin.
+
+You can give a system or a single game its own buttons in the **Applies to** box on Controls.
