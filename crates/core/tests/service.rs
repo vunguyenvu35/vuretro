@@ -533,13 +533,17 @@ fn removing_a_rom_forgets_its_meta_and_cover() {
 fn launch_rejects_missing_bios_and_core_before_spawning() {
     let f = ready_world();
     let a = app(&f);
-    // PlayStation needs a required BIOS
+    // Neo Geo needs its BIOS
     f.0.lock().unwrap().bios_ok = false;
     let err = a
-        .launch_game("/data/roms/psx/g.cue".into(), None)
+        .launch_game("/data/roms/neogeo/g.zip".into(), None)
         .err()
         .unwrap();
     assert!(err.starts_with("BIOS missing"), "{err}");
+    // PlayStation does not: the core has a built-in BIOS
+    assert!(a.launch_game("/data/roms/psx/g.cue".into(), None).is_ok());
+    let started = f.0.lock().unwrap().spawned.len();
+    assert_eq!(started, 1, "only the PlayStation game started");
 
     {
         let mut w = f.0.lock().unwrap();
@@ -554,7 +558,7 @@ fn launch_rejects_missing_bios_and_core_before_spawning() {
 
     let err = a.launch_game("/x/readme.txt".into(), None).err().unwrap();
     assert_eq!(err, "unknown system for this file");
-    assert!(f.0.lock().unwrap().spawned.is_empty());
+    assert_eq!(f.0.lock().unwrap().spawned.len(), started, "nothing else started");
 }
 
 #[test]

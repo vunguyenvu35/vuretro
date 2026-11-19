@@ -92,7 +92,7 @@ Delete a line to use the core default. Override the file with `--options <FILE>`
 | System | Core | Folder names | Extensions | BIOS |
 |---|---|---|---|---|
 | Neo Geo | fbneo | `neogeo`, `mvs`, `aes` | zip, 7z | `neogeo.zip` (required) |
-| PlayStation | pcsx_rearmed | `psx`, `ps1` | chd, cue, pbp, m3u, iso, img | `scph5501.bin` (required) |
+| PlayStation | pcsx_rearmed | `psx`, `ps1` | chd, cue, pbp, m3u, iso, img | `scph5501.bin` (optional) |
 | SNES | snes9x | `snes`, `sfc` | sfc, smc, swc, fig, zip | none |
 | GBA | mgba | `gba` | gba, zip, 7z | `gba_bios.bin` (optional) |
 

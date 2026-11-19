@@ -90,8 +90,9 @@
     <div class="label">Add games</div>
     <button class="btn primary add" onclick={pickRomFiles} disabled={app.busy}>
       <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
-      Import ROMs
+      {app.busy ? 'Importing…' : 'Import ROMs'}
     </button>
+    {#if app.busy}<p class="hint" aria-live="polite">Copying games. Unpacking a disc from an archive can take a minute.</p>{/if}
     <button class="btn add ghost" onclick={pickRomFolder} disabled={app.busy}>Import a folder</button>
     {#if app.system}<p class="hint">Archives (.zip) go to {app.overview?.systems.find((s) => s.id === app.system)?.name}.</p>{/if}
     {#if app.overview?.rom_dir}

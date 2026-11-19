@@ -16,9 +16,9 @@
     "extensions": ["chd", "cue", "pbp", "m3u", "iso", "img"],
     "folders": ["psx", "ps1", "playstation"],
     "bios": [
-      { "file": "scph5501.bin", "md5": ["490f666e1afb15b7362b406ed1cea246"], "required": true, "note": "NTSC-U" },
-      { "file": "scph5500.bin", "md5": ["8dd7d5296a650fac7319bce665a6a53c"], "note": "NTSC-J" },
-      { "file": "scph5502.bin", "md5": ["32736f17079d0b2b7024407c39bd3050"], "note": "PAL" }
+      { "file": "scph5501.bin", "md5": ["490f666e1afb15b7362b406ed1cea246"], "note": "NTSC-U, optional: without a BIOS the core uses a built-in one that is less compatible" },
+      { "file": "scph5500.bin", "md5": ["8dd7d5296a650fac7319bce665a6a53c"], "note": "NTSC-J, optional (for Japanese discs)" },
+      { "file": "scph5502.bin", "md5": ["32736f17079d0b2b7024407c39bd3050"], "note": "PAL, optional" }
     ]
   },
   {

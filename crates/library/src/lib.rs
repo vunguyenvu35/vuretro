@@ -100,7 +100,8 @@ mod tests {
         let st = bios::check(psx, dir.path());
         assert!(matches!(st[0].state, bios::BiosState::BadHash { .. }));
         assert_eq!(st[1].state, bios::BiosState::Missing);
-        assert!(!bios::ready(psx, dir.path()));
+        // PlayStation's BIOS files are optional: the core has a built-in one
+        assert!(bios::ready(psx, dir.path()));
 
         let neo = vuretro_core::registry::by_id("neogeo").unwrap();
         assert!(!bios::ready(neo, dir.path()));

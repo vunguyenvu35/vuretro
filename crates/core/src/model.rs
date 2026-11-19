@@ -561,24 +561,32 @@ mod tests {
     fn blocked_reason_order_is_off_then_core_then_bios() {
         let on = Settings::default();
         let off = Settings {
-            disabled: vec!["psx".into()],
+            disabled: vec!["neogeo".into()],
             ..Default::default()
         };
         assert_eq!(
-            view("psx", &off, false, false, 0).blocked_reason().unwrap(),
-            "PlayStation is switched off"
+            view("neogeo", &off, false, false, 0).blocked_reason().unwrap(),
+            "Neo Geo is switched off"
         );
-        assert!(view("psx", &on, false, false, 0)
+        assert!(view("neogeo", &on, false, false, 0)
             .blocked_reason()
             .unwrap()
-            .starts_with("core pcsx_rearmed_libretro not installed"));
+            .starts_with("core fbneo_libretro not installed"));
         assert_eq!(
-            view("psx", &on, true, false, 0).blocked_reason().unwrap(),
+            view("neogeo", &on, true, false, 0).blocked_reason().unwrap(),
             "BIOS missing"
         );
-        assert_eq!(view("psx", &on, true, true, 0).blocked_reason(), None);
+        assert_eq!(view("neogeo", &on, true, true, 0).blocked_reason(), None);
         // SNES needs no BIOS
         assert_eq!(view("snes", &on, true, false, 0).blocked_reason(), None);
+    }
+
+    #[test]
+    fn playstation_plays_without_a_bios_file() {
+        // the core has a built-in one, so the files only make it more compatible
+        let on = Settings::default();
+        assert_eq!(view("psx", &on, true, false, 0).blocked_reason(), None);
+        assert!(view("psx", &on, true, false, 0).bios_ready);
     }
 
     #[test]

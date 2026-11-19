@@ -43,8 +43,7 @@ Open **Cores & BIOS**. Drop BIOS files on the window or click the drop zone. vur
 | System | File | Needed? |
 |---|---|---|
 | Neo Geo | `neogeo.zip` (MVS / AES BIOS set) | Required |
-| PlayStation | `scph5501.bin` (NTSC-U) | Required |
-| PlayStation | `scph5500.bin` (NTSC-J), `scph5502.bin` (PAL) | Optional |
+| PlayStation | `scph5501.bin` (NTSC-U), `scph5500.bin` (NTSC-J), `scph5502.bin` (PAL) | Optional (without them the core uses a built-in BIOS that is less compatible) |
 | Arcade (MAME) | `pgm.zip` (PolyGame Master BIOS) | Only for PGM games such as Oriental Legend |
 | SNES | none | |
 | Game Boy Advance | `gba_bios.bin` | Optional (mGBA has a built-in replacement) |
