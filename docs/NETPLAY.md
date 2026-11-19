@@ -616,6 +616,35 @@ Chưa chọn hướng. LAN không cần lớp 2 và 3 nào ngoài UDP trực ti�
 - Lộ địa chỉ IP cho người trong phòng: relay hoặc mã phòng có thể giảm điều này; cần ghi rõ cho người dùng.
 - Bảo mật: PIN hoặc mã mời ngắn hạn; giới hạn kích thước gói; không tin dữ liệu từ máy khác.
 
+### Hai vấn đề riêng của Internet
+
+1. **Xuyên NAT.** Máy ở nhà nằm sau router, không có địa chỉ công khai. Hai máy phải "đục lỗ" (hole punching) với sự trợ giúp của máy chủ báo hiệu và STUN. Một số loại NAT (và mạng CGNAT của nhà mạng) làm đục lỗ thất bại; lúc đó phải đi vòng qua relay (TURN hoặc relay của Steam). Chưa có số liệu về tỉ lệ thất bại, cần đo khi thử thật.
+2. **Ping thật.** Ping 30 đến 150 ms khiến rollback chạy thường xuyên. Ngưỡng ước lượng (dự đoán, chưa đo):
+
+| Ping một chiều đến đối phương | Cảm giác dự kiến |
+|---|---|
+| dưới khoảng 60 ms | Chơi tốt |
+| khoảng 60 đến 100 ms | Chơi được, thấy giật nhẹ khi rollback |
+| trên khoảng 120 ms | Không còn dễ chịu với game đối kháng |
+
+Giới hạn dự đoán 8 khung tương đương khoảng 133 ms; vượt giới hạn thì máy nhanh phải chờ (Stalled). Giao diện phải hiện ping của từng đường và cảnh báo khi vượt ngưỡng, để người chơi biết nên mời ai.
+
+**Chi phí relay thấp:** lưu lượng game chỉ vài KB mỗi giây mỗi đường; phần nặng duy nhất là state đầu (khoảng 415 KB với FBNeo), gửi một lần. Nên chạy relay không tốn nhiều băng thông; chi phí chính là công vận hành.
+
+### Ba lựa chọn cho Internet
+
+| | Ưu | Nhược |
+|---|---|---|
+| **WebRTC bằng thư viện matchbox** | Làm riêng để chạy với ggrs; xuyên NAT, có thể cắm TURN làm relay; không phụ thuộc nền tảng | Phải tự chạy máy chủ báo hiệu nhỏ (và TURN nếu muốn relay); chưa kiểm tra tình trạng bảo trì hiện tại của thư viện |
+| **Steam** (Lobby, Sockets, Relay) | Gần như không phải vận hành; có bạn bè và lời mời sẵn | Cần AppID và người dùng cài Steam; phụ thuộc Valve |
+| **Tự mở cổng, nhập IP** | Không cần máy chủ | Khó dùng; nhiều mạng (CGNAT) không mở được |
+
+**Đề nghị:** WebRTC bằng matchbox, vì không ràng buộc nền tảng và nhắm đúng vào ggrs. Steam là phương án thay thế nếu chấp nhận đưa Vuretro lên Steam. Cả hai cắm vào lớp `Transport` ở trên nên chọn sau cũng không phải làm lại phần rollback.
+
+**Điều kiện trước khi làm Internet:** LAN (P0 đến P3) phải chạy ổn, vì lỗi tính tất định lộ ra nặng hơn nhiều trên Internet.
+
+**Cần quyết định:** (a) có sẵn lòng chạy máy chủ báo hiệu (và có thể relay) không; nếu không thì chọn Steam. (b) mức ping tối đa chấp nhận cho một phòng (chỉ mời người gần, hay cả xa).
+
 **Giai đoạn bổ sung**
 
 | Giai đoạn | Nội dung | Ước lượng (dự đoán) |
