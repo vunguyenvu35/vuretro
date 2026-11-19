@@ -26,6 +26,25 @@
   // ---- moves and combos written in fighting-game notation ----
   let checks = $state({}); // macro id -> { ok, count, ms } | { error }
   const checkTimers = {};
+  /** Moves to start from: the code that is written, and what it is. */
+  const QUICK = [
+    ['236P', 'Fireball (quarter circle forward + punch)'],
+    ['214P', 'Reverse fireball (quarter circle back + punch)'],
+    ['623P', 'Dragon punch'],
+    ['41236P', 'Half circle forward + punch'],
+    ['[4]6P', 'Charge back, then forward + punch'],
+    ['236236P', 'Double quarter circle forward + punch'],
+    ['623623AB', 'Double dragon punch + A+B'],
+    ['j.D', 'Jumping kick'],
+    ['cr.B', 'Crouching light kick'],
+    ['A+B', 'A and B together'],
+  ];
+  /** Add a move to the one in the box: the first one replaces nothing, the next ones are linked with a comma. */
+  function insertQuick(m, code) {
+    const now = (m.notation ?? '').trim();
+    m.notation = now ? `${now}, ${code}` : code;
+    check(m);
+  }
   /** What the notation means, shown in the card of a move. */
   const GUIDE = [
     ['Directions (facing right)', [['7 8 9', '↖ ↑ ↗'], ['4 5 6', '← neutral →'], ['1 2 3', '↙ ↓ ↘'], ['236', 'quarter circle forward']]],
@@ -423,6 +442,15 @@
               <input class="notation" bind:value={m.notation} oninput={() => check(m)} placeholder="236P     or     j.D, cl.C > 236P" spellcheck="false" autocomplete="off" aria-label="Move or combo" />
             </div>
             <div class="acts">
+              <span class="lbl">Start from</span>
+              <span class="quick" role="group" aria-label="Moves to start from">
+                {#each QUICK as [code, what] (code)}
+                  <button onclick={() => insertQuick(m, code)} title="{what}. Click again to add another move after it.">{code}</button>
+                {/each}
+                {#if m.notation}<button class="clear" onclick={() => { m.notation = ''; check(m); }} title="Clear the box">Clear</button>{/if}
+              </span>
+            </div>
+            <div class="acts">
               <span class="lbl">Facing</span>
               <span class="face" role="radiogroup" aria-label="Which way the character faces">
                 <button role="radio" aria-checked={!m.auto_facing && !m.mirror} class:on={!m.auto_facing && !m.mirror} onclick={() => { m.auto_facing = false; m.mirror = false; check(m); }} title="Always as written: facing right">Right →</button>
@@ -631,6 +659,10 @@
   .foot { color: var(--faint); font-size: 12px; margin: 0; }
   .notation { flex: 1; min-width: 220px; font: 14px var(--font-mono); background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 8px 12px; color: var(--text); }
   .notation:focus { outline: none; border-color: var(--accent); }
+  .quick { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+  .quick button { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 4px 9px; color: var(--muted); font: 12px var(--font-mono); }
+  .quick button:hover { color: var(--text); border-color: var(--accent); }
+  .quick .clear { font: 600 12px var(--font-body); border-style: dashed; }
   .face { display: inline-flex; background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 2px; gap: 2px; }
   .face button { background: none; border: 0; color: var(--muted); padding: 4px 10px; border-radius: 7px; font: 600 12px var(--font-body); }
   .face button.on { background: var(--accent); color: #090b10; }

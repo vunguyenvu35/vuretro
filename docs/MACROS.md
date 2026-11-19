@@ -16,7 +16,9 @@ again.
    only the games where you add one get it. "Every game" is for macros that make sense everywhere.
 3. Press **+ Move**. A card appears and waits for its **trigger**: press the key you want to play the
    move with, for example `V`. (Esc cancels; **+ Gamepad button** uses a pad button instead.)
-4. In **Move**, type the move, for example `236P`. The card tells you at once how many steps it makes
+4. In **Move**, type the move, for example `236P`, or press one of the buttons under **Start from**
+   (`236P`, `623P`, `623623AB`, `j.D`…) to fill it in; press more to chain them with commas, and
+   **Clear** to start over. The card tells you at once how many steps it makes
    (`✓ 3 steps · 0.15 s`), or why it cannot play it.
 5. Close the game if it is running, start it again, and press `V` in the game.
 
