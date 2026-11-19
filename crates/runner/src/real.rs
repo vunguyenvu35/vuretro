@@ -127,6 +127,9 @@ pub fn open(p: Params) -> Result<Session> {
         fullscreen: p.settings.fullscreen,
         integer: p.settings.integer_scale,
     };
+    // the icon first, so the Dock tile is made with it; once more after the window exists,
+    // because the first window changes how the process presents itself
+    appicon::apply();
     let screen = MiniFbScreen::open(&title, base_w, base_h, factor, view)?;
     appicon::apply();
 

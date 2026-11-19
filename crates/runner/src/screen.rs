@@ -163,6 +163,10 @@ impl MiniFbScreen {
     ) -> Result<Self> {
         let (mut window, view) = open_window(title, base_w, base_h, factor, view)?;
         install_menus(&mut window);
+        // Show a black picture now. The first frame of a game can take a while, and until the
+        // window has handled its first update the Dock still shows the generic "exec" icon and
+        // the window shows whatever was in graphics memory.
+        let _ = window.update_with_buffer(&vec![0u32; base_w * base_h], base_w, base_h);
         Ok(MiniFbScreen { window, view })
     }
 }

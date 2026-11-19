@@ -123,7 +123,7 @@ Hold **Select** and press another button. While you do, the game does not see th
 | □ (West) | Screenshot |
 | ✕ (South) | Sound on / off |
 
-**Arcade coins.** Neo Geo and MAME games ignore Start until a coin is in (`5` or `Right Shift`, the Select button), so Start alone shows "INSERT COIN". Turn on **Insert a coin when Start is pressed** in Settings and every press of Start first puts a coin in, waits a moment (about a quarter of a second) and then lets Start through, so Start always begins a game. If you press Start at a moment the game is not ready, a coin may be spent without the game starting; press Start again. It does nothing on consoles, and can be set for one system or one game.
+**Arcade coins.** Neo Geo and MAME games ignore Start until a coin is in (`5` or `Right Shift`, the Select button), so Start alone shows "INSERT COIN". **Insert a coin when Start is pressed** (Settings, on by default) makes every press of Start first puts a coin in, waits a moment (about a quarter of a second) and then lets Start through, so Start always begins a game. If you press Start at a moment the game is not ready, a coin may be spent without the game starting; press Start again. It does nothing on consoles, and can be switched off for all games, one system or one game.
 
 **Vibration.** Games that ask for rumble make your gamepad vibrate (Settings ▸ **Gamepad vibration**). It works on Windows and Linux with gamepads that support it; macOS does not offer it to apps yet.
 

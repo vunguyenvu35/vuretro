@@ -58,7 +58,7 @@ pub struct GameSettings {
     /// Make the gamepad rumble when the game asks for it (not supported on every OS).
     pub rumble: bool,
     /// On arcade systems (Neo Geo, MAME): put a coin in whenever Start is pressed, so Start
-    /// always begins a game. Does nothing on systems without coins.
+    /// always begins a game (on by default). Does nothing on systems without coins.
     pub auto_coin: bool,
 }
 
@@ -79,7 +79,7 @@ impl Default for GameSettings {
             integer_scale: false,
             fullscreen: false,
             rumble: true,
-            auto_coin: false,
+            auto_coin: true,
         }
     }
 }
@@ -190,7 +190,7 @@ mod tests {
             integer_scale: true,
             fullscreen: true,
             rumble: false,
-            auto_coin: true,
+            auto_coin: false,
         };
         save(&path, &s).unwrap();
         assert_eq!(load(&path), s);
@@ -201,7 +201,7 @@ mod tests {
         assert!(p.sync_display && !p.pause_on_blur);
         // settings added later fall back to their defaults
         assert_eq!((p.fast_forward, p.ff_sound, p.resume), (4, false, false));
-        assert!(p.rumble && !p.fullscreen && !p.lcd && !p.integer_scale && !p.auto_coin);
+        assert!(p.rumble && !p.fullscreen && !p.lcd && !p.integer_scale && p.auto_coin);
         std::fs::write(&path, "{ not json").unwrap();
         assert_eq!(load(&path), GameSettings::default());
     }
