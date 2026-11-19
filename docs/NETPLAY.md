@@ -23,6 +23,7 @@ Hai máy trong cùng mạng LAN chơi chung một game, mỗi người một tay
 15. [Cần quyết định](#15-cần-quyết-định)
 16. [Phòng 2 đến 4 máy](#16-phòng-2-đến-4-máy)
 17. [Internet và lớp truyền dữ liệu](#17-internet-và-lớp-truyền-dữ-liệu)
+18. [Tình trạng các dự án tham khảo](#18-tình-trạng-các-dự-án-tham-khảo)
 
 ## 1. Tóm tắt và quyết định
 
@@ -653,6 +654,25 @@ Giới hạn dự đoán 8 khung tương đương khoảng 133 ms; vượt giớ
 | P7. Internet | Giao diện `Transport` và `Lobby`, một hướng (Steam hoặc WebRTC), xuyên NAT, chỉ báo chất lượng đường, thử trên mạng thật | khoảng 8 đến 12 ngày, tuỳ hướng chọn |
 
 Hai giai đoạn này làm sau P5; P6 có thể làm ngay sau P3 nếu bạn muốn chơi bốn người trên LAN sớm hơn.
+
+## 18. Tình trạng các dự án tham khảo
+
+Tra cứu web (tháng 11/2026), nguồn thứ cấp và đôi chỗ mâu thuẫn nhau; **phải kiểm tra lại trên trang chính thức trước khi dựa vào**.
+
+| Dự án | Điều tìm thấy | Độ tin cậy |
+|---|---|---|
+| **Fightcade** | Gói Flathub mô tả trình giả lập là FightcadeFBNeo, dựa trên FBNeo 0.2.97.44 với bản GGPO tuỳ biến, vẫn là cách chơi rollback ngang hàng (P2P) hiện hành. Gói chỉ là bản đóng gói cộng đồng, không phải bản chính thức. Không tìm thấy thông báo hay changelog chính thức nào của năm 2026. | Vừa. Cần xem fightcade.com. |
+| **RetroArch** | Nguồn thứ cấp cho biết bản ổn định là 1.22.2 (từ tháng 11/2025). Rollback kiểu GGPO đã có từ lâu, nhưng chỉ chạy với core hỗ trợ serialization (lưu state) và tốn CPU; hai bên cần cùng bản core. Không tìm thấy ghi chú phát hành 2026 nào riêng về netplay. | Thấp đến vừa. Cần xem retroarch.com và diễn đàn Libretro. |
+| **Slippi** (Dolphin) | Rollback nằm trong nhánh riêng của Slippi (dựa trên Ishiiruka), không nằm trong Dolphin chính; Dolphin chính dùng netplay kiểu chờ. Số phiên bản của launcher và nhánh Ishiiruka mâu thuẫn giữa các nguồn (ví dụ launcher 2.10.5, 2.11.8, 2.13.1). | Thấp. Cần xem GitHub project-slippi. |
+| **ggrs và matchbox_socket** | Kết quả tìm thấy ggrs mới nhất là 0.12.0 (README gọi là khá ổn định), còn matchbox_socket 0.14.0 khai báo phụ thuộc ggrs 0.11 qua tính năng tuỳ chọn `ggrs`. Có một nhánh rẽ tên Fortress Rollback. | Vừa. **Lệch với mục 1:** tài liệu này ghi ggrs 0.13.0 (lấy từ lần tra cứu trước); cần mở crates.io để xác nhận. |
+
+**Hệ quả cho kế hoạch**
+
+- **Kiểm tra phiên bản ggrs.** Phiên bản ggrs mà matchbox hỗ trợ có thể cũ hơn bản ggrs ta muốn dùng. Nếu hai bên lệch nhau, đừng dùng tính năng `ggrs` của matchbox: tự viết một bộ chuyển (adapter) từ socket WebRTC sang trait `NonBlockingSocket` của ggrs (ít mã, nằm gọn trong lớp `Transport` ở mục 17).
+- **Khoá phiên bản ggrs ở bước P1** và ghi lại phiên bản đã kiểm tra, vì đây là phụ thuộc chính của phần rollback.
+- Thông tin về Fightcade và RetroArch cũng xác nhận điều đã nêu ở mục 8: chỉ bật netplay cho cặp core và ROM đã qua kiểm tra tất định, và hai bên phải cùng bản core.
+
+Nguồn đã dùng: [Flathub, Fightcade](https://flathub.org/en/apps/com.fightcade.Fightcade), [RetroArch netplay guide (Retro Handheld HQ)](https://retrohandheldhq.com/posts/retroarch-netplay-guide/), [matchbox_socket 0.14.0 trên docs.rs](https://docs.rs/crate/matchbox_socket/0.14.0/source/Cargo.toml), [ggrs 0.12.0 trên docs.rs](https://docs.rs/crate/ggrs/0.12.0/source/README.md), [Slippi trên SSBWiki](https://ssbwiki.com/Slippi).
 
 ---
 
