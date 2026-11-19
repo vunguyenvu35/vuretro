@@ -1664,3 +1664,53 @@ fn core_options_use_a_sample_game_and_show_the_runners_own_defaults() {
     a.core_options("snes9x_libretro").unwrap();
     assert_eq!(f.0.lock().unwrap().options_rom, Some(None));
 }
+
+#[test]
+fn a_system_offers_its_recommended_look_and_applying_it_is_just_an_override() {
+    let f = ready_world();
+    let a = app(&f);
+    assert!(
+        a.scoped_settings(None).unwrap().recommended.is_none(),
+        "not for all games"
+    );
+    assert!(
+        a.game_override("/data/roms/gba/m.gba")
+            .recommended
+            .is_none(),
+        "nor for a game"
+    );
+    assert!(
+        a.scoped_settings(Some("n64"))
+            .unwrap()
+            .recommended
+            .is_none(),
+        "nor for 3D systems"
+    );
+
+    let s = a.scoped_settings(Some("gba")).unwrap();
+    let rec = s.recommended.clone().expect("a handheld has one");
+    assert_eq!(
+        (rec.integer_scale, rec.lcd, rec.crt),
+        (Some(true), Some(true), Some(false))
+    );
+    assert!(
+        s.overridden.is_empty(),
+        "nothing is changed until the player applies it"
+    );
+
+    // applying it is the ordinary override call, merged over what the system already had
+    let mut mine = s.overridden.clone();
+    mine.window_scale = Some(5);
+    mine.integer_scale = rec.integer_scale;
+    mine.lcd = rec.lcd;
+    mine.crt = rec.crt;
+    let after = a.set_system_override("gba", mine).unwrap();
+    assert!(after.effective.integer_scale && after.effective.lcd && !after.effective.crt);
+    assert_eq!(
+        after.effective.window_scale, 5,
+        "an unrelated choice is kept"
+    );
+    // and it can be undone
+    let reset = a.set_system_override("gba", Override::default()).unwrap();
+    assert!(reset.overridden.is_empty());
+}

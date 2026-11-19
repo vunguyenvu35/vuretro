@@ -245,6 +245,9 @@ pub fn assess(sys: &System, machine: &MachineInfo) -> Assessment {
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct ScopedSettings {
     pub effective: vuretro_settings::GameSettings,
+    /// What the "recommended look" button would set (a system only; `None` for all games and
+    /// for systems with no recommendation).
+    pub recommended: Option<vuretro_settings::scoped::Override>,
     /// The values this scope would use if it overrode nothing.
     pub inherited: vuretro_settings::GameSettings,
     pub overridden: vuretro_settings::scoped::Override,
@@ -605,5 +608,62 @@ mod tests {
         assert_eq!(games.len(), 2);
         assert!(games[0].imported && games[0].favorite && games[0].play_secs == 60);
         assert!(!games[1].imported && !games[1].favorite);
+    }
+}
+
+/// The look the "Use the recommended look" button gives a system: whole-number scaling for
+/// sharp pixels, plus the LCD grid for handhelds or CRT scanlines for TV and arcade systems.
+/// `None` for systems with no recommendation (3D systems, which are not pixel art).
+/// Full screen is a habit of the player, so it is not part of it.
+pub fn recommended_override(sys: &System) -> Option<vuretro_settings::scoped::Override> {
+    if sys.look.is_empty() {
+        return None;
+    }
+    Some(vuretro_settings::scoped::Override {
+        integer_scale: Some(true),
+        crt: Some(sys.look == "crt"),
+        lcd: Some(sys.look == "lcd"),
+        ..Default::default()
+    })
+}
+
+#[cfg(test)]
+mod recommended_tests {
+    use super::*;
+    use crate::registry;
+
+    fn rec(id: &str) -> Option<vuretro_settings::scoped::Override> {
+        recommended_override(registry::by_id(id).unwrap())
+    }
+
+    #[test]
+    fn handhelds_get_the_lcd_grid_and_tv_systems_get_scanlines() {
+        let gba = rec("gba").unwrap();
+        assert_eq!(
+            (gba.integer_scale, gba.lcd, gba.crt),
+            (Some(true), Some(true), Some(false))
+        );
+        let neo = rec("neogeo").unwrap();
+        assert_eq!(
+            (neo.integer_scale, neo.lcd, neo.crt),
+            (Some(true), Some(false), Some(true))
+        );
+        // a system with no look of its own still gets sharp pixels, and neither effect
+        let vb = rec("virtualboy").unwrap();
+        assert_eq!(
+            (vb.integer_scale, vb.lcd, vb.crt),
+            (Some(true), Some(false), Some(false))
+        );
+        // only the display-look fields are touched: nothing about sound, speed or rewind
+        assert_eq!(gba.rewind, None);
+        assert_eq!(gba.window_scale, None);
+    }
+
+    #[test]
+    fn three_d_systems_have_no_recommendation_and_every_pixel_system_has_one() {
+        for s in registry::systems() {
+            assert_eq!(recommended_override(s).is_some(), !s.hardware, "{}", s.id);
+            assert!(["", "crt", "lcd", "none"].contains(&s.look), "{}", s.id);
+        }
     }
 }

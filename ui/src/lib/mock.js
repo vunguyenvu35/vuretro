@@ -108,7 +108,7 @@ const scoped = (system) => {
   const ov = mockOverrides[system] ?? {};
   const eff = { ...mockGame };
   for (const k of ['window_scale', 'crt', 'rewind']) if (ov[k] != null) eff[k] = ov[k];
-  return { effective: eff, inherited: { ...mockGame }, overridden: { window_scale: null, crt: null, rewind: null, ...ov } };
+  return { effective: eff, inherited: { ...mockGame }, overridden: { window_scale: null, crt: null, rewind: null, ...ov }, recommended: { integer_scale: true, crt: false, lcd: true } };
 };
 mock.get_scoped_settings = async ({ system }) => (system ? scoped(system) : { effective: { ...mockGame }, inherited: { ...mockGame }, overridden: { window_scale: null, crt: null, rewind: null } });
 mock.set_system_override = async ({ system, overrides }) => {

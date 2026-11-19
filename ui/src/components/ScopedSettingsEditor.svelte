@@ -52,6 +52,25 @@
     data = await save(Object.fromEntries(FIELDS.map((f) => [f, null])));
     toast(`${name} follows ${follows} again`);
   }
+
+  /** What the recommended look sets, by the fields it names (null fields are not part of it). */
+  const recFields = $derived(data?.recommended ? Object.keys(data.recommended).filter((f) => data.recommended[f] != null) : []);
+  const recApplied = $derived(recFields.length > 0 && recFields.every((f) => data.effective[f] === data.recommended[f]));
+  /** In words: "Whole-number scaling and LCD pixel grid". Effects that the look turns off are left out. */
+  const recText = $derived(
+    recFields
+      .filter((f) => data.recommended[f] === true)
+      .map((f) => SWITCHES.find((x) => x.f === f)?.title ?? f)
+      .join(' and '),
+  );
+
+  /** Only the fields the look names change; everything else this system chose stays. */
+  async function useRecommended() {
+    const merged = { ...data.overridden };
+    for (const f of recFields) merged[f] = data.recommended[f];
+    data = await save(merged);
+    toast(`${name}: ${recText} on`);
+  }
 </script>
 
 {#if data}
@@ -63,6 +82,20 @@
     <span class="saved" class:show={saved} aria-live="polite">Saved</span>
     {#if anyOwn}<button class="btn" onclick={resetAll}>Follow {follows} again</button>{/if}
   </div>
+
+  {#if data.recommended}
+    <div class="reco" class:done={recApplied}>
+      <div class="txt">
+        <div class="t">Recommended look for {name}</div>
+        <div class="d">
+          {recText || 'Sharp pixels'}{data.recommended.lcd === false && data.recommended.crt === false ? ', with no scanline or grid effect' : ''}. Full screen stays a general setting. Nothing changes until you press the button.
+        </div>
+      </div>
+      <button class="btn" class:primary={!recApplied} disabled={recApplied} onclick={useRecommended}>
+        {recApplied ? '✓ In use' : 'Use the recommended look'}
+      </button>
+    </div>
+  {/if}
 
   <div class="panel">
     <div class="row" class:own={own('window_scale')}>
@@ -111,6 +144,8 @@
   .intro p { margin: 0; flex: 1 1 360px; }
   .saved { color: var(--ok); font-size: 12px; opacity: 0; transition: opacity .2s; }
   .saved.show { opacity: 1; }
+  .reco { display: flex; align-items: center; gap: 16px; padding: 14px 18px; margin-bottom: 14px; background: var(--surface); border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); border-radius: 14px; }
+  .reco.done { border-color: var(--border); }
   .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; container-type: inline-size; }
   .row { display: flex; align-items: center; gap: 16px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
   .row:last-child { border-bottom: 0; }

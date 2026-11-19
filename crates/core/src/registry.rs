@@ -28,6 +28,9 @@ pub struct System {
     /// Its file types are shared with other systems (disc images), so a file counts for
     /// this system only inside one of its `folders`.
     pub folder_only: bool,
+    /// The picture look that suits the system: "crt" (TV and arcade), "lcd" (handhelds) or
+    /// "none". Empty for systems with no recommendation (3D systems).
+    pub look: &'static str,
     /// Needs a GPU renderer (3D systems): off until the user turns it on, with a check
     /// of the computer first.
     pub hardware: bool,
@@ -75,6 +78,8 @@ struct RawSystem {
     screenscraper: u32,
     #[serde(default)]
     folder_only: bool,
+    #[serde(default)]
+    look: String,
     #[serde(default)]
     hardware: bool,
     #[serde(default)]
@@ -139,6 +144,7 @@ pub fn parse_systems(json: &str) -> Result<Vec<System>, String> {
             thumbnails: leak(r.thumbnails),
             screenscraper: r.screenscraper,
             folder_only: r.folder_only,
+            look: leak(r.look),
             hardware: r.hardware,
             coin_op: r.coin_op,
             min_ram_gb: r.min_ram_gb,

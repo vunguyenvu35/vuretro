@@ -574,6 +574,7 @@ impl App {
                 effective: base.clone(),
                 inherited: base,
                 overridden: Default::default(),
+                recommended: None,
             });
         };
         Self::known_system(system)?;
@@ -587,6 +588,8 @@ impl App {
             effective: ov.apply(base.clone()),
             inherited: base,
             overridden: ov,
+            recommended: crate::registry::by_id(system)
+                .and_then(crate::model::recommended_override),
         })
     }
 
@@ -649,6 +652,7 @@ impl App {
             effective: ov.apply(inherited.clone()),
             inherited,
             overridden: ov,
+            recommended: None,
         }
     }
 
