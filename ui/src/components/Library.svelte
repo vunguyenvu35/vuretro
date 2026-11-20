@@ -29,20 +29,6 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   import { onMount } from "svelte";
   let searchEl = $state();
 
-  /**
-   * The list header sticks right under the title bar. The bar grows taller when the window is
-   * narrow and its controls wrap, so its real height is measured instead of assumed; with a
-   * fixed offset a strip opened between the two and game rows showed through it, cut in half.
-   */
-  function trackBar(node) {
-    const scroller = node.closest('.scroll');
-    const set = () => scroller?.style.setProperty('--bar-h', `${node.offsetHeight}px`);
-    set();
-    const ro = new ResizeObserver(set);
-    ro.observe(node);
-    return { destroy: () => ro.disconnect() };
-  }
-
   const ov = $derived(app.overview);
   const sysName = (id) => ov?.systems.find((s) => s.id === id)?.name ?? id;
 
@@ -250,7 +236,6 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
 {:else}
 {#if over}<div class="dropzone">Drop ROMs to add them to the library</div>{/if}
 <section class="main">
-  <div class="scroll" role="presentation" oncontextmenu={listMenu}>
       {#if hero && !app.query}
         <div class="hero">
           <div class="crt scan" style="--c:{colorOf(hero.system)}">{#if covers[hero.path]}<img src={covers[hero.path]} alt="" />{:else}<span>{hero.title}</span>{/if}</div>
@@ -266,7 +251,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
         </div>
       {/if}
 
-      <div class="bar" use:trackBar>
+      <div class="bar" class:afterhero={hero && !app.query}>
         <h3>{heading} <small>{visible.length}</small></h3>
         <label class="search">
           <svg class="mag" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.6" /><path d="M10.6 10.6L14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
@@ -308,6 +293,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
         </div>
       </div>
 
+  <div class="scroll" role="presentation" oncontextmenu={listMenu}>
       {#if visible.length === 0}
         <p class="muted pad">Nothing matches.</p>
       {:else if app.layout === 'list'}
@@ -445,7 +431,9 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   .taginput { flex: 1 1 120px; min-width: 100px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; color: var(--text); font: inherit; font-size: 12px; }
   .dropzone { position: fixed; inset: 12px; z-index: 20; display: grid; place-items: center; border: 2px dashed var(--accent); border-radius: 16px; background: color-mix(in srgb, var(--bg, #000) 80%, transparent); color: var(--accent); font-size: 18px; pointer-events: none; }
   .danger { color: var(--bad); }
-  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 16px 20px 0; gap: 14px; }
+  /* the card and the toolbar stay where they are; only the games under them scroll, so the scroll bar
+     runs along the games and not beside the toolbar */
+  .main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 0 20px 0; }
   .search {
     flex: 1 1 260px; min-width: 180px; max-width: 380px; display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 10px 0 12px;
     background: var(--surface); border: 1px solid var(--border); border-radius: 12px; color: var(--faint);
@@ -458,12 +446,13 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   .search kbd { font: 600 11px var(--font-mono); color: var(--faint); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 2px 7px; flex: none; }
   .search .clear { flex: none; background: var(--surface-2); border: 0; color: var(--muted); width: 22px; height: 22px; border-radius: 50%; font-size: 11px; line-height: 1; padding: 0; }
   .search .clear:hover { color: var(--text); }
-  .scroll { overflow: auto; flex: 1; min-height: 0; padding: 6px 8px 24px 6px; margin-left: -6px; }
+  /* scroll-padding: a game reached with the arrow keys comes to rest under the list header, not behind it */
+  .scroll { overflow: auto; flex: 1; min-height: 0; padding: 0 8px 24px 6px; margin-left: -6px; scroll-padding-top: 40px; }
   .row { display: flex; gap: 10px; flex-wrap: wrap; }
   .muted { color: var(--muted); margin: 4px 0 0; }
   .pad { padding: 24px 0; }
 
-  .hero { display: flex; gap: 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  .hero { flex: none; margin-top: 22px; display: flex; gap: 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
   .hero-body { display: flex; flex-direction: column; gap: 4px; justify-content: center; }
   .hero-body h2 { font-size: 22px; }
   .hero-body .row { margin-top: 10px; }
@@ -478,7 +467,11 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
 
   /* one toolbar: title, search, selection tools, sort and view. It stays put while the
      list scrolls under it. */
-  .bar { display: flex; align-items: center; gap: 14px; position: sticky; top: -6px; z-index: 5; background: var(--bg); margin: 14px 0 4px; padding: 8px 0; flex-wrap: wrap; row-gap: 8px; }
+  .bar { display: flex; align-items: center; gap: 14px; flex: none; margin: 0 0 4px; padding: 8px 0; flex-wrap: wrap; row-gap: 8px; }
+  /* the space above the bar is there to set it apart from the "Continue playing" card: without the card there is nothing to set it apart from */
+  .bar.afterhero { margin-top: 14px; }
+  /* in a short window the card would leave too little room for the games */
+  @media (max-height: 620px) { .hero { display: none; } .bar.afterhero { margin-top: 0; } }
   .bar h3 { flex: none; white-space: nowrap; }
   .bar h3 { font-size: 15px; }
   .bar h3 small { color: var(--faint); font: 12px var(--font-body); margin-left: 6px; }
@@ -523,7 +516,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   .lhead, .lrow { display: grid; grid-template-columns: 76px minmax(0, 2.2fr) minmax(0, 1.1fr) 84px minmax(0, 1fr) minmax(0, .8fr) 34px; align-items: center; gap: 16px; }
   /* in selection mode a checkbox gutter opens to the left of the picture */
   .list.selecting .lhead, .list.selecting .lrow { grid-template-columns: 18px 76px minmax(0, 2.2fr) minmax(0, 1.1fr) 84px minmax(0, 1fr) minmax(0, .8fr) 34px; }
-  .lhead { position: sticky; top: calc(var(--bar-h, 62px) - 6px); z-index: 3; height: 34px; padding: 0 14px 0 18px; background: var(--bg); border-bottom: 1px solid var(--border); color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
+  .lhead { position: sticky; top: 0; z-index: 3; height: 34px; padding: 0 14px 0 18px; background: var(--bg); border-bottom: 1px solid var(--border); color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
   .lhead .r, .lrow .r { text-align: right; justify-self: end; }
   .lrow { width: 100%; padding: 7px 14px 7px 18px; border-radius: 10px; border: 1px solid transparent; background: none; color: var(--text); text-align: left; transition: background .12s; }
   .lrow:hover { background: var(--surface); }
