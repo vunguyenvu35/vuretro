@@ -12,6 +12,7 @@ use crate::ports::{
     Archive, ArtQuery, ArtSource, Catalog, CoreInstaller, CoverJob, GameProcess, LaunchSpec,
     Launcher, Locator, Machine, Store,
 };
+use crate::protocol::Event;
 use crate::registry::{systems, System};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -26,6 +27,8 @@ const LAUNCH_GRACE: Duration = Duration::from_millis(1500);
 /// Whether the runner can draw 3D (GPU) systems. Switch on when it can.
 const HARDWARE_RENDERER: bool = false;
 const LAUNCH_POLL: Duration = Duration::from_millis(50);
+/// How often a running game is asked what it reports.
+const WATCH_POLL: Duration = Duration::from_millis(100);
 
 fn now() -> u64 {
     SystemTime::now()
@@ -39,6 +42,19 @@ pub struct Running {
     process: Box<dyn GameProcess>,
     track: Option<String>,
     started: Instant,
+    /// What the runner has said about how long the game was played.
+    played_secs: Option<u64>,
+    /// Reports that came in while the start was being watched, for `watch` to hand over.
+    pending: Vec<Event>,
+}
+
+impl Running {
+    /// Take in what the runner reported.
+    fn note(&mut self, event: &Event) {
+        if let Event::Progress { played_secs } | Event::Exit { played_secs } = event {
+            self.played_secs = Some(*played_secs);
+        }
+    }
 }
 
 /// Previews waiting to be made, and whether a worker is making them.
@@ -1212,9 +1228,19 @@ impl App {
             }
         };
 
-        // Failing fast (missing BIOS, bad file) should be reported, not silently ignored.
+        // Failing fast (missing BIOS, bad file) should be reported, not silently ignored. The
+        // game is up as soon as it says so; one that says nothing is given a moment.
         let started = Instant::now();
+        let mut early = Vec::new();
         loop {
+            let mut ready = false;
+            for event in process.events() {
+                if matches!(event, Event::Ready { .. }) {
+                    ready = true;
+                } else {
+                    early.push(event);
+                }
+            }
             let polled = process.poll();
             let exit = match polled {
                 Ok(exit) => exit,
@@ -1231,7 +1257,7 @@ impl App {
                     Err(exit.detail)
                 };
             }
-            if started.elapsed() >= self.launch_grace {
+            if ready || started.elapsed() >= self.launch_grace {
                 break;
             }
             std::thread::sleep(LAUNCH_POLL.min(self.launch_grace));
@@ -1246,20 +1272,63 @@ impl App {
                 .last_played = now();
         }
         self.save_meta();
-        Ok(Some(Running {
+        let mut running = Running {
             process,
             track,
             started,
-        }))
+            played_secs: None,
+            pending: Vec::new(),
+        };
+        for event in &early {
+            running.note(event);
+        }
+        running.pending = early;
+        Ok(Some(running))
     }
 
     /// Block until the game ends, then add its play time to the library.
     pub fn wait_for_exit(&self, mut running: Running) {
         running.process.wait();
+        for event in running.process.events() {
+            running.note(&event);
+        }
+        self.finish(running);
+    }
+
+    /// Like [`wait_for_exit`](App::wait_for_exit), but hands `on_event` everything the game
+    /// reports while it plays (save slots used, screenshots, play time), as it happens.
+    pub fn watch(&self, mut running: Running, mut on_event: impl FnMut(&Event)) {
+        for event in std::mem::take(&mut running.pending) {
+            on_event(&event);
+        }
+        loop {
+            for event in running.process.events() {
+                running.note(&event);
+                on_event(&event);
+            }
+            match running.process.poll() {
+                Ok(None) => std::thread::sleep(WATCH_POLL),
+                // ended, or no longer possible to ask: either way it is over
+                Ok(Some(_)) | Err(_) => break,
+            }
+        }
+        running.process.wait();
+        for event in running.process.events() {
+            running.note(&event);
+            on_event(&event);
+        }
+        self.finish(running);
+    }
+
+    /// The game is over: free the place and add the play time. The time is what the runner
+    /// counted (the game running, not paused); a runner that reported none is timed from here.
+    fn finish(&self, running: Running) {
         *self.playing.lock().unwrap() = None;
         if let Some(key) = running.track {
-            self.meta.lock().unwrap().entry(key).or_default().play_secs +=
-                running.started.elapsed().as_secs();
+            let secs = running
+                .played_secs
+                .unwrap_or_else(|| running.started.elapsed().as_secs());
+            self.meta.lock().unwrap().entry(key).or_default().play_secs += secs;
             self.save_meta();
         }
     }

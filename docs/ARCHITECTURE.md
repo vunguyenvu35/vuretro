@@ -4,9 +4,27 @@
 
 ![vuretro architecture](images/architecture.svg)
 
-The runner is a **separate process**: cores are third-party C code, so if one crashes you only lose the running game and the UI stays alive. The UI and runner talk through command-line arguments (later also JSON on stdout to report play time and save slots).
+The runner is a **separate process**: cores are third-party C code, so if one crashes you only lose the running game and the UI stays alive. The app starts it with command-line arguments, and it answers with JSON lines on its standard output (see [Runner reports](#runner-reports)).
 
 Try the runner now: `make dev` (see [DEVELOPMENT.md](DEVELOPMENT.md)).
+
+## Runner reports
+
+With `--events` the runner writes one JSON object per line to its standard output, which the app reads on a thread of its own so the runner never waits for it. The format is defined once, in `vuretro_core::protocol`, and used by both sides.
+
+```text
+{"vuretro":1,"event":"ready","core":"snes9x","core_version":"1.62","width":256,"height":224,"fps":60.09,"window":"opengl","hardware_render":false}
+{"vuretro":1,"event":"state","action":"saved","slot":1}
+{"vuretro":1,"event":"screenshot","path":"/…/game-1732100000.png"}
+{"vuretro":1,"event":"progress","played_secs":30}
+{"vuretro":1,"event":"error","message":"cannot read /…/game.rom: No such file or directory"}
+{"vuretro":1,"event":"exit","played_secs":1832}
+```
+
+- `ready`: the game is loaded and its window is open. `progress` comes every 30 s, so a crash loses little. `exit` ends a game that was closed normally. `error` says why the runner could not go on.
+- `played_secs` counts the time the game was running, not paused.
+- Cores are C code and may print to the same output, so a reader skips every line that is not one of these, and a writer starts its line on a fresh one. An event or a version a reader does not know is skipped, so a newer runner does not break an older app.
+- Without `--events` nothing is written (a person running the runner from a terminal does not want JSON between the log lines). The session reports through the `Events` port, so it stays free of any output code.
 
 ## Layers
 
@@ -31,7 +49,7 @@ vuretro-library (adapters: disk, processes)           vuretro-play (game session
 
 ## The app
 
-`src-tauri/` (crate `vuretro-app`, binary `vuretro`) exposes commands to the Svelte UI. A watcher thread (gilrs) keeps the connected-pad list and emits `pads-changed` and `pad-button` events for the Controls screen. Games start as `vuretro-runner` child processes: the app waits 1.5 s to catch immediate failures (missing BIOS, bad file) and shows the tail of `logs/runner.log`, then tracks play time until the process exits. It lives in its own Cargo workspace so the core workspace builds without system webview libraries.
+`src-tauri/` (crate `vuretro-app`, binary `vuretro`) exposes commands to the Svelte UI. A watcher thread (gilrs) keeps the connected-pad list and emits `pads-changed` and `pad-button` events for the Controls screen. Games start as `vuretro-runner` child processes. The game counts as started when the runner reports `ready` (a runner that says nothing is given 1.5 s), a failure is explained by the runner's own `error` message (the tail of `logs/runner.log` is the fallback), and play time is what the runner counted, not how long the process lived. While the game plays, what it reports is passed to the page as `game-event` (the save slots refresh when one is saved). It lives in its own Cargo workspace so the core workspace builds without system webview libraries.
 
 ## Crates
 

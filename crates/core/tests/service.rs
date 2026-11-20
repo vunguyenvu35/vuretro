@@ -9,6 +9,7 @@ use vuretro_core::backup::BackupOptions;
 use vuretro_core::model::*;
 use vuretro_core::paths::Paths;
 use vuretro_core::ports::*;
+use vuretro_core::protocol::Event;
 use vuretro_core::registry::{self, System};
 use vuretro_core::service::App;
 use vuretro_settings::scoped::{Override, Overrides};
@@ -27,6 +28,10 @@ struct World {
     runner: bool,
     /// What a spawned runner does: `None` keeps running, `Some` ends at once.
     runner_exit: Option<Exit>,
+    /// What a spawned runner reports (see `vuretro_core::protocol`), handed over once.
+    runner_events: Vec<Event>,
+    /// The runner ends (successfully) once it has been asked this many times whether it has.
+    runner_ends_after_polls: Option<usize>,
     removed: Vec<PathBuf>,
     spawned: Vec<LaunchSpec>,
     cover_ok: bool,
@@ -337,10 +342,27 @@ impl Locator for Fake {
     }
 }
 
-struct FakeProcess(Option<Exit>);
+struct FakeProcess {
+    exit: Option<Exit>,
+    events: Vec<Event>,
+    ends_after_polls: Option<usize>,
+    polls: usize,
+}
 impl GameProcess for FakeProcess {
+    fn events(&mut self) -> Vec<Event> {
+        std::mem::take(&mut self.events)
+    }
     fn poll(&mut self) -> Result<Option<Exit>, String> {
-        Ok(self.0.clone())
+        self.polls += 1;
+        if let Some(n) = self.ends_after_polls {
+            if self.polls > n {
+                return Ok(Some(Exit {
+                    success: true,
+                    detail: String::new(),
+                }));
+            }
+        }
+        Ok(self.exit.clone())
     }
     fn wait(&mut self) {}
 }
@@ -349,7 +371,12 @@ impl Launcher for Fake {
     fn spawn(&self, spec: &LaunchSpec) -> Result<Box<dyn GameProcess>, String> {
         let mut w = self.0.lock().unwrap();
         w.spawned.push(spec.clone());
-        Ok(Box::new(FakeProcess(w.runner_exit.clone())))
+        Ok(Box::new(FakeProcess {
+            exit: w.runner_exit.clone(),
+            events: std::mem::take(&mut w.runner_events),
+            ends_after_polls: w.runner_ends_after_polls,
+            polls: 0,
+        }))
     }
     fn capture_cover(&self, job: &CoverJob) -> bool {
         let mut w = self.0.lock().unwrap();
@@ -1930,4 +1957,119 @@ fn choosing_the_macro_profile_of_a_game_is_saved_and_only_real_profiles_can_be_c
         c.active.is_empty(),
         "no profile: only the shared macros play"
     );
+}
+
+fn ready() -> Event {
+    Event::Ready {
+        core: "snes9x".into(),
+        core_version: "1".into(),
+        width: 256,
+        height: 224,
+        fps: 60.0,
+        window: "opengl".into(),
+        hardware_render: false,
+    }
+}
+
+#[test]
+fn a_game_that_says_it_is_ready_does_not_wait_out_the_grace_period() {
+    let f = ready_world();
+    f.0.lock().unwrap().runner_events = vec![ready()];
+    // a grace period so long that waiting it out would be noticed
+    let a = app(&f).with_launch_grace(Duration::from_secs(30));
+    let began = std::time::Instant::now();
+    let running = a.launch_game("/data/roms/snes/a.sfc".into(), None).unwrap();
+    assert!(running.is_some());
+    assert!(
+        began.elapsed() < Duration::from_secs(5),
+        "took {:?}",
+        began.elapsed()
+    );
+}
+
+#[test]
+fn play_time_is_what_the_runner_counted_not_how_long_the_process_lived() {
+    let f = ready_world();
+    f.0.lock().unwrap().runner_events = vec![
+        ready(),
+        Event::Progress { played_secs: 30 },
+        Event::Exit { played_secs: 1832 },
+    ];
+    let a = app(&f);
+    let running = a
+        .launch_game("/data/roms/snes/a.sfc".into(), None)
+        .unwrap()
+        .unwrap();
+    a.wait_for_exit(running);
+    assert_eq!(
+        f.0.lock().unwrap().meta["/data/roms/snes/a.sfc"].play_secs,
+        1832
+    );
+}
+
+#[test]
+fn a_runner_that_reports_nothing_is_timed_by_the_app_as_before() {
+    let f = ready_world();
+    let a = app(&f);
+    let running = a
+        .launch_game("/data/roms/snes/a.sfc".into(), None)
+        .unwrap()
+        .unwrap();
+    a.wait_for_exit(running);
+    // it ended at once, so a second or two at most, and the game is still recorded
+    assert!(f.0.lock().unwrap().meta["/data/roms/snes/a.sfc"].play_secs < 5);
+}
+
+#[test]
+fn watching_hands_over_what_the_game_reports_while_it_plays_and_counts_the_play_time() {
+    let f = ready_world();
+    {
+        let mut w = f.0.lock().unwrap();
+        w.runner_ends_after_polls = Some(6); // well after the start-up check
+        w.runner_events = vec![
+            ready(),
+            Event::State {
+                action: vuretro_core::protocol::StateAction::Saved,
+                slot: 2,
+            },
+            Event::Screenshot {
+                path: "/shots/a.png".into(),
+            },
+            Event::Exit { played_secs: 77 },
+        ];
+    }
+    let a = app(&f);
+    let running = a
+        .launch_game("/data/roms/snes/a.sfc".into(), None)
+        .unwrap()
+        .unwrap();
+    let mut seen = Vec::new();
+    a.watch(running, |e| seen.push(e.clone()));
+    // the ready report was taken by the start-up check; the rest comes through here
+    assert_eq!(seen.len(), 3, "{seen:?}");
+    assert!(matches!(seen[0], Event::State { slot: 2, .. }));
+    assert!(matches!(&seen[1], Event::Screenshot { path } if path == "/shots/a.png"));
+    assert!(matches!(seen[2], Event::Exit { played_secs: 77 }));
+    assert_eq!(
+        f.0.lock().unwrap().meta["/data/roms/snes/a.sfc"].play_secs,
+        77
+    );
+    // the place is free again
+    assert!(a.launch_game("/data/roms/snes/a.sfc".into(), None).is_ok());
+}
+
+#[test]
+fn a_failed_start_shows_what_the_runner_said_not_a_log() {
+    // (the adapter turns the runner's `error` event into the failure text; the app shows it
+    // as it is)
+    let f = ready_world();
+    f.0.lock().unwrap().runner_exit = Some(Exit {
+        success: false,
+        detail: "neogeo.zip is missing".into(),
+    });
+    let err = app(&f)
+        .launch_game("/data/roms/neogeo/a.zip".into(), None)
+        .err()
+        .unwrap();
+    assert_eq!(err, "neogeo.zip is missing");
 }

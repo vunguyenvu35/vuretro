@@ -6,6 +6,7 @@ use crate::keys::Key;
 use crate::window::Act;
 use anyhow::Result;
 use std::path::Path;
+use vuretro_core::protocol::Event;
 
 /// A decoded video frame: 0RGB pixels, width, height.
 ///
@@ -126,6 +127,19 @@ pub trait FrameSource {
     /// The latest frame, whether or not it was seen before, always with its pixels (a frame
     /// on the graphics card is read back now, which takes time: ask only when needed).
     fn current(&self) -> Frame;
+}
+
+/// Where the session tells the outside what happens while it plays (see
+/// [`vuretro_core::protocol`]): save slots used, screenshots, play time.
+pub trait Events {
+    fn emit(&self, event: Event);
+}
+
+/// Nobody is told anything.
+pub struct NoEvents;
+
+impl Events for NoEvents {
+    fn emit(&self, _event: Event) {}
 }
 
 /// Where the session keeps what it saves: save states and pictures.

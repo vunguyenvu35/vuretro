@@ -12,5 +12,6 @@ pub mod model;
 pub mod patch;
 pub mod paths;
 pub mod ports;
+pub mod protocol;
 pub mod registry;
 pub mod service;

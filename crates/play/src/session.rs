@@ -4,7 +4,7 @@
 
 use crate::keys::Key;
 use crate::perf::{self, PerfMonitor, Status};
-use crate::ports::{Controller, Emulator, Files, Frame, FrameSource, Look, Screen, View};
+use crate::ports::{Controller, Emulator, Events, Files, Frame, FrameSource, Look, Screen, View};
 use crate::rewind::Rewind;
 use crate::speed::{self, Mode};
 use crate::window::{
@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use vuretro_core::protocol::{Event, StateAction};
 use vuretro_settings::scoped::{load_overrides, save_overrides, Change, Scope};
 use vuretro_settings::GameSettings;
 
@@ -23,6 +24,8 @@ use vuretro_settings::GameSettings;
 const REWIND_EVERY: u64 = 2;
 const REWIND_BYTES: usize = 64 * 1024 * 1024;
 const SRAM_AUTOSAVE: Duration = Duration::from_secs(30);
+/// How often the play time so far is reported.
+const PROGRESS_EVERY: Duration = Duration::from_secs(30);
 
 /// What a session needs, built either from the real machine (`real::open`) or from fakes.
 pub struct Parts {
@@ -31,6 +34,8 @@ pub struct Parts {
     pub controller: Box<dyn Controller>,
     pub frames: Box<dyn FrameSource>,
     pub files: Box<dyn Files>,
+    /// Told what happens while the game plays.
+    pub events: Box<dyn Events>,
     /// Output level in percent, read by the audio thread.
     pub gain: Arc<AtomicU32>,
     /// Game speed in percent (100 = normal), read by the audio thread.
@@ -75,6 +80,11 @@ pub struct Session {
     controller: Box<dyn Controller>,
     frames: Box<dyn FrameSource>,
     files: Box<dyn Files>,
+    events: Box<dyn Events>,
+    /// How long the game has run, not counting pauses.
+    played: Duration,
+    last_tick: Instant,
+    next_progress: Duration,
     gain: Arc<AtomicU32>,
     speed_percent: Arc<AtomicU32>,
     _keep_alive: Box<dyn std::any::Any>,
@@ -149,6 +159,10 @@ impl Session {
             controller: parts.controller,
             frames: parts.frames,
             files: parts.files,
+            events: parts.events,
+            played: Duration::ZERO,
+            last_tick: Instant::now(),
+            next_progress: PROGRESS_EVERY,
             gain: parts.gain,
             speed_percent: parts.speed,
             _keep_alive: parts.keep_alive,
@@ -229,6 +243,13 @@ impl Session {
 
     /// One pass of the loop: handle input, then either show the paused picture or run the core.
     fn frame(&mut self) -> Result<()> {
+        let now = Instant::now();
+        // a long gap (the computer slept, a dialog) is not play time
+        let gap = now
+            .duration_since(self.last_tick)
+            .min(Duration::from_secs(1));
+        self.last_tick = now;
+        self.count_time(gap);
         self.update_quit_question();
         let hotkeys = self.controller.hotkeys(&*self.screen);
         let mut acts = self.pending_actions();
@@ -265,6 +286,19 @@ impl Session {
             pace(&mut self.deadline, self.frame_time * self.plan.stretch);
         }
         Ok(())
+    }
+
+    /// Add `gap` to the play time unless the game is paused, and report it every half minute.
+    fn count_time(&mut self, gap: Duration) {
+        if !self.holding {
+            self.played += gap;
+        }
+        while self.played >= self.next_progress {
+            self.events.emit(Event::Progress {
+                played_secs: self.played.as_secs(),
+            });
+            self.next_progress += PROGRESS_EVERY;
+        }
     }
 
     /// Esc asks "quit the game?" (an accidental press must not lose the play): Esc again
@@ -366,6 +400,10 @@ impl Session {
                 Some(data) => match self.files.write(&self.state_path(self.slot), &data) {
                     Ok(_) => {
                         self.save_thumbnail();
+                        self.events.emit(Event::State {
+                            action: StateAction::Saved,
+                            slot: self.slot,
+                        });
                         format!("saved to slot {}", self.slot)
                     }
                     Err(e) => format!("save failed: {e}"),
@@ -376,7 +414,13 @@ impl Session {
                 let slot = self.slot;
                 let path = self.state_path(slot);
                 Some(match self.load_state_file(&path) {
-                    Loaded::Yes => format!("loaded slot {slot}"),
+                    Loaded::Yes => {
+                        self.events.emit(Event::State {
+                            action: StateAction::Loaded,
+                            slot,
+                        });
+                        format!("loaded slot {slot}")
+                    }
                     Loaded::Rejected => format!("slot {slot} was rejected by the core"),
                     Loaded::Missing => format!("slot {slot} is empty"),
                 })
@@ -571,7 +615,12 @@ impl Session {
                     .shots_dir
                     .join(format!("{}-{stamp}.png", self.rom_name));
                 match self.files.write_png(&path, buf, *w, *h) {
-                    Ok(_) => format!("screenshot saved ({})", self.shots_dir.display()),
+                    Ok(_) => {
+                        self.events.emit(Event::Screenshot {
+                            path: path.to_string_lossy().into_owned(),
+                        });
+                        format!("screenshot saved ({})", self.shots_dir.display())
+                    }
                     Err(e) => format!("screenshot failed: {e}"),
                 }
             }
@@ -830,6 +879,9 @@ impl Session {
 
     /// Save the preview image, the save RAM and, when asked, the place to carry on from.
     fn finish(&self) {
+        self.events.emit(Event::Exit {
+            played_secs: self.played.as_secs(),
+        });
         if let Some(path) = &self.cover {
             let mut best = cover::Best::default();
             let (buf, w, h) = self.frames.current();
@@ -883,6 +935,8 @@ mod tests {
         /// The fake window draws looks itself, and the looks it was asked for.
         gpu_look: bool,
         looks: Vec<Look>,
+        /// What the session told the outside.
+        told: Vec<Event>,
         /// The fake window can show a picture from the graphics card, and has shown these.
         gpu_ok: bool,
         gpu_shown: Vec<(usize, usize)>,
@@ -1019,6 +1073,13 @@ mod tests {
         }
     }
 
+    struct FakeEvents(Shared);
+    impl Events for FakeEvents {
+        fn emit(&self, event: Event) {
+            self.0.borrow_mut().told.push(event);
+        }
+    }
+
     struct FakeFrames(Shared);
     impl FrameSource for FakeFrames {
         fn take_new(&mut self) -> Option<Frame> {
@@ -1096,6 +1157,7 @@ mod tests {
                 controller: Box::new(FakePad(log.clone())),
                 frames: Box::new(FakeFrames(log.clone())),
                 files: Box::new(DiskFiles),
+                events: Box::new(FakeEvents(log.clone())),
                 gain: gain.clone(),
                 speed: speed.clone(),
                 keep_alive: Box::new(()),
@@ -1453,6 +1515,79 @@ mod tests {
             "the pause picture needs the pixels"
         );
         assert!(s.dimmed.is_some());
+    }
+
+    #[test]
+    fn saving_and_loading_a_slot_is_reported_and_an_empty_slot_is_not() {
+        let (mut s, r) = rig(100);
+        s.apply(Act::LoadState).unwrap();
+        assert!(r.log.borrow().told.is_empty(), "nothing in slot 1 yet");
+        s.apply(Act::NextSlot).unwrap();
+        s.apply(Act::SaveState).unwrap();
+        s.apply(Act::LoadState).unwrap();
+        assert_eq!(
+            r.log.borrow().told,
+            vec![
+                Event::State {
+                    action: StateAction::Saved,
+                    slot: 2
+                },
+                Event::State {
+                    action: StateAction::Loaded,
+                    slot: 2
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_screenshot_is_reported_with_where_it_went() {
+        let (mut s, r) = rig(100);
+        r.log.borrow_mut().new_frame = Some((vec![0x00FF_0000; 4], 2, 2));
+        s.frame().unwrap();
+        s.apply(Act::Screenshot).unwrap();
+        let told = r.log.borrow().told.clone();
+        match told.as_slice() {
+            [Event::Screenshot { path }] => {
+                assert!(path.ends_with(".png") && path.contains("game-"), "{path}")
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn play_time_does_not_run_while_paused_and_is_reported_every_half_minute() {
+        let (mut s, r) = rig(100);
+        s.count_time(Duration::from_secs(20));
+        assert!(r.log.borrow().told.is_empty());
+        s.holding = true; // paused: the minutes go by without counting
+        s.count_time(Duration::from_secs(600));
+        assert_eq!(s.played, Duration::from_secs(20));
+        s.holding = false;
+        s.count_time(Duration::from_secs(15));
+        assert_eq!(
+            r.log.borrow().told,
+            vec![Event::Progress { played_secs: 35 }]
+        );
+        // a long stretch in one go still reports each half minute passed, once
+        s.count_time(Duration::from_secs(60));
+        assert_eq!(r.log.borrow().told.len(), 3);
+        assert_eq!(
+            r.log.borrow().told.last(),
+            Some(&Event::Progress { played_secs: 95 })
+        );
+    }
+
+    #[test]
+    fn the_end_of_the_game_reports_how_long_it_was_played() {
+        let (mut s, r) = rig(3);
+        s.played = Duration::from_secs(1832);
+        s.next_progress = Duration::from_secs(1860); // the progress is not what is looked at
+        s.run().unwrap();
+        assert_eq!(
+            r.log.borrow().told.last(),
+            Some(&Event::Exit { played_secs: 1832 })
+        );
     }
 
     #[test]

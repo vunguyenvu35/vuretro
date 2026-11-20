@@ -143,6 +143,7 @@ pub fn open(p: Params) -> Result<Session> {
     // the icon first, so the Dock tile is made with it; once more after the window exists,
     // because the first window changes how the process presents itself
     appicon::apply(&p.system);
+    let mut window = "opengl";
     let screen: Box<dyn Screen> = if use_gl_window() {
         let hw = crate::frontend::with(|fe| fe.hw).map(|request| crate::gl_screen::HwSetup {
             request,
@@ -157,14 +158,26 @@ pub fn open(p: Params) -> Result<Session> {
             // a computer with no usable OpenGL still plays the games that do not need it
             Err(e) if !wants_gpu => {
                 log::warn!("no OpenGL window ({e:#}); using the basic window");
+                window = "basic";
                 Box::new(MiniFbScreen::open(&title, base_w, base_h, factor, view)?)
             }
             Err(e) => return Err(e.context("this game needs an OpenGL window")),
         }
     } else {
+        window = "basic";
         Box::new(MiniFbScreen::open(&title, base_w, base_h, factor, view)?)
     };
     appicon::apply(&p.system);
+    // the game is loaded and its window is up: the app can stop waiting for a failure
+    crate::events::emit(&vuretro_core::protocol::Event::Ready {
+        core: p.core.info.name.clone(),
+        core_version: p.core.info.version.clone(),
+        width: base_w as u32,
+        height: base_h as u32,
+        fps: core_fps,
+        window: window.to_string(),
+        hardware_render: frontend::with(|fe| fe.hw.is_some()),
+    });
 
     let coin_op = vuretro_core::registry::by_id(&p.system).is_some_and(|s| s.coin_op);
     if coin_op && p.settings.auto_coin {
@@ -183,6 +196,7 @@ pub fn open(p: Params) -> Result<Session> {
         ),
         frames: Box::new(CoreFrames),
         files: Box::new(crate::files::DiskFiles),
+        events: Box::new(crate::events::RunnerEvents),
         gain,
         speed,
         keep_alive: Box::new(audio),

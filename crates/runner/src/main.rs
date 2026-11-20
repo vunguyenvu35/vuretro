@@ -13,6 +13,7 @@ mod autocoin;
 mod core;
 mod disc;
 mod display;
+mod events;
 mod files;
 mod fit;
 mod frontend;
@@ -69,6 +70,10 @@ struct Args {
     /// or the last frame when a window is closed
     #[arg(long, value_name = "FILE")]
     cover: Option<PathBuf>,
+    /// Report what happens (ready, errors, save slots, play time) as JSON lines on the
+    /// standard output, for the app. See `vuretro_core::protocol`.
+    #[arg(long)]
+    events: bool,
     /// Core options file, `key = value` per line (default: <data dir>/config/<core>.cfg)
     #[arg(long, value_name = "FILE")]
     options: Option<PathBuf>,
@@ -124,7 +129,18 @@ fn main() -> Result<()> {
         };
         return gl_screen::selftest_hw(core.as_ref(), rom.as_ref());
     }
+    let result = run();
+    if let Err(e) = &result {
+        events::emit(&vuretro_core::protocol::Event::Error {
+            message: format!("{e:#}"),
+        });
+    }
+    result
+}
+
+fn run() -> Result<()> {
     let args = Args::parse();
+    events::enable(args.events);
 
     // A game window shows up in the Dock as soon as the process first talks to the window
     // system, which is long before the window opens (the core is loaded first). Setting the

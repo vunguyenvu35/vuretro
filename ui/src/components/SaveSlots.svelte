@@ -8,10 +8,27 @@
 
   let slots = $state([]);
   let thumbs = $state({});
+  // a slot saved or loaded in the running game: look again, without waiting for it to close
+  let reported = $state(0);
+
+  $effect(() => {
+    let off;
+    let gone = false;
+    api
+      .onGameEvent((e) => {
+        if (e.event === 'state') reported++;
+      })
+      .then((f) => (gone ? f() : (off = f)));
+    return () => {
+      gone = true;
+      off?.();
+    };
+  });
 
   $effect(() => {
     const path = game.path;
     void version;
+    void reported;
     let stale = false;
     api.saveSlots(path).then(async (list) => {
       const pics = {};

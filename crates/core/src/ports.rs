@@ -5,6 +5,7 @@ use crate::model::{
     BiosStatus, CoreOptionDef, GameEntry, GameMeta, ImportedBios, ImportedRom, MachineInfo,
     Settings, SlotInfo,
 };
+use crate::protocol::Event;
 use crate::registry::System;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -147,8 +148,13 @@ pub struct Exit {
 pub trait GameProcess: Send {
     /// `Some` once the process has ended.
     fn poll(&mut self) -> Result<Option<Exit>, String>;
-    /// Block until it ends.
+    /// Block until it ends. Whatever it reported is available from `events` afterwards.
     fn wait(&mut self);
+    /// What the game has reported since the last call (see [`crate::protocol`]), oldest first.
+    /// A process that reports nothing gives an empty list.
+    fn events(&mut self) -> Vec<Event> {
+        Vec::new()
+    }
 }
 
 /// Starts runner processes.

@@ -3,12 +3,16 @@ use crate::state::Shell;
 use tauri::{AppHandle, Emitter, State};
 use vuretro_core::service::Running;
 
-/// Wait for the game on its own thread, then tell the page it ended.
+/// Watch the game on its own thread, passing on what it reports, then tell the page it ended.
 fn watch(app: &AppHandle, shell: &Shell, running: Option<Running>) {
     let Some(running) = running else { return };
     let (app, core) = (app.clone(), shell.app.clone());
     std::thread::spawn(move || {
-        core.wait_for_exit(running);
+        // what the game reports while it plays (save slots used, screenshots, play time) goes
+        // to the page as it happens
+        core.watch(running, |event| {
+            let _ = app.emit("game-event", event);
+        });
         let _ = app.emit("game-exited", ());
     });
 }
