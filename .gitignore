@@ -12,6 +12,9 @@ node_modules/
 
 # Local ROM/BIOS packages (copyrighted, never commit)
 /docs/rooms/
+# BIOS files you keep for yourself (copyrighted, never commit)
+/docs/bios/*
+!/docs/bios/README.md
 /ui/dist
 /src-tauri/target
 /src-tauri/gen
