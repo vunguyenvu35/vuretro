@@ -381,23 +381,15 @@ Auto-coin counts polls, one per frame, and polling happens only once per real fr
 Six phases, each with something you can check and a completion criterion. Do them in order. The numbers of days are estimates for one developer.
 
 ```mermaid
-gantt
-  title Roadmap (working days, estimated)
-  dateFormat  YYYY-MM-DD
-  axisFormat  day %d
-  section Phases
-  P0 Measure determinism      :p0, 2026-01-01, 36h
-  P1 vuretro-netplay crate    :p1, after p0, 72h
-  P2 Runner without a window  :p2, after p1, 72h
-  P3 Run with a window        :p3, after p2, 72h
-  P4 App and UI               :p4, after p3, 96h
-  P5 Polish and release       :p5, after p4, 48h
-  section Milestones
-  M1 Determinism report       :milestone, after p0, 0d
-  M2 Two processes in sync    :milestone, after p2, 0d
-  M3 First play test          :milestone, after p3, 0d
-  M4 UI done                  :milestone, after p4, 0d
-  M5 Release                  :milestone, after p5, 0d
+flowchart TB
+  classDef ph fill:#e3f0ff,stroke:#3b78c4,color:#111
+  classDef ms fill:#e4f6ea,stroke:#2e8b57,color:#111
+  P0["<b>P0</b> Measure determinism<br/>1.5 days"]:::ph --> M1(["M1: determinism report"]):::ms
+  M1 --> P1["<b>P1</b> vuretro-netplay crate<br/>3 days"]:::ph
+  P1 --> P2["<b>P2</b> Runner without a window<br/>3 days"]:::ph --> M2(["M2: two processes in sync"]):::ms
+  M2 --> P3["<b>P3</b> Run with a window<br/>3 days"]:::ph --> M3(["M3: first play test"]):::ms
+  M3 --> P4["<b>P4</b> App and UI<br/>4 days"]:::ph --> M4(["M4: UI done"]):::ms
+  M4 --> P5["<b>P5</b> Polish and release<br/>2 days"]:::ph --> M5(["M5: release"]):::ms
 ```
 
 ### P0. Measure determinism (1.5 days)
