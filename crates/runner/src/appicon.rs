@@ -124,7 +124,18 @@ mod tests {
         let Ok(dir) = std::env::var("ICON_SAMPLES") else {
             return;
         };
-        for id in ["neogeo", "psx", "snes", "arcade", "atari2600"] {
+        for id in [
+            "neogeo",
+            "psx",
+            "ps2",
+            "snes",
+            "arcade",
+            "atari2600",
+            "wonderswan",
+            "sega32x",
+            "lynx",
+            "gamecube",
+        ] {
             std::fs::write(format!("{dir}/{id}.png"), icon_png(id)).unwrap();
         }
     }
