@@ -1,0 +1,40 @@
+name: Audit
+
+# Known vulnerabilities in the crates the program is built from (RustSec advisories).
+# A new advisory can appear for a crate nobody touched, so this also runs every week.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - ".github/workflows/audit.yml"
+  pull_request:
+    paths:
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - ".github/workflows/audit.yml"
+  schedule:
+    - cron: "17 3 * * 1" # Mondays, 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      # A vulnerability fails the run. Warnings (a crate nobody maintains any more, an
+      # unsound API) are shown but do not: most come from a crate this program does not
+      # choose, such as the GTK bindings behind Tauri.
+      - name: The game runner and libraries
+        run: cargo audit
+
+      - name: The app (it has its own Cargo.lock)
+        run: cargo audit --file src-tauri/Cargo.lock
