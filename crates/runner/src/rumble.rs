@@ -2,7 +2,7 @@
 //! changed since the last look, so the gamepad is only told about changes. Pure, so it is
 //! unit-tested without a gamepad.
 
-use vuretro_controls::PLAYERS as MAX_PORTS;
+use crate::frontend::MAX_PORTS;
 
 /// `[strong, weak]` strength per port.
 pub type Requests = [[u16; 2]; MAX_PORTS];
