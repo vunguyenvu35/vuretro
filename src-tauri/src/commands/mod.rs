@@ -7,6 +7,7 @@ pub mod cores;
 pub mod covers;
 pub mod launch;
 pub mod library;
+pub mod update;
 
 /// Run a blocking use case off the UI thread.
 pub(crate) async fn blocking<T, F>(f: F) -> Result<T, String>

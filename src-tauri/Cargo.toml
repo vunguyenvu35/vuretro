@@ -28,3 +28,4 @@ vuretro-library = { path = "../crates/library" }
 vuretro-controls = { path = "../crates/controls" }
 vuretro-settings = { path = "../crates/settings" }
 gilrs = "0.10"
+tauri-plugin-updater = "2"

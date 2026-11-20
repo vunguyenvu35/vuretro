@@ -1,8 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
-    "externalBin": ["binaries/vuretro-runner"],
+    "externalBin": [
+      "binaries/vuretro-runner"
+    ],
     "shortDescription": "Retro game library and player",
-    "category": "Game"
+    "category": "Game",
+    "createUpdaterArtifacts": true
   }
 }

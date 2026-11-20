@@ -49,9 +49,10 @@ fn main() {
     };
     let pads = shell.pads.clone();
 
-    use commands::{backup::*, config::*, cores::*, covers::*, launch::*, library::*};
+    use commands::{backup::*, config::*, cores::*, covers::*, launch::*, library::*, update::*};
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(shell)
         .menu(menu::build)
         .on_menu_event(|app, event| menu::handle(app, event.id().as_ref()))
@@ -88,6 +89,8 @@ fn main() {
             set_system_override,
             get_game_override,
             open_url,
+            check_update,
+            install_update,
             set_game_override,
             get_controls_for_game,
             create_backup,

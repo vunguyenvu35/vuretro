@@ -1,7 +1,8 @@
 name: Release
 
 # Push a tag like v0.2.0 to build installers for every OS and attach them to a draft
-# GitHub release. Without the signing secrets below the packages are unsigned.
+# GitHub release. Needs the secret TAURI_SIGNING_PRIVATE_KEY (see docs) to sign the update
+# packages; without the Apple secrets below the installers themselves are unsigned.
 on:
   push:
     tags: ["v*"]
@@ -68,7 +69,12 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # signs the update packages; the app only installs an update signed with this key
+          # (its public half is in src-tauri/tauri.conf.json)
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          uploadUpdaterJson: true
           projectPath: .
           tauriScript: npx tauri
           tagName: ${{ github.ref_name }}

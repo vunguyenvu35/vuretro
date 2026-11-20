@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { app, refresh, covers, loadCovers, scheduleCovers, handleMenu } from './lib/store.svelte.js';
   import { api } from './lib/api.js';
+  import { checkAtStart } from './lib/update.svelte.js';
   import Sidebar from './components/Sidebar.svelte';
   import Library from './components/Library.svelte';
   import Cores from './components/Cores.svelte';
@@ -18,6 +19,7 @@
 
   onMount(() => {
     refresh();
+    checkAtStart();
     let off = [];
     // closing a game no longer replaces its picture: it keeps the one it had
     api.onGameExited(() => refresh()).then((f) => off.push(f));

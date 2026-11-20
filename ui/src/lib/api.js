@@ -33,6 +33,9 @@ export const api = {
   clearArt: (path) => call('clear_art', { path }),
   regeneratePreviews: () => call('regenerate_previews'),
   openUrl: (url) => call('open_url', { url }),
+  /** the newer version ({version, current, notes}), or null when this is the latest */
+  checkUpdate: () => call('check_update'),
+  installUpdate: () => call('install_update'),
   async appVersion() {
     if (!inTauri) return '0.0.0-dev';
     const { getVersion } = await import('@tauri-apps/api/app');
@@ -118,6 +121,7 @@ export const api = {
   // what the running game reports: {event: 'state', action: 'saved'|'loaded', slot},
   // {event: 'screenshot', path}, {event: 'progress', played_secs}, ...
   onGameEvent: (fn) => on('game-event', fn),
+  onUpdateProgress: (fn) => on('update-progress', fn),
   onPadsChanged: (fn) => on('pads-changed', fn),
   onCoreProgress: (fn) => on('core-progress', fn),
   onCoreDownloading: (fn) => on('core-downloading', fn),

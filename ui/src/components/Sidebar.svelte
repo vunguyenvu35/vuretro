@@ -3,6 +3,7 @@
   import { colorOf } from '../lib/systems.js';
   import logo from '../lib/logo-mark.svg';
   import Icon from './Icon.svelte';
+  import { update } from '../lib/update.svelte.js';
   import { SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../lib/layout.js';
 
   let dragging = $state(false);
@@ -149,6 +150,11 @@
       {/if}
     </div>
 
+    {#if update.status === 'available' || update.status === 'installing'}
+      <button class="upill" onclick={() => (app.dialog = 'about')} title="Open About to update">
+        <span class="dot"></span>{update.status === 'installing' ? 'Updating…' : `Update ${update.version} available`}
+      </button>
+    {/if}
     {#if app.busy}
       <p class="hint" aria-live="polite">Copying games. Unpacking a disc from an archive can take a minute.</p>
     {:else if app.system}
@@ -280,6 +286,9 @@
   .menu > button:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
   .menu > button :global(svg) { flex: none; opacity: .85; }
   .sep { height: 1px; background: var(--border); margin: 4px 2px; }
+  .upill { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 7px 10px; border-radius: 9px; border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border)); background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); font-size: 12px; text-align: left; }
+  .upill:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+  .upill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
   .hint { color: var(--faint); font-size: 11px; margin: 0 2px; line-height: 1.4; }
   .linked { padding: 6px 10px 6px; }
   .lhead { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
