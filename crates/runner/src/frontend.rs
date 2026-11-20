@@ -33,6 +33,10 @@ pub struct Frontend {
     pub rotation: u8,
     /// The core asked to quit (`SHUTDOWN`), for example from its own menu.
     pub shutdown: bool,
+    /// Whether this run has a window that can give a core a GL context.
+    pub hw_allowed: bool,
+    /// What a core asked for with `SET_HW_RENDER`, once we agreed.
+    pub hw: Option<retro_hw_render_callback>,
 }
 
 static FRONTEND: OnceLock<Mutex<Frontend>> = OnceLock::new();
@@ -62,6 +66,8 @@ pub fn init(
         disk: None,
         rotation: 0,
         shutdown: false,
+        hw_allowed: false,
+        hw: None,
     };
     let _ = FRONTEND.set(Mutex::new(fe));
 }
@@ -97,8 +103,6 @@ unsafe fn cstr_lossy(p: *const c_char) -> String {
 }
 
 pub unsafe extern "C" fn environment_cb(cmd: c_uint, data: *mut c_void) -> bool {
-    // some commands carry a flag that only says "experimental"; it is not part of the number
-    let cmd = cmd & !RETRO_ENVIRONMENT_EXPERIMENTAL;
     match cmd {
         RETRO_ENVIRONMENT_GET_CAN_DUPE => {
             *(data as *mut bool) = true;
@@ -269,9 +273,40 @@ pub unsafe extern "C" fn environment_cb(cmd: c_uint, data: *mut c_void) -> bool 
         | RETRO_ENVIRONMENT_SET_MEMORY_MAPS
         | RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS => true,
         RETRO_ENVIRONMENT_SET_HW_RENDER => {
-            log::warn!("the core wants a GPU renderer, which vuretro does not offer yet");
-            false
+            if !with(|fe| fe.hw_allowed) {
+                log::warn!("the core wants a GPU renderer, but this run has no window for it");
+                return false;
+            }
+            let cb = &mut *(data as *mut retro_hw_render_callback);
+            match crate::hw::context_wanted(cb) {
+                Ok(want) => {
+                    crate::hw::give_functions(cb);
+                    log::info!(
+                        "the core draws with OpenGL {}.{}{}",
+                        want.major,
+                        want.minor,
+                        if want.core {
+                            " (core)"
+                        } else {
+                            " (compatibility)"
+                        }
+                    );
+                    with(|fe| fe.hw = Some(*cb));
+                    true
+                }
+                Err(e) => {
+                    log::warn!("{e}");
+                    false
+                }
+            }
         }
+        RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER => {
+            // cores that can draw several ways pick the one we can do
+            *(data as *mut c_uint) = RETRO_HW_CONTEXT_OPENGL_CORE;
+            true
+        }
+        // we cannot share a GL context with another renderer
+        RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT => false,
         RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO => {
             // a new frame rate or sample rate would need the pacing and audio to follow
             log::warn!("the core changed its video or audio timing; vuretro keeps the old one");
@@ -342,6 +377,18 @@ pub unsafe extern "C" fn video_cb(
         return; // duplicate frame: keep the previous one
     }
     let (w, h) = (width as usize, height as usize);
+    if data as usize == RETRO_HW_FRAME_BUFFER_VALID {
+        // the core drew into the framebuffer we gave it: read the picture back
+        if let Some((px, rw, rh)) = crate::hw::read_frame(w, h) {
+            with(|fe| {
+                fe.frame = px;
+                fe.width = rw;
+                fe.height = rh;
+                finish_frame(fe);
+            });
+        }
+        return;
+    }
     with(|fe| {
         if fe.frame.len() != w * h {
             fe.frame = vec![0; w * h];
@@ -373,14 +420,19 @@ pub unsafe extern "C" fn video_cb(
                 }
             }
         }
-        if fe.rotation != 0 {
-            let (rotated, rw, rh) = rotate(&fe.frame, w, h, fe.rotation);
-            fe.frame = rotated;
-            fe.width = rw;
-            fe.height = rh;
-        }
-        fe.frame_dirty = true;
+        finish_frame(fe);
     });
+}
+
+/// A new picture is in `fe.frame`: turn it as the core asked and say it is new.
+fn finish_frame(fe: &mut Frontend) {
+    if fe.rotation != 0 {
+        let (rotated, rw, rh) = rotate(&fe.frame, fe.width, fe.height, fe.rotation);
+        fe.frame = rotated;
+        fe.width = rw;
+        fe.height = rh;
+    }
+    fe.frame_dirty = true;
 }
 
 /// Turn a picture by `turns` quarter turns counter-clockwise (libretro's `SET_ROTATION`);
@@ -510,13 +562,12 @@ mod env_tests {
     }
 
     #[test]
-    fn the_experimental_flag_is_not_part_of_the_command() {
-        let mut av = 0i32;
-        assert!(call(
-            RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE | RETRO_ENVIRONMENT_EXPERIMENTAL,
-            &mut av
-        ));
-        assert_eq!(av, 3);
+    fn the_experimental_flag_is_part_of_the_command_number() {
+        // 44 is the serialization quirks; 44 | EXPERIMENTAL asks about a shared GL context,
+        // which we cannot give: the two must not be mixed up
+        let mut none = ();
+        assert!(call(RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS, &mut none));
+        assert!(!call(RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT, &mut none));
     }
 
     #[test]
@@ -560,8 +611,59 @@ mod env_tests {
     #[test]
     fn what_we_cannot_do_is_refused() {
         let mut none = ();
-        assert!(!call(RETRO_ENVIRONMENT_SET_HW_RENDER, &mut none));
         assert!(!call(RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO, &mut none));
+    }
+
+    fn hw_request(kind: c_uint) -> retro_hw_render_callback {
+        retro_hw_render_callback {
+            context_type: kind,
+            context_reset: None,
+            get_current_framebuffer: None,
+            get_proc_address: None,
+            depth: true,
+            stencil: false,
+            bottom_left_origin: true,
+            version_major: 3,
+            version_minor: 3,
+            cache_context: false,
+            context_destroy: None,
+            debug_context: false,
+        }
+    }
+
+    #[test]
+    fn a_gl_core_gets_its_functions_when_there_is_a_window_and_nothing_otherwise() {
+        init(
+            "/s",
+            "/v",
+            Arc::new(Mutex::new(VecDeque::new())),
+            HashMap::new(),
+        );
+        with(|fe| {
+            fe.hw_allowed = false;
+            fe.hw = None;
+        });
+        let mut cb = hw_request(RETRO_HW_CONTEXT_OPENGL_CORE);
+        assert!(
+            !call(RETRO_ENVIRONMENT_SET_HW_RENDER, &mut cb),
+            "no window: refused"
+        );
+        assert!(cb.get_proc_address.is_none());
+
+        with(|fe| fe.hw_allowed = true);
+        assert!(call(RETRO_ENVIRONMENT_SET_HW_RENDER, &mut cb));
+        assert!(cb.get_proc_address.is_some() && cb.get_current_framebuffer.is_some());
+        assert!(with(|fe| fe.hw.is_some()));
+
+        let mut vulkan = hw_request(RETRO_HW_CONTEXT_VULKAN);
+        with(|fe| fe.hw = None);
+        assert!(!call(RETRO_ENVIRONMENT_SET_HW_RENDER, &mut vulkan));
+        assert!(with(|fe| fe.hw.is_none()));
+        with(|fe| fe.hw_allowed = false); // the state is shared with other tests
+
+        let mut want: c_uint = 0;
+        assert!(call(RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER, &mut want));
+        assert_eq!(want, RETRO_HW_CONTEXT_OPENGL_CORE);
     }
 }
 

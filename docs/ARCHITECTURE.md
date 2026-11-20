@@ -74,9 +74,17 @@ Acted on: `SET_VARIABLES` (recorded for `--list-options`), `SET_VARIABLE` (a cor
 
 Acknowledged, nothing to do: `SET_GEOMETRY` (the size comes with every frame), `SET_PERFORMANCE_LEVEL`, `SET_SUPPORT_NO_GAME`, `SET_CONTROLLER_INFO`, `SET_SUBSYSTEM_INFO`, `SET_MEMORY_MAPS`, `SET_SERIALIZATION_QUIRKS`.
 
-Refused on purpose, with a warning in the log: `SET_HW_RENDER` (no GPU renderer yet) and `SET_SYSTEM_AV_INFO` (the frame rate and sample rate are not changed while playing). Other commands return `false` and are logged at `trace` level (`RUST_LOG=trace make dev`).
+Hardware rendering (`VURETRO_WINDOW=gl` only): `SET_HW_RENDER` is accepted for `OPENGL_CORE` and `OPENGL` contexts when the run has the OpenGL window, and `GET_PREFERRED_HW_RENDER` answers `OPENGL_CORE`. See [Hardware rendering](#hardware-rendering). Refused with a warning in the log: other renderer types (Vulkan, GLES, Direct3D), `SET_HW_SHARED_CONTEXT`, and `SET_SYSTEM_AV_INFO` (the frame rate and sample rate are not changed while playing). Other commands return `false` and are logged at `trace` level (`RUST_LOG=trace make dev`).
 
-The `EXPERIMENTAL` flag (0x10000) some command numbers carry is removed before matching.
+The `EXPERIMENTAL` flag (0x10000) is part of the command number and is never stripped: the header has two commands numbered 44 (`SET_SERIALIZATION_QUIRKS`, and `SET_HW_SHARED_CONTEXT` with the flag).
+
+## Hardware rendering
+
+3D cores (N64, PSP, GameCube, PS2, 3DS) draw with OpenGL instead of handing over pixels. `gl_screen.rs` opens a winit window with a glutin OpenGL context of the version the core asked for (`SET_HW_RENDER` comes during `retro_load_game`, before the window), then `hw.rs` makes a framebuffer the size of the core's largest picture and calls the core's `context_reset`. The core draws into it each `retro_run` and passes `RETRO_HW_FRAME_BUFFER_VALID` to the video callback; the frame is read back into the normal 0RGB buffer, flipped if the core draws from the bottom, so filters, screenshots and previews work as for any core. The read-back costs time per frame; drawing the texture straight to the window is the next step. On close, and on a window change, `context_destroy` runs while the context is still current.
+
+macOS gives only OpenGL 4.1 core (or a legacy 2.1), so a core that asks for a compatibility context gets a core one there.
+
+Checks that need a window and a GPU: `vuretro-runner --window-selftest` (colours reach the screen) and `vuretro-runner --hw-selftest <test core> <rom>` (a core draws with OpenGL, the picture comes back right way up).
 
 ## System detection during ROM scan
 

@@ -20,6 +20,7 @@ mod gl_keys;
 mod gl_menu;
 mod gl_screen;
 mod headless;
+mod hw;
 mod input;
 mod mamebios;
 mod options;
@@ -116,6 +117,13 @@ fn main() -> Result<()> {
     if std::env::args().nth(1).as_deref() == Some("--window-selftest") {
         return gl_screen::selftest();
     }
+    if std::env::args().nth(1).as_deref() == Some("--hw-selftest") {
+        let a: Vec<_> = std::env::args().skip(2).collect();
+        let [core, rom] = a.as_slice() else {
+            anyhow::bail!("usage: --hw-selftest <test core> <rom>");
+        };
+        return gl_screen::selftest_hw(core.as_ref(), rom.as_ref());
+    }
     let args = Args::parse();
 
     // A game window shows up in the Dock as soon as the process first talks to the window
@@ -155,6 +163,10 @@ fn main() -> Result<()> {
         user_options,
     );
 
+    // a core that draws with OpenGL needs the OpenGL window, so only a game that is going to
+    // open one may say yes to it
+    let opens_window = args.headless_frames.is_none() && !args.options_json && !args.list_options;
+    frontend::with(|fe| fe.hw_allowed = opens_window && real::use_gl_window());
     let mut core = core::Core::load(&args.core)?;
     log::info!(
         "core: {} {} [{}]",

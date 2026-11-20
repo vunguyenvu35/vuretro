@@ -8,11 +8,13 @@
 use crate::fit::{fit_rect, Rect};
 use crate::gl_keys::to_code;
 use crate::gl_menu::GameMenu;
+use crate::hw::{self, GlRequest};
 use anyhow::{anyhow, bail, Result};
 use glow::HasContext;
 use glutin::config::{Config, ConfigTemplateBuilder};
 use glutin::context::{
-    ContextApi, ContextAttributesBuilder, NotCurrentGlContext, PossiblyCurrentContext, Version,
+    ContextApi, ContextAttributesBuilder, GlProfile, NotCurrentGlContext, PossiblyCurrentContext,
+    Version,
 };
 use glutin::display::{GetGlDisplay, GlDisplay};
 use glutin::prelude::GlConfig;
@@ -59,6 +61,8 @@ struct Spec {
     view: View,
     /// Where the window to replace was, in logical units.
     at: Option<(f64, f64)>,
+    /// The OpenGL context a hardware-rendered core asked for.
+    request: Option<GlRequest>,
 }
 
 /// Everything that exists once the window and its GL context do.
@@ -67,6 +71,7 @@ struct Spec {
 /// the surface drawn on it, so it comes last.
 struct Gfx {
     gl: Rc<glow::Context>,
+    display: glutin::display::Display,
     program: glow::Program,
     vao: glow::VertexArray,
     texture: glow::Texture,
@@ -185,7 +190,7 @@ impl Gfx {
         let handle = window.window_handle()?.as_raw();
         let display = config.display();
 
-        let context = Self::create_context(&display, &config, handle)?;
+        let context = Self::create_context(&display, &config, handle, spec.request)?;
         let surface_attrs = window.build_surface_attributes(Default::default())?;
         // SAFETY: the window outlives the surface (both live in `Gfx`, window dropped last).
         let surface = unsafe { display.create_window_surface(&config, &surface_attrs)? };
@@ -200,6 +205,7 @@ impl Gfx {
         let (program, vao, texture) = unsafe { Self::init_gl(&gl)? };
         let menu = GameMenu::new(&window);
         Ok(Gfx {
+            display,
             window,
             surface,
             context,
@@ -213,19 +219,51 @@ impl Gfx {
         })
     }
 
+    /// The context a hardware-rendered core asked for, or OpenGL 3.3 core for the plain
+    /// picture. When the exact version cannot be had, 3.3 core is tried before giving up.
     fn create_context(
         display: &glutin::display::Display,
         config: &Config,
         handle: raw_window_handle::RawWindowHandle,
+        request: Option<GlRequest>,
     ) -> Result<glutin::context::NotCurrentContext> {
-        let attrs = ContextAttributesBuilder::new()
-            .with_context_api(ContextApi::OpenGl(Some(Version::new(3, 3))))
-            .build(Some(handle));
-        // SAFETY: `handle` belongs to the window made for this config.
-        match unsafe { display.create_context(config, &attrs) } {
-            Ok(c) => Ok(c),
-            Err(e) => bail!("cannot make an OpenGL 3.3 context: {e}"),
+        let plain = GlRequest {
+            major: 3,
+            minor: 3,
+            core: true,
+        };
+        let mut tries = vec![request.unwrap_or(plain)];
+        if request.is_some_and(|r| r != plain) {
+            tries.push(plain);
         }
+        let mut last = String::new();
+        for t in tries {
+            let attrs = ContextAttributesBuilder::new()
+                .with_profile(if t.core {
+                    GlProfile::Core
+                } else {
+                    GlProfile::Compatibility
+                })
+                .with_context_api(ContextApi::OpenGl(Some(Version::new(
+                    t.major as u8,
+                    t.minor as u8,
+                ))))
+                .build(Some(handle));
+            // SAFETY: `handle` belongs to the window made for this config.
+            match unsafe { display.create_context(config, &attrs) } {
+                Ok(c) => {
+                    log::info!(
+                        "OpenGL {}.{} {} context",
+                        t.major,
+                        t.minor,
+                        if t.core { "core" } else { "compatibility" }
+                    );
+                    return Ok(c);
+                }
+                Err(e) => last = format!("{}.{}: {e}", t.major, t.minor),
+            }
+        }
+        bail!("cannot make an OpenGL context ({last})")
     }
 
     /// The shader, an empty vertex array and the picture's texture.
@@ -301,6 +339,21 @@ impl Gfx {
         // at least w*h pixels, which is what the upload reads.
         unsafe {
             let gl = &self.gl;
+            // a hardware-rendered core leaves its own state behind: start from a known one
+            gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+            for cap in [
+                glow::DEPTH_TEST,
+                glow::STENCIL_TEST,
+                glow::BLEND,
+                glow::CULL_FACE,
+                glow::SCISSOR_TEST,
+            ] {
+                gl.disable(cap);
+            }
+            gl.color_mask(true, true, true, true);
+            gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 4);
+            gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, 0);
+            gl.active_texture(glow::TEXTURE0);
             gl.viewport(0, 0, pw as i32, ph as i32);
             gl.clear_color(0.0, 0.0, 0.0, 1.0);
             gl.clear(glow::COLOR_BUFFER_BIT);
@@ -346,6 +399,15 @@ impl Gfx {
 pub struct GlScreen {
     event_loop: EventLoop<()>,
     app: App,
+    /// A core that draws with OpenGL, and the largest picture it makes.
+    hw: Option<HwSetup>,
+}
+
+/// What a hardware-rendered core asked for.
+#[derive(Clone, Copy)]
+pub struct HwSetup {
+    pub request: libretro_sys::retro_hw_render_callback,
+    pub max: (usize, usize),
 }
 
 impl GlScreen {
@@ -355,6 +417,7 @@ impl GlScreen {
         base_h: usize,
         factor: usize,
         view: View,
+        hw: Option<HwSetup>,
     ) -> Result<Self> {
         let event_loop = EventLoop::new().map_err(|e| anyhow!("no event loop: {e}"))?;
         let mut me = GlScreen {
@@ -368,9 +431,19 @@ impl GlScreen {
                 closed: false,
                 active: true,
             },
+            hw,
         };
-        me.app.wanted = Some(spec_for(title, base_w, base_h, factor, view, None));
+        me.app.wanted = Some(spec_for(
+            title,
+            base_w,
+            base_h,
+            factor,
+            view,
+            None,
+            me.request(),
+        ));
         me.wait_for_window()?;
+        me.start_hw()?;
         // a black picture at once: the first frame of a game can take a while
         let black = vec![0u32; base_w * base_h];
         let _ = me.present(&black, base_w, base_h);
@@ -400,6 +473,25 @@ impl GlScreen {
             .pump_app_events(Some(Duration::ZERO), &mut self.app);
     }
 
+    /// The OpenGL context to ask for, when a core draws with OpenGL.
+    fn request(&self) -> Option<GlRequest> {
+        self.hw.and_then(|h| hw::context_wanted(&h.request).ok())
+    }
+
+    /// Give a hardware-rendered core its framebuffer and tell it the context is ready.
+    fn start_hw(&mut self) -> Result<()> {
+        let (Some(setup), Some(g)) = (self.hw, self.app.gfx.as_ref()) else {
+            return Ok(());
+        };
+        let display = g.display.clone();
+        hw::start(
+            g.gl.clone(),
+            Box::new(move |name| display.get_proc_address(name)),
+            &setup.request,
+            setup.max,
+        )
+    }
+
     fn gfx(&self) -> Result<&Gfx> {
         self.app.gfx.as_ref().ok_or_else(|| anyhow!("no window"))
     }
@@ -412,6 +504,7 @@ fn spec_for(
     factor: usize,
     view: View,
     at: Option<(f64, f64)>,
+    request: Option<GlRequest>,
 ) -> Spec {
     // with whole-number scaling the session enlarges the picture itself, so the window is
     // the enlarged size; otherwise the window is `factor` times the core's picture
@@ -421,6 +514,14 @@ fn spec_for(
         height: base_h * factor,
         view,
         at,
+        request,
+    }
+}
+
+impl Drop for GlScreen {
+    fn drop(&mut self) {
+        // the core frees its GL objects while the context still exists
+        hw::stop();
     }
 }
 
@@ -477,14 +578,21 @@ impl Screen for GlScreen {
                 .ok()
                 .map(|p| (p.x as f64 / sf, p.y as f64 / sf))
         });
+        // the core's GL objects belong to the old context: let it clean up while that one is
+        // still current, then start again in the new one
+        hw::stop();
         // the new window is made before the old one goes, so the app never has none
         let old = self.app.gfx.take();
-        self.app.wanted = Some(spec_for(title, base_w, base_h, factor, view, at));
+        let request = self.request();
+        self.app.wanted = Some(spec_for(title, base_w, base_h, factor, view, at, request));
         let made = self.wait_for_window();
         if made.is_err() {
             self.app.gfx = old;
+            let _ = self.start_hw();
+            return made;
         }
-        made
+        drop(old);
+        self.start_hw()
     }
     fn size(&self) -> (usize, usize) {
         match self.gfx() {
@@ -510,7 +618,7 @@ impl Screen for GlScreen {
 /// pixels back from the GPU and check them. It needs a display, and on macOS the main thread,
 /// so it is a flag of the runner and not a unit test.
 pub fn selftest() -> Result<()> {
-    let mut screen = GlScreen::open("vuretro self-test", 64, 32, 4, View::default())?;
+    let mut screen = GlScreen::open("vuretro self-test", 64, 32, 4, View::default(), None)?;
     // left half red, right half blue, in the 0RGB the core delivers
     let mut frame = vec![0x00FF_0000u32; 64 * 32];
     for row in frame.chunks_mut(64) {
@@ -551,5 +659,57 @@ pub fn selftest() -> Result<()> {
         "ok: {renderer}, OpenGL {version}, window {:?}",
         screen.size()
     );
+    Ok(())
+}
+
+/// `vuretro-runner --hw-selftest <test core> <rom>`: load the test core in its OpenGL mode
+/// (`VURETRO_TEST_HW`), run it in a real window and check that the picture it drew with
+/// OpenGL comes back right way up: blue on top, red below.
+pub fn selftest_hw(core_path: &std::path::Path, rom: &std::path::Path) -> Result<()> {
+    use std::sync::{Arc, Mutex};
+    std::env::set_var("VURETRO_TEST_HW", "1");
+    crate::frontend::init(
+        "/nonexistent",
+        "/nonexistent",
+        Arc::new(Mutex::new(Default::default())),
+        Default::default(),
+    );
+    crate::frontend::with(|fe| fe.hw_allowed = true);
+    let mut core = crate::core::Core::load(core_path)?;
+    let av = core.load_game(rom)?;
+    let request = crate::frontend::with(|fe| fe.hw)
+        .ok_or_else(|| anyhow!("the core did not ask for hardware rendering"))?;
+    let (w, h) = (
+        av.geometry.base_width as usize,
+        av.geometry.base_height as usize,
+    );
+    let setup = HwSetup {
+        request,
+        max: (w, h),
+    };
+    let screen = GlScreen::open(
+        "vuretro hw self-test",
+        w,
+        h,
+        1,
+        View::default(),
+        Some(setup),
+    )?;
+    if !hw::active() {
+        bail!("the core's framebuffer was not set up");
+    }
+    for _ in 0..3 {
+        core.run();
+    }
+    let (frame, fw, fh) = crate::frontend::with(|fe| (fe.frame.clone(), fe.width, fe.height));
+    if (fw, fh) != (w, h) {
+        bail!("the picture is {fw}x{fh}, expected {w}x{h}");
+    }
+    let (top, bottom) = (frame[fw * 2 + 5], frame[fw * (fh - 3) + 5]);
+    drop(screen);
+    if top != 0x0000_00FF || bottom != 0x00FF_0000 {
+        bail!("wrong picture: top {top:#08x} (want blue 0x0000ff), bottom {bottom:#08x} (want red 0xff0000)");
+    }
+    println!("ok: the core drew with OpenGL and the picture came back right way up");
     Ok(())
 }

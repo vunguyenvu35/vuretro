@@ -7,7 +7,9 @@ use std::os::raw::{c_char, c_int, c_uint, c_void};
 pub const RETRO_API_VERSION: c_uint = 1;
 
 // Environment commands
-/// Flag some newer commands carry in the C header; the frontend strips it before matching.
+/// Flag the C header puts on some command numbers. It is part of the number: the header has
+/// two commands numbered 44 (`SET_SERIALIZATION_QUIRKS` and `SET_HW_SHARED_CONTEXT |
+/// EXPERIMENTAL`), so it must never be stripped before matching.
 pub const RETRO_ENVIRONMENT_EXPERIMENTAL: c_uint = 0x10000;
 pub const RETRO_ENVIRONMENT_SET_ROTATION: c_uint = 1;
 pub const RETRO_ENVIRONMENT_GET_OVERSCAN: c_uint = 2;
@@ -20,12 +22,14 @@ pub const RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES: c_uint = 24;
 pub const RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO: c_uint = 32;
 pub const RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO: c_uint = 34;
 pub const RETRO_ENVIRONMENT_SET_CONTROLLER_INFO: c_uint = 35;
-pub const RETRO_ENVIRONMENT_SET_MEMORY_MAPS: c_uint = 36;
+pub const RETRO_ENVIRONMENT_SET_MEMORY_MAPS: c_uint = 36 | RETRO_ENVIRONMENT_EXPERIMENTAL;
 pub const RETRO_ENVIRONMENT_SET_GEOMETRY: c_uint = 37;
 pub const RETRO_ENVIRONMENT_GET_USERNAME: c_uint = 38;
 pub const RETRO_ENVIRONMENT_GET_LANGUAGE: c_uint = 39;
 pub const RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS: c_uint = 44;
-pub const RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE: c_uint = 47;
+pub const RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT: c_uint = 44 | RETRO_ENVIRONMENT_EXPERIMENTAL;
+pub const RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER: c_uint = 56;
+pub const RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE: c_uint = 47 | RETRO_ENVIRONMENT_EXPERIMENTAL;
 pub const RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION: c_uint = 59;
 pub const RETRO_ENVIRONMENT_SET_MESSAGE_EXT: c_uint = 60;
 pub const RETRO_ENVIRONMENT_GET_INPUT_MAX_USERS: c_uint = 61;
@@ -196,4 +200,45 @@ pub struct retro_message_ext {
     pub target: c_uint,
     pub kind: c_uint,
     pub progress: i8,
+}
+
+// Hardware rendering: the core draws with OpenGL into a framebuffer the frontend owns.
+
+pub const RETRO_HW_CONTEXT_NONE: c_uint = 0;
+pub const RETRO_HW_CONTEXT_OPENGL: c_uint = 1;
+pub const RETRO_HW_CONTEXT_OPENGLES2: c_uint = 2;
+pub const RETRO_HW_CONTEXT_OPENGL_CORE: c_uint = 3;
+pub const RETRO_HW_CONTEXT_OPENGLES3: c_uint = 4;
+pub const RETRO_HW_CONTEXT_OPENGLES_VERSION: c_uint = 5;
+pub const RETRO_HW_CONTEXT_VULKAN: c_uint = 6;
+
+/// What a core passes to the video callback instead of pixels when it drew into the frontend's
+/// framebuffer (`RETRO_HW_FRAME_BUFFER_VALID` is `(void*)-1`).
+pub const RETRO_HW_FRAME_BUFFER_VALID: usize = usize::MAX;
+
+pub type retro_hw_context_reset_t = Option<unsafe extern "C" fn()>;
+pub type retro_hw_get_current_framebuffer_t = Option<unsafe extern "C" fn() -> usize>;
+pub type retro_proc_address_t = Option<unsafe extern "C" fn()>;
+pub type retro_hw_get_proc_address_t =
+    Option<unsafe extern "C" fn(sym: *const c_char) -> retro_proc_address_t>;
+
+/// `SET_HW_RENDER`: what the core wants (type, version, buffers) and the functions it gives
+/// the frontend; the frontend fills in `get_current_framebuffer` and `get_proc_address`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct retro_hw_render_callback {
+    pub context_type: c_uint,
+    pub context_reset: retro_hw_context_reset_t,
+    pub get_current_framebuffer: retro_hw_get_current_framebuffer_t,
+    pub get_proc_address: retro_hw_get_proc_address_t,
+    pub depth: bool,
+    pub stencil: bool,
+    /// The core draws with the origin at the bottom left (the OpenGL way), so the picture is
+    /// upside down compared with a normal frame.
+    pub bottom_left_origin: bool,
+    pub version_major: c_uint,
+    pub version_minor: c_uint,
+    pub cache_context: bool,
+    pub context_destroy: retro_hw_context_reset_t,
+    pub debug_context: bool,
 }

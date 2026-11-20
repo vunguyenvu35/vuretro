@@ -131,8 +131,15 @@ pub fn open(p: Params) -> Result<Session> {
     // because the first window changes how the process presents itself
     appicon::apply(&p.system);
     let screen: Box<dyn Screen> = if use_gl_window() {
+        let hw = crate::frontend::with(|fe| fe.hw).map(|request| crate::gl_screen::HwSetup {
+            request,
+            max: (
+                (av.geometry.max_width as usize).max(base_w),
+                (av.geometry.max_height as usize).max(base_h),
+            ),
+        });
         Box::new(crate::gl_screen::GlScreen::open(
-            &title, base_w, base_h, factor, view,
+            &title, base_w, base_h, factor, view, hw,
         )?)
     } else {
         Box::new(MiniFbScreen::open(&title, base_w, base_h, factor, view)?)
@@ -183,6 +190,6 @@ pub fn open(p: Params) -> Result<Session> {
 
 /// Which window to use: `VURETRO_WINDOW=gl` for the OpenGL one (winit), anything else for
 /// the minifb one that is still the default.
-fn use_gl_window() -> bool {
+pub fn use_gl_window() -> bool {
     std::env::var("VURETRO_WINDOW").is_ok_and(|v| v.eq_ignore_ascii_case("gl"))
 }
