@@ -130,7 +130,13 @@ pub fn open(p: Params) -> Result<Session> {
     // the icon first, so the Dock tile is made with it; once more after the window exists,
     // because the first window changes how the process presents itself
     appicon::apply(&p.system);
-    let screen = MiniFbScreen::open(&title, base_w, base_h, factor, view)?;
+    let screen: Box<dyn Screen> = if use_gl_window() {
+        Box::new(crate::gl_screen::GlScreen::open(
+            &title, base_w, base_h, factor, view,
+        )?)
+    } else {
+        Box::new(MiniFbScreen::open(&title, base_w, base_h, factor, view)?)
+    };
     appicon::apply(&p.system);
 
     let coin_op = vuretro_core::registry::by_id(&p.system).is_some_and(|s| s.coin_op);
@@ -141,7 +147,7 @@ pub fn open(p: Params) -> Result<Session> {
         log::info!("{} macro button(s) for this game", p.macros.len());
     }
     let parts = Parts {
-        screen: Box::new(screen),
+        screen,
         emulator: Box::new(p.core),
         controller: Box::new(
             input::Input::new(p.controls, p.macros, fps)
@@ -173,4 +179,10 @@ pub fn open(p: Params) -> Result<Session> {
             start_slot: p.start_slot,
         },
     ))
+}
+
+/// Which window to use: `VURETRO_WINDOW=gl` for the OpenGL one (winit), anything else for
+/// the minifb one that is still the default.
+fn use_gl_window() -> bool {
+    std::env::var("VURETRO_WINDOW").is_ok_and(|v| v.eq_ignore_ascii_case("gl"))
 }

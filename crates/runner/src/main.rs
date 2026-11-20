@@ -14,7 +14,11 @@ mod core;
 mod disc;
 mod display;
 mod files;
+mod fit;
 mod frontend;
+mod gl_keys;
+mod gl_menu;
+mod gl_screen;
 mod headless;
 mod input;
 mod mamebios;
@@ -109,6 +113,9 @@ fn core_options(
 
 fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    if std::env::args().nth(1).as_deref() == Some("--window-selftest") {
+        return gl_screen::selftest();
+    }
     let args = Args::parse();
 
     // A game window shows up in the Dock as soon as the process first talks to the window
