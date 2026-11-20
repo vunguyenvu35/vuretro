@@ -128,6 +128,16 @@ pub fn start(
             glow::UNSIGNED_BYTE,
             glow::PixelUnpackData::Slice(None),
         );
+        // the window samples this texture: without a mipmap chain the default filter would
+        // leave it incomplete (black)
+        for (p, v) in [
+            (glow::TEXTURE_MIN_FILTER, glow::NEAREST),
+            (glow::TEXTURE_MAG_FILTER, glow::NEAREST),
+            (glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE),
+            (glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE),
+        ] {
+            gl.tex_parameter_i32(glow::TEXTURE_2D, p, v as i32);
+        }
         let fbo = gl.create_framebuffer().map_err(|e| anyhow!(e))?;
         gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fbo));
         gl.framebuffer_texture_2d(
@@ -180,6 +190,8 @@ pub fn start(
         // SAFETY: the function is the core's own, and its context is ready.
         unsafe { reset() };
     }
+    // the window can show the core's texture as it is: frames need not be read back
+    crate::frontend::with(|fe| fe.hw_direct = true);
     Ok(())
 }
 
@@ -195,6 +207,11 @@ pub fn stop() {
     let Some(bridge) = BRIDGE.with(|b| b.borrow_mut().take()) else {
         return;
     };
+    // a picture that was left on the card goes with it
+    crate::frontend::with(|fe| {
+        fe.hw_direct = false;
+        fe.gpu_frame = None;
+    });
     // SAFETY: the context is current and these are the objects made in `start`.
     unsafe {
         bridge.gl.delete_framebuffer(bridge.fbo);
@@ -203,6 +220,42 @@ pub fn stop() {
             bridge.gl.delete_renderbuffer(rb);
         }
     }
+}
+
+/// The core's own picture, as the window can draw it.
+pub struct Picture {
+    pub texture: glow::Texture,
+    /// The whole texture.
+    pub size: (usize, usize),
+    /// The part the picture fills, from the bottom left corner of the texture.
+    pub size_used: (usize, usize),
+    /// The rows are upside down in the texture.
+    pub flip: bool,
+}
+
+/// The `w` x `h` picture the core drew last, as a texture (the sizes are cut to what the
+/// framebuffer holds). `None` when there is no hardware rendering.
+pub fn picture(w: usize, h: usize) -> Option<Picture> {
+    BRIDGE.with(|cell| {
+        let guard = cell.borrow();
+        let b = guard.as_ref()?;
+        let used = (w.min(b.size.0), h.min(b.size.1));
+        (used.0 > 0 && used.1 > 0).then_some(Picture {
+            texture: b.colour,
+            size: b.size,
+            size_used: used,
+            flip: b.flip,
+        })
+    })
+}
+
+/// `w` x `h` cut to what the core's framebuffer can hold.
+pub fn clamp(w: usize, h: usize) -> (usize, usize) {
+    BRIDGE.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .map_or((w, h), |b| (w.min(b.size.0), h.min(b.size.1)))
+    })
 }
 
 /// Is a hardware-rendered game running?

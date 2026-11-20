@@ -8,6 +8,9 @@ use anyhow::Result;
 use std::path::Path;
 
 /// A decoded video frame: 0RGB pixels, width, height.
+///
+/// A frame with no pixels but a size is one that is still on the graphics card (a 3D core drew
+/// it there): see [`Screen::present_gpu`] and [`FrameSource::current`].
 pub type Frame = (Vec<u32>, usize, usize);
 
 /// Keyboard state, as the controller polls it.
@@ -74,6 +77,11 @@ pub trait Screen: Keyboard {
     }
     /// The look to draw over the pictures that follow. Only called when `gpu_look` is true.
     fn set_look(&mut self, _look: Look) {}
+    /// Show the `w` x `h` picture a 3D core has just drawn, straight from the graphics card.
+    /// Returns false when this window cannot (the session then asks for the pixels).
+    fn present_gpu(&mut self, _w: usize, _h: usize) -> Result<bool> {
+        Ok(false)
+    }
 }
 
 /// The libretro core.
@@ -112,9 +120,11 @@ pub trait Controller {
 
 /// Video frames the core has produced.
 pub trait FrameSource {
-    /// The frame produced since the last call, if there is one.
+    /// The frame produced since the last call, if there is one. A 3D core's frame may come
+    /// with no pixels (see [`Frame`]): the picture is then still on the graphics card.
     fn take_new(&mut self) -> Option<Frame>;
-    /// The latest frame, whether or not it was seen before.
+    /// The latest frame, whether or not it was seen before, always with its pixels (a frame
+    /// on the graphics card is read back now, which takes time: ask only when needed).
     fn current(&self) -> Frame;
 }
 

@@ -37,6 +37,11 @@ pub struct Frontend {
     pub hw_allowed: bool,
     /// What a core asked for with `SET_HW_RENDER`, once we agreed.
     pub hw: Option<retro_hw_render_callback>,
+    /// The window can draw the core's framebuffer itself: a hardware-rendered frame then
+    /// stays on the graphics card instead of being read back.
+    pub hw_direct: bool,
+    /// The newest frame is on the graphics card, not in `frame`: its size.
+    pub gpu_frame: Option<(usize, usize)>,
 }
 
 static FRONTEND: OnceLock<Mutex<Frontend>> = OnceLock::new();
@@ -68,6 +73,8 @@ pub fn init(
         shutdown: false,
         hw_allowed: false,
         hw: None,
+        hw_direct: false,
+        gpu_frame: None,
     };
     let _ = FRONTEND.set(Mutex::new(fe));
 }
@@ -378,12 +385,24 @@ pub unsafe extern "C" fn video_cb(
     }
     let (w, h) = (width as usize, height as usize);
     if data as usize == RETRO_HW_FRAME_BUFFER_VALID {
-        // the core drew into the framebuffer we gave it: read the picture back
+        // the core drew into the framebuffer we gave it. When the window can draw that
+        // itself the picture stays there; the session asks for the pixels if it needs them.
+        if with(|fe| fe.hw_direct && fe.rotation == 0) {
+            let (cw, ch) = crate::hw::clamp(w, h);
+            with(|fe| {
+                fe.gpu_frame = Some((cw, ch));
+                fe.width = cw;
+                fe.height = ch;
+                fe.frame_dirty = true;
+            });
+            return;
+        }
         if let Some((px, rw, rh)) = crate::hw::read_frame(w, h) {
             with(|fe| {
                 fe.frame = px;
                 fe.width = rw;
                 fe.height = rh;
+                fe.gpu_frame = None;
                 finish_frame(fe);
             });
         }

@@ -53,12 +53,26 @@ impl FrameSource for CoreFrames {
         frontend::with(|fe| {
             fe.frame_dirty.then(|| {
                 fe.frame_dirty = false;
-                (fe.frame.clone(), fe.width, fe.height)
+                match fe.gpu_frame {
+                    // still on the graphics card: no pixels, only the size
+                    Some((w, h)) => (Vec::new(), w, h),
+                    None => (fe.frame.clone(), fe.width, fe.height),
+                }
             })
         })
     }
     fn current(&self) -> Frame {
-        frontend::with(|fe| (fe.frame.clone(), fe.width, fe.height))
+        frontend::with(|fe| {
+            // a picture left on the graphics card is read back now, once
+            if let Some((w, h)) = fe.gpu_frame.take() {
+                if let Some((px, rw, rh)) = crate::hw::read_frame(w, h) {
+                    fe.frame = px;
+                    fe.width = rw;
+                    fe.height = rh;
+                }
+            }
+            (fe.frame.clone(), fe.width, fe.height)
+        })
     }
 }
 

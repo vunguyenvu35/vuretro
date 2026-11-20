@@ -128,6 +128,8 @@ pub struct Session {
     /// Paused or in the background: emulation is stopped.
     holding: bool,
     last_frame: Option<Frame>,
+    /// The picture shown last is still on the graphics card (`last_frame` is older): its size.
+    gpu_dims: Option<(usize, usize)>,
     dimmed: Option<Vec<u32>>,
     notice: Option<(String, Instant)>,
     quit: bool,
@@ -192,6 +194,7 @@ impl Session {
             asking: false,
             dim_asking: false,
             last_frame: None,
+            gpu_dims: None,
             dimmed: None,
             notice: None,
             quit: false,
@@ -556,7 +559,8 @@ impl Session {
         }
     }
 
-    fn screenshot(&self) -> String {
+    fn screenshot(&mut self) -> String {
+        self.grab();
         match &self.last_frame {
             Some((buf, w, h)) => {
                 let stamp = std::time::SystemTime::now()
@@ -581,6 +585,9 @@ impl Session {
             self.paused || self.asking || (self.settings.pause_on_blur && !self.screen.is_active());
         if hold == self.holding && self.asking == self.dim_asking {
             return;
+        }
+        if hold {
+            self.grab();
         }
         let changed = hold != self.holding;
         self.holding = hold;
@@ -630,11 +637,7 @@ impl Session {
         // A window that draws the look itself gets the picture as the game made it. Scale2x
         // changes the picture first, so with it on the look stays in the picture.
         if self.screen.gpu_look() && !self.scale2x {
-            let look = match (self.crt, self.lcd) {
-                (true, _) => Look::Crt,
-                (_, true) => Look::Lcd,
-                _ => Look::Plain,
-            };
+            let look = self.wanted_look();
             if look != Look::Plain {
                 self.screen.set_look(look);
                 return self.screen.present(buf, w, h);
@@ -645,6 +648,44 @@ impl Session {
         }
         let (out, ow, oh) = self.compose(buf, w, h);
         self.screen.present(&out, ow, oh)
+    }
+
+    /// The look that is switched on (CRT before LCD).
+    fn wanted_look(&self) -> Look {
+        match (self.crt, self.lcd) {
+            (true, _) => Look::Crt,
+            (_, true) => Look::Lcd,
+            _ => Look::Plain,
+        }
+    }
+
+    /// Put a picture that is still on the graphics card on the screen, as it is. When the
+    /// window cannot, or the picture has to be changed first (Scale2x), read it back instead.
+    fn show_gpu(&mut self, w: usize, h: usize) -> Result<()> {
+        let look = self.wanted_look();
+        let can = !self.scale2x && (look == Look::Plain || self.screen.gpu_look());
+        if can {
+            if self.screen.gpu_look() {
+                self.screen.set_look(look);
+            }
+            if self.screen.present_gpu(w, h)? {
+                self.gpu_dims = Some((w, h));
+                return Ok(());
+            }
+        }
+        let (buf, rw, rh) = self.frames.current();
+        self.show(&buf, rw, rh)?;
+        self.last_frame = Some((buf, rw, rh));
+        self.gpu_dims = None;
+        Ok(())
+    }
+
+    /// Make sure `last_frame` is the picture on the screen: one that was left on the graphics
+    /// card is read back now. Called where the pixels are needed (pause, screenshot).
+    fn grab(&mut self) {
+        if self.gpu_dims.take().is_some() {
+            self.last_frame = Some(self.frames.current());
+        }
     }
 
     /// The picture as it is sent to the window.
@@ -773,9 +814,11 @@ impl Session {
         }
 
         match self.frames.take_new() {
+            Some((buf, w, h)) if w > 0 && h > 0 && buf.is_empty() => self.show_gpu(w, h)?,
             Some((buf, w, h)) if w > 0 && h > 0 => {
                 self.show(&buf, w, h)?;
                 self.last_frame = Some((buf, w, h));
+                self.gpu_dims = None;
             }
             _ => self.screen.idle(),
         }
@@ -840,6 +883,11 @@ mod tests {
         /// The fake window draws looks itself, and the looks it was asked for.
         gpu_look: bool,
         looks: Vec<Look>,
+        /// The fake window can show a picture from the graphics card, and has shown these.
+        gpu_ok: bool,
+        gpu_shown: Vec<(usize, usize)>,
+        /// How many times the pixels of a picture on the graphics card were asked for.
+        read_backs: usize,
         /// The pixels of the last picture sent to the window.
         last_pixels: Vec<u32>,
         idled: usize,
@@ -921,6 +969,13 @@ mod tests {
         fn set_look(&mut self, look: Look) {
             self.0.borrow_mut().looks.push(look);
         }
+        fn present_gpu(&mut self, w: usize, h: usize) -> Result<bool> {
+            let mut l = self.0.borrow_mut();
+            if l.gpu_ok {
+                l.gpu_shown.push((w, h));
+            }
+            Ok(l.gpu_ok)
+        }
     }
 
     struct FakeEmu(Shared);
@@ -970,6 +1025,7 @@ mod tests {
             self.0.borrow_mut().new_frame.take()
         }
         fn current(&self) -> Frame {
+            self.0.borrow_mut().read_backs += 1;
             (
                 // blocks of many colours, like a game screen: worth a cover
                 (0..10_000usize)
@@ -1324,6 +1380,79 @@ mod tests {
             r.log.borrow().looks.is_empty(),
             "never asked to draw a look"
         );
+    }
+
+    /// A frame with no pixels: the picture is still on the graphics card.
+    fn on_gpu(r: &Rig) {
+        r.log.borrow_mut().new_frame = Some((Vec::new(), 64, 48));
+    }
+
+    #[test]
+    fn a_picture_on_the_graphics_card_is_shown_from_there_without_reading_it_back() {
+        let (mut s, r) = rig(100);
+        r.log.borrow_mut().gpu_ok = true;
+        on_gpu(&r);
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().gpu_shown, vec![(64, 48)]);
+        assert_eq!(r.log.borrow().presented, 0, "no pixels were sent");
+        assert_eq!(r.log.borrow().read_backs, 0, "and none were read back");
+    }
+
+    #[test]
+    fn the_look_goes_with_a_picture_from_the_graphics_card() {
+        let (mut s, r) = rig(100);
+        {
+            let mut l = r.log.borrow_mut();
+            l.gpu_ok = true;
+            l.gpu_look = true;
+        }
+        s.apply(Act::Crt).unwrap();
+        on_gpu(&r);
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().looks.last(), Some(&Look::Crt));
+        assert_eq!(r.log.borrow().gpu_shown.len(), 1);
+    }
+
+    #[test]
+    fn scale2x_and_windows_that_cannot_show_it_get_the_pixels_instead() {
+        let (mut s, r) = rig(100);
+        // a window that cannot show a picture from the graphics card
+        on_gpu(&r);
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().read_backs, 1);
+        assert_eq!(r.log.borrow().presented, 1);
+
+        // Scale2x changes the picture, so it needs the pixels even where the window could
+        r.log.borrow_mut().gpu_ok = true;
+        s.apply(Act::Scale2x).unwrap();
+        on_gpu(&r);
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().read_backs, 2);
+        assert!(r.log.borrow().gpu_shown.is_empty());
+    }
+
+    #[test]
+    fn pausing_or_taking_a_screenshot_reads_the_picture_back_once() {
+        let (mut s, r) = rig(100);
+        r.log.borrow_mut().gpu_ok = true;
+        on_gpu(&r);
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().read_backs, 0);
+        s.apply(Act::Screenshot).unwrap();
+        assert_eq!(r.log.borrow().read_backs, 1);
+        s.apply(Act::Screenshot).unwrap();
+        assert_eq!(r.log.borrow().read_backs, 1, "already have it");
+
+        on_gpu(&r);
+        s.frame().unwrap();
+        s.apply(Act::Pause).unwrap();
+        s.frame().unwrap();
+        assert_eq!(
+            r.log.borrow().read_backs,
+            2,
+            "the pause picture needs the pixels"
+        );
+        assert!(s.dimmed.is_some());
     }
 
     #[test]

@@ -52,10 +52,13 @@ uniform sampler2D picture;
 uniform int look;        // 0 plain, 1 CRT, 2 LCD
 uniform vec2 tex_size;   // the picture in pixels
 uniform float cells;     // window pixels per picture pixel
+uniform vec2 sample_scale; // the part of the texture the picture fills (a core's own texture is bigger)
+uniform float flip;      // 1: the picture is upside down in the texture
 in vec2 uv;
 out vec4 colour;
 void main() {
-    vec3 c = texture(picture, uv).rgb;
+    vec2 st = vec2(uv.x, flip > 0.5 ? 1.0 - uv.y : uv.y) * sample_scale;
+    vec3 c = texture(picture, st).rgb;
     if (look != 0 && cells >= 2.0) {
         vec2 at = floor(fract(uv * tex_size) * cells);
         bool row = at.y == cells - 1.0;
@@ -352,37 +355,14 @@ impl Gfx {
         let (dest, cells) = if self.look == Look::Plain {
             let whole = self.view.integer.then_some(scale);
             (fit_rect((w, h), (pw as usize, ph as usize), whole), 1)
-        } else if self.view.integer {
-            whole_fit((w, h), (pw as usize, ph as usize))
         } else {
-            // stretched: cells as many pixels as the CPU looks used for a picture this tall
-            (
-                fit_rect((w, h), (pw as usize, ph as usize), None),
-                vuretro_play::crt::factor_for(h),
-            )
+            self.place_unscaled(w, h)
         };
         // SAFETY: the context is current on this thread (it never leaves it); `frame` has
         // at least w*h pixels, which is what the upload reads.
         unsafe {
+            self.start_drawing();
             let gl = &self.gl;
-            // a hardware-rendered core leaves its own state behind: start from a known one
-            gl.bind_framebuffer(glow::FRAMEBUFFER, None);
-            for cap in [
-                glow::DEPTH_TEST,
-                glow::STENCIL_TEST,
-                glow::BLEND,
-                glow::CULL_FACE,
-                glow::SCISSOR_TEST,
-            ] {
-                gl.disable(cap);
-            }
-            gl.color_mask(true, true, true, true);
-            gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 4);
-            gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, 0);
-            gl.active_texture(glow::TEXTURE0);
-            gl.viewport(0, 0, pw as i32, ph as i32);
-            gl.clear_color(0.0, 0.0, 0.0, 1.0);
-            gl.clear(glow::COLOR_BUFFER_BIT);
             gl.bind_texture(glow::TEXTURE_2D, Some(self.texture));
             // 0RGB as little-endian bytes is B, G, R, 0: the order GL calls BGRA
             let bytes = std::slice::from_raw_parts(frame.as_ptr() as *const u8, w * h * 4);
@@ -412,23 +392,122 @@ impl Gfx {
                 );
                 self.tex_size = (w, h);
             }
-            let Rect { x, y, w: rw, h: rh } = dest;
-            gl.viewport(x, y, rw, rh);
-            gl.use_program(Some(self.program));
-            let at = |name| gl.get_uniform_location(self.program, name);
-            gl.uniform_1_i32(
-                at("look").as_ref(),
-                match self.look {
-                    Look::Plain => 0,
-                    Look::Crt => 1,
-                    Look::Lcd => 2,
-                },
-            );
-            gl.uniform_2_f32(at("tex_size").as_ref(), w as f32, h as f32);
-            gl.uniform_1_f32(at("cells").as_ref(), cells as f32);
-            gl.bind_vertex_array(Some(self.vao));
-            gl.draw_arrays(glow::TRIANGLES, 0, 3);
+            self.draw_quad(dest, (w, h), cells, (1.0, 1.0), false);
         }
+    }
+
+    /// Draw the `w` x `h` picture a 3D core has just drawn into its own texture, straight from
+    /// there (no pixels pass through memory) into the back buffer. Nothing is drawn if there
+    /// is no such picture.
+    fn render_gpu(&mut self, w: usize, h: usize) -> bool {
+        let Some(tex) = hw::picture(w, h) else {
+            return false;
+        };
+        let (pw, ph) = self.pixels();
+        // the session cannot enlarge a picture it never sees: the window does it, by whole
+        // numbers when asked, and draws the look in the cells
+        let (dest, cells) = if self.view.integer {
+            self.place_unscaled(w, h)
+        } else {
+            let cells = if self.look == Look::Plain {
+                1
+            } else {
+                vuretro_play::crt::factor_for(h)
+            };
+            (fit_rect((w, h), (pw as usize, ph as usize), None), cells)
+        };
+        // SAFETY: the context is current on this thread; the texture is the core's own.
+        unsafe {
+            self.start_drawing();
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(tex.texture));
+            self.draw_quad(
+                dest,
+                (w, h),
+                cells,
+                (
+                    tex.size_used.0 as f32 / tex.size.0 as f32,
+                    tex.size_used.1 as f32 / tex.size.1 as f32,
+                ),
+                tex.flip,
+            );
+        }
+        true
+    }
+
+    /// Where a picture that has not been enlarged goes, and how many window pixels cover one
+    /// of its pixels: the largest whole number that fits, or the stretched fit with the cells
+    /// the CPU looks used for a picture this tall.
+    fn place_unscaled(&self, w: usize, h: usize) -> (Rect, usize) {
+        let (pw, ph) = self.pixels();
+        if self.view.integer {
+            whole_fit((w, h), (pw as usize, ph as usize))
+        } else {
+            (
+                fit_rect((w, h), (pw as usize, ph as usize), None),
+                vuretro_play::crt::factor_for(h),
+            )
+        }
+    }
+
+    /// A known drawing state, and a black window: a hardware-rendered core leaves its own
+    /// state behind.
+    ///
+    /// # Safety
+    /// The context must be current.
+    unsafe fn start_drawing(&self) {
+        let (pw, ph) = self.pixels();
+        let gl = &self.gl;
+        gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+        for cap in [
+            glow::DEPTH_TEST,
+            glow::STENCIL_TEST,
+            glow::BLEND,
+            glow::CULL_FACE,
+            glow::SCISSOR_TEST,
+        ] {
+            gl.disable(cap);
+        }
+        gl.color_mask(true, true, true, true);
+        gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 4);
+        gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, 0);
+        gl.active_texture(glow::TEXTURE0);
+        gl.viewport(0, 0, pw as i32, ph as i32);
+        gl.clear_color(0.0, 0.0, 0.0, 1.0);
+        gl.clear(glow::COLOR_BUFFER_BIT);
+    }
+
+    /// Draw the texture bound now into `dest`. `sample_scale` is the part of the texture the
+    /// picture fills, and `flip` turns it over (a core that draws from the bottom).
+    ///
+    /// # Safety
+    /// The context must be current, with the picture's texture bound.
+    unsafe fn draw_quad(
+        &self,
+        dest: Rect,
+        picture: (usize, usize),
+        cells: usize,
+        sample_scale: (f32, f32),
+        flip: bool,
+    ) {
+        let gl = &self.gl;
+        let Rect { x, y, w, h } = dest;
+        gl.viewport(x, y, w, h);
+        gl.use_program(Some(self.program));
+        let at = |name| gl.get_uniform_location(self.program, name);
+        gl.uniform_1_i32(
+            at("look").as_ref(),
+            match self.look {
+                Look::Plain => 0,
+                Look::Crt => 1,
+                Look::Lcd => 2,
+            },
+        );
+        gl.uniform_2_f32(at("tex_size").as_ref(), picture.0 as f32, picture.1 as f32);
+        gl.uniform_1_f32(at("cells").as_ref(), cells as f32);
+        gl.uniform_2_f32(at("sample_scale").as_ref(), sample_scale.0, sample_scale.1);
+        gl.uniform_1_f32(at("flip").as_ref(), if flip { 1.0 } else { 0.0 });
+        gl.bind_vertex_array(Some(self.vao));
+        gl.draw_arrays(glow::TRIANGLES, 0, 3);
     }
 }
 
@@ -652,6 +731,17 @@ impl Screen for GlScreen {
     fn gpu_look(&self) -> bool {
         true
     }
+    fn present_gpu(&mut self, w: usize, h: usize) -> Result<bool> {
+        self.pump();
+        let Some(g) = self.app.gfx.as_mut() else {
+            return Ok(false);
+        };
+        if !g.render_gpu(w, h) {
+            return Ok(false);
+        }
+        g.surface.swap_buffers(&g.context)?;
+        Ok(true)
+    }
     fn set_look(&mut self, look: Look) {
         if let Some(g) = self.app.gfx.as_mut() {
             g.look = look;
@@ -754,6 +844,7 @@ pub fn selftest() -> Result<()> {
 /// OpenGL comes back right way up: blue on top, red below.
 pub fn selftest_hw(core_path: &std::path::Path, rom: &std::path::Path) -> Result<()> {
     use std::sync::{Arc, Mutex};
+    use vuretro_play::ports::FrameSource;
     std::env::set_var("VURETRO_TEST_HW", "1");
     crate::frontend::init(
         "/nonexistent",
@@ -774,7 +865,7 @@ pub fn selftest_hw(core_path: &std::path::Path, rom: &std::path::Path) -> Result
         request,
         max: (w, h),
     };
-    let screen = GlScreen::open(
+    let mut screen = GlScreen::open(
         "vuretro hw self-test",
         w,
         h,
@@ -788,7 +879,49 @@ pub fn selftest_hw(core_path: &std::path::Path, rom: &std::path::Path) -> Result
     for _ in 0..3 {
         core.run();
     }
-    let (frame, fw, fh) = crate::frontend::with(|fe| (fe.frame.clone(), fe.width, fe.height));
+
+    // 1. the frame stays on the graphics card: no pixels were read back
+    let (gpu, pixels) = crate::frontend::with(|fe| (fe.gpu_frame, fe.frame.len()));
+    if gpu != Some((w, h)) || pixels != 0 {
+        bail!("the frame was read back ({pixels} pixels kept, gpu frame {gpu:?})");
+    }
+
+    // 2. it is drawn to the window from there, right way up: blue on top, red below
+    screen.pump();
+    let g = screen
+        .app
+        .gfx
+        .as_mut()
+        .ok_or_else(|| anyhow!("no window"))?;
+    if !g.render_gpu(w, h) {
+        bail!("the window could not draw the core's picture");
+    }
+    let (pw, ph) = g.pixels();
+    let at = |fy: f64| {
+        let mut px = [0u8; 4];
+        // SAFETY: the context is current; one RGBA pixel is read into `px`.
+        unsafe {
+            g.gl.read_pixels(
+                (pw / 2) as i32,
+                (ph as f64 * fy) as i32,
+                1,
+                1,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelPackData::Slice(Some(&mut px)),
+            );
+        }
+        [px[0], px[1], px[2]]
+    };
+    let (top, bottom) = (at(0.75), at(0.25));
+    g.surface.swap_buffers(&g.context)?;
+    if top != [0, 0, 255] || bottom != [255, 0, 0] {
+        bail!("drawn straight: top {top:?} (want blue), bottom {bottom:?} (want red)");
+    }
+
+    // 3. asked for the pixels (a screenshot, the pause picture), it is read back then, right
+    // way up as well
+    let (frame, fw, fh) = crate::real::CoreFrames.current();
     if (fw, fh) != (w, h) {
         bail!("the picture is {fw}x{fh}, expected {w}x{h}");
     }
@@ -797,6 +930,6 @@ pub fn selftest_hw(core_path: &std::path::Path, rom: &std::path::Path) -> Result
     if top != 0x0000_00FF || bottom != 0x00FF_0000 {
         bail!("wrong picture: top {top:#08x} (want blue 0x0000ff), bottom {bottom:#08x} (want red 0xff0000)");
     }
-    println!("ok: the core drew with OpenGL and the picture came back right way up");
+    println!("ok: the core drew with OpenGL, the picture went to the window without being read back, and reading it back later is right way up too");
     Ok(())
 }
