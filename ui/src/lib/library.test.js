@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { visibleGames, sortDirection, nextSorts, STATUSES, heroFor, missingCovers, lastPlayed, headingFor, pickRange, formatSize, summarizeImport, summarizeRemoval, summarizeBios } from './library.js';
+import { visibleGames, sortDirection, nextSorts, SORT_OPTIONS, sortWay, changeSortKey, turnSort, removeSort, moveSort, addSort, STATUSES, heroFor, missingCovers, lastPlayed, headingFor, pickRange, formatSize, summarizeImport, summarizeRemoval, summarizeBios } from './library.js';
 
 const game = (title, o = {}) => ({ system: 'snes', title, path: `/lib/${title}`, size: 1e6, last_played: 0, play_secs: 0, favorite: false, imported: true, ...o });
 const overview = (games, disabled = []) => ({
@@ -149,6 +149,48 @@ test('clicking a heading, and Shift-clicking one, give the sorts', () => {
   assert.deepEqual(nextSorts(base, 'nonsense'), base);
   assert.deepEqual(nextSorts([], 'az', { add: true }), [R('recent'), R('az')]);
   assert.deepEqual(nextSorts(undefined, 'recent'), [R('recent', true)]);
+});
+
+test('the sort menu changes the sorts one at a time', () => {
+  const R = (key, reverse = false) => ({ key, reverse });
+  const two = [R('system'), R('az', true)];
+  // a different key for a sort starts it going its first way
+  assert.deepEqual(changeSortKey(two, 1, 'size'), [R('system'), R('size')]);
+  // a key that another sort has: that one goes, so a key is never there twice
+  assert.deepEqual(changeSortKey(two, 0, 'az'), [R('az')]);
+  assert.deepEqual(changeSortKey(two, 1, 'system'), [R('system')]);
+  // turning round, removing, moving
+  assert.deepEqual(turnSort(two, 0), [R('system', true), R('az', true)]);
+  assert.deepEqual(turnSort(turnSort(two, 1), 1), two, 'twice is back to what it was');
+  assert.deepEqual(removeSort(two, 0), [R('az', true)]);
+  assert.deepEqual(removeSort([R('az')], 0), [R('az')], 'the last sort stays');
+  assert.deepEqual(moveSort(two, 1, -1), [R('az', true), R('system')]);
+  assert.deepEqual(moveSort(two, 0, -1), two, 'it stops at the top');
+  assert.deepEqual(moveSort(two, 1, 1), two, 'and at the bottom');
+  assert.deepEqual(moveSort(two, 5, -1), two, 'a place that is not there changes nothing');
+  // adding: the first key not used yet, until all are
+  assert.deepEqual(addSort([R('recent')]), [R('recent'), R('az')]);
+  assert.deepEqual(addSort([R('az'), R('recent')]), [R('az'), R('recent'), R('system')]);
+  const all = SORT_OPTIONS.map((o) => R(o.value));
+  assert.deepEqual(addSort(all), all, 'nothing left to add');
+  // nothing is changed in place
+  const before = JSON.stringify(two);
+  [changeSortKey, turnSort, removeSort, moveSort].forEach((f) => f(two, 0, 1));
+  addSort(two);
+  assert.equal(JSON.stringify(two), before);
+  // an empty list is the default one
+  assert.deepEqual(addSort([]), [R('recent'), R('az')]);
+  assert.deepEqual(turnSort(undefined, 0), [R('recent', true)]);
+});
+
+test('every way of sorting has words for both of its ways', () => {
+  for (const { value } of SORT_OPTIONS) {
+    const [first, other] = [sortWay(value), sortWay(value, true)];
+    assert.ok(first && other && first !== other, value);
+  }
+  assert.equal(sortWay('recent'), 'Newest first');
+  assert.equal(sortWay('az', true), 'Z to A');
+  assert.equal(sortWay('nonsense'), 'Newest first', 'an unknown key reads as the default');
 });
 
 test('no overview means no games', () => {

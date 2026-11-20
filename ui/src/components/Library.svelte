@@ -6,6 +6,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   import { openMenu, confirmDialog } from '../lib/ui.svelte.js';
   import { visibleGames, heroFor, headingFor, pickRange, formatSize, sortDirection, STATUSES } from '../lib/library.js';
   import Select from './Select.svelte';
+  import SortMenu from './SortMenu.svelte';
   import Welcome from "./Welcome.svelte";
   import Icon from './Icon.svelte';
   import SaveSlots from './SaveSlots.svelte';
@@ -41,18 +42,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   $effect(() => pinCovers([hero?.path, selected?.path]));
   const sel = $derived(selected ? ov.systems.find((s) => s.id === selected.system) : null);
   const heading = $derived(headingFor(ov, app));
-  /** The sorts offered in the toolbar of the grid; the list sorts by its column headings. */
-  const SORT_OPTIONS = [
-    { value: 'recent', label: 'Recent' },
-    { value: 'az', label: 'A–Z' },
-    { value: 'system', label: 'System' },
-    { value: 'size', label: 'Size' },
-    { value: 'played', label: 'Time played' },
-  ];
   /** The columns of the list that can be sorted: key, heading, and whether the column is right aligned. */
-  /** The main sort (there is always one). */
-  const primary = $derived(app.sorts[0] ?? { key: 'recent', reverse: false });
-  const sortName = (key) => SORT_OPTIONS.find((o) => o.value === key)?.label ?? key;
   const SORT_COLUMNS = [['az', 'Game', ''], ['system', 'System', ''], ['size', 'Size', 'r'], ['recent', 'Last played', ''], ['played', 'Time played', 'r']];
 
   let over = $state(false);
@@ -294,19 +284,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
             <button onclick={() => { autoSelect = false; app.selecting = true; }} title="Choose several games to remove ({modKey}-click or Shift-click a game)">Select</button>
           {/if}
         </div>
-        {#if app.layout !== 'list'}
-          <!-- the list sorts by its column headings; the grid has none, so it sorts from here -->
-          <div class="sort" role="group" aria-label="Sort">
-            Sort:
-            <Select compact bind:value={() => primary.key, (k) => (app.sorts = [{ key: k, reverse: false }])} options={SORT_OPTIONS} ariaLabel="Sort by" />
-            <button type="button" class="dir" onclick={() => setSort(primary.key)} aria-label="Reverse the order" title={sortDirection(primary.key, primary.reverse) === 'desc' ? 'Biggest, newest or last first: click to turn it round' : 'A to Z or smallest first: click to turn it round'}>
-              <svg class="arrow" class:up={sortDirection(primary.key, primary.reverse) === 'asc'} viewBox="0 0 10 10" width="11" height="11" aria-hidden="true"><path d="M5 1.6v6.8M2.2 5.8L5 8.6l2.8-2.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
-            </button>
-            {#if app.sorts.length > 1}
-              <span class="more" title="Then by {app.sorts.slice(1).map((x) => sortName(x.key)).join(', ')}">+{app.sorts.length - 1}</span>
-            {/if}
-          </div>
-        {/if}
+        <SortMenu />
         <div class="layout" role="radiogroup" aria-label="View">
           <button role="radio" aria-checked={app.layout === 'grid'} class:on={app.layout === 'grid'} onclick={() => setLayout('grid')} title="Grid" aria-label="Grid view">
             <svg viewBox="0 0 16 16" width="15" height="15"><rect x="2" y="2" width="5" height="5" rx="1.2" fill="currentColor" /><rect x="9" y="2" width="5" height="5" rx="1.2" fill="currentColor" /><rect x="2" y="9" width="5" height="5" rx="1.2" fill="currentColor" /><rect x="9" y="9" width="5" height="5" rx="1.2" fill="currentColor" /></svg>
@@ -523,10 +501,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   .bar h3 { flex: none; white-space: nowrap; }
   .bar h3 { font-size: 15px; }
   .bar h3 small { color: var(--faint); font: 12px var(--font-body); margin-left: 6px; }
-  .sort { color: var(--muted); display: flex; gap: 4px; align-items: center; }
   .sort { flex: none; gap: 6px; }
-  .dir { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; background: none; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); }
-  .dir:hover { color: var(--text); border-color: var(--faint); }
   /* the arrow says which way: down is the biggest, the newest and the most played first, up is A to Z */
   .arrow { flex: none; transition: transform .15s; }
   .arrow.up { transform: rotate(180deg); }
@@ -552,7 +527,6 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   .hlabel .rank { display: inline-block; vertical-align: 1px; margin-left: 4px; }
   /* the place of a sort among several: 1 is the main one */
   .rank { flex: none; min-width: 13px; padding: 1px 3px; border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 7px; font-size: 9px; line-height: 1.1; text-align: center; letter-spacing: 0; }
-  .more { flex: none; padding: 2px 6px; border: 1px solid var(--border); border-radius: 7px; color: var(--muted); font-size: 11px; cursor: default; }
   .hsort:hover { color: var(--text); }
   .hsort.on { color: var(--accent); }
   .hsort:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }

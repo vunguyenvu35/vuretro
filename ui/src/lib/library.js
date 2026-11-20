@@ -40,6 +40,64 @@ export function nextSorts(sorts, key, { add = false } = {}) {
   return i === 0 ? turned(0, false) : now.filter((_, k) => k !== i);
 }
 
+/** The sorts to choose from, in the order they are offered. */
+export const SORT_OPTIONS = [
+  { value: 'recent', label: 'Recent' },
+  { value: 'az', label: 'A–Z' },
+  { value: 'system', label: 'System' },
+  { value: 'size', label: 'Size' },
+  { value: 'played', label: 'Time played' },
+];
+
+/** What each way of a sort is called in words: the way it goes when first chosen, then the other. */
+const SORT_WAYS = {
+  recent: ['Newest first', 'Oldest first'],
+  az: ['A to Z', 'Z to A'],
+  system: ['A to Z', 'Z to A'],
+  size: ['Largest first', 'Smallest first'],
+  played: ['Most played first', 'Least played first'],
+};
+export const sortWay = (key, reverse = false) => (SORT_WAYS[key] ?? SORT_WAYS.recent)[reverse ? 1 : 0];
+
+// The changes the sort menu makes to the list of sorts. Each gives a new list and leaves the old one.
+const orDefault = (sorts) => (sorts?.length ? sorts : DEFAULT_SORTS);
+
+/** Sort number `i` is by `key` now (going its first way). If another sort was by `key`, that one goes. */
+export function changeSortKey(sorts, i, key) {
+  const now = orDefault(sorts);
+  if (!SORT_KEYS[key] || i < 0 || i >= now.length) return now;
+  return now.map((s, j) => (j === i ? { key, reverse: false } : s)).filter((s, j) => j === i || s.key !== key);
+}
+
+/** Sort number `i` goes the other way. */
+export function turnSort(sorts, i) {
+  const now = orDefault(sorts);
+  return now.map((s, j) => (j === i ? { ...s, reverse: !s.reverse } : s));
+}
+
+/** Sort number `i` goes. The last one cannot: the games have to be in some order. */
+export function removeSort(sorts, i) {
+  const now = orDefault(sorts);
+  return now.length > 1 ? now.filter((_, j) => j !== i) : now;
+}
+
+/** Sort number `i` moves `by` places up (negative) or down; it stops at the ends. */
+export function moveSort(sorts, i, by) {
+  const now = orDefault(sorts);
+  const to = i + by;
+  if (i < 0 || i >= now.length || to < 0 || to >= now.length || !by) return now;
+  const out = [...now];
+  [out[i], out[to]] = [out[to], out[i]];
+  return out;
+}
+
+/** A sort by the first key not used yet, after the others; the list as it is when all are used. */
+export function addSort(sorts) {
+  const now = orDefault(sorts);
+  const next = SORT_OPTIONS.find((o) => !now.some((s) => s.key === o.value));
+  return next ? [...now, { key: next.value, reverse: false }] : now;
+}
+
 /** One key's way of telling two games apart: below 0, above 0, or 0 when it cannot. */
 function comparator(key, reverse, system) {
   const k = SORT_KEYS[key] ?? SORT_KEYS.recent;
