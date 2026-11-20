@@ -22,6 +22,38 @@ The first run compiles the Tauri shell (a few minutes), later runs start in seco
 
 (Screenshot with sample data.) The app finds `vuretro-runner` and the cores in `target/` and `cores/bin/` of this checkout; installed builds look next to the executable.
 
+## On another machine
+
+```bash
+git clone git@github.com:vunguyenvu35/vuretro.git && cd vuretro
+make setup    # Rust, a check for Node 20+ and the Xcode Command Line Tools (macOS), and the pre-commit hook
+make cores    # the cores (fbneo, pcsx_rearmed, snes9x, mgba) into cores/bin/
+make dev      # the app; the first run compiles the Tauri shell, a few minutes
+```
+
+`git pull` keeps it current; after one that changes `package-lock.json` or `Cargo.lock`, `make dev` fetches what is new by itself.
+
+What is **not** in the repository, so it has to be brought over by hand if you want it there:
+
+| What | Where | Bring it over |
+|---|---|---|
+| Your games and BIOS files | wherever you keep them; BIOS also in `<data dir>/system/` | copy the folders |
+| The library (favorites, play time, names, covers, saves) | `<data dir>` (see above) | Backup in the app (Settings), then Restore on the other machine |
+| The update signing key | `~/.tauri/vuretro.key` on the machine that made it | only needed to sign a release by hand; see below |
+
+The app does not need the key to run or to be developed. `make dev` works without it, and so does `make app-build` (it then builds the installer without update packages).
+
+## Releasing, and the update key
+
+The app updates itself from the latest GitHub release. Each package is signed; the app only installs a package that matches the public key in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`).
+
+- **The private key** is the repository secret `TAURI_SIGNING_PRIVATE_KEY` (Settings, Secrets and variables, Actions). It has no password, so there is no `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Keep a copy of `~/.tauri/vuretro.key` in a password manager: if it is lost, no update can be signed and every installed copy has to be replaced by hand.
+- **To release:** raise `version` in `package.json` and `src-tauri/tauri.conf.json`, add a section to `CHANGELOG.md`, commit, then `git tag v0.1.8 && git push origin v0.1.8`. The Release workflow builds the installers, signs the update packages and attaches `latest.json` to a **draft** release.
+- **Publish the draft.** The app asks for `releases/latest/download/latest.json`, which only exists for a published release; while it is a draft, every copy answers "latest version".
+- **To change the key:** `npx tauri signer generate -w ~/.tauri/vuretro.key`, put the new public half in `tauri.conf.json` and the new private half in the secret. Copies already installed hold the old public key and refuse updates from the new one, so do this before the first release, or accept that they update by hand once.
+- **To sign on a machine** (no CI): `export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/vuretro.key)"`, then `make app-build`; with the variable set it also writes the signed update packages.
+- Updates need a version **higher** than the installed one, and the first release carrying the updater is the first one that can update (older copies cannot).
+
 ## Runner only (no UI, no ROM)
 
 ```bash

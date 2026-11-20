@@ -59,7 +59,9 @@ dev: toolchain node_modules ## Open the vuretro app (Library UI); builds the run
 app-build: toolchain node_modules ## Build the installable app bundle (release, runner bundled inside)
 	@export PATH="$$HOME/.cargo/bin:$$PATH"; set -e; \
 	  ./scripts/prepare-sidecar.sh; \
-	  npx tauri build --config src-tauri/tauri.bundle.conf.json
+	  extra=""; \
+	  [ -n "$$TAURI_SIGNING_PRIVATE_KEY" ] || extra='--config {"bundle":{"createUpdaterArtifacts":false}}'; \
+	  npx tauri build --config src-tauri/tauri.bundle.conf.json $$extra
 
 node_modules: package.json
 	npm install
