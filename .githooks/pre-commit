@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Stops a commit whose Rust code is not formatted: CI runs `cargo fmt --all --check` first and
+# fails every job on it. Installed by `make hooks` (also run by `make setup`).
+# Skip once, if you must: git commit --no-verify
+set -euo pipefail
+export PATH="$HOME/.cargo/bin:$PATH"
+
+# nothing to check when no Rust file is part of the commit
+if ! git diff --cached --name-only --diff-filter=ACMR | grep -qE '\.rs$'; then
+  exit 0
+fi
+command -v cargo >/dev/null || { echo "pre-commit: cargo not found, format check skipped" >&2; exit 0; }
+
+if ! out=$(cargo fmt --all --check 2>&1); then
+  echo "$out" | grep -E '^Diff in' | sed -E 's/^Diff in (.*):[0-9]+:?$/  \1/' | sort -u | head -20 >&2
+  echo >&2
+  echo "pre-commit: the Rust code above is not formatted (CI would fail on it)." >&2
+  echo "  Fix:  cargo fmt --all   then add the files you are committing again, and commit." >&2
+  echo "        (avoid git add -u / -A when others work in the same folder: they stage everything)" >&2
+  echo "  Skip: git commit --no-verify" >&2
+  exit 1
+fi

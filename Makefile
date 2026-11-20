@@ -34,8 +34,13 @@ ROMS  ?= $(HOME)/Games/roms
 help: ## List available commands
 	@awk 'BEGIN{FS=":.*## "} /^[a-z-]+:.*## /{printf "  \033[33mmake %-12s\033[0m %s\n",$$1,$$2}' $(MAKEFILE_LIST)
 
-setup: ## Install prerequisites on a fresh machine (Rust, checks Node/Xcode CLT)
+setup: ## Install prerequisites on a fresh machine (Rust, checks Node/Xcode CLT) and the git hooks
 	./scripts/setup.sh
+	@$(MAKE) --no-print-directory hooks
+
+hooks: ## Use the git hooks of .githooks/ (stops a commit whose Rust code is not formatted)
+	git config core.hooksPath .githooks
+	@echo "✓ git hooks on: pre-commit runs cargo fmt --all --check (skip once: git commit --no-verify)"
 
 # Auto-runs setup the first time cargo is missing
 toolchain:
