@@ -1,94 +1,94 @@
-# Kế hoạch: chơi hai máy qua LAN (netplay)
+# Plan: playing together on two or more machines (netplay)
 
-Trạng thái: **kế hoạch, chưa có mã**. Bản có sơ đồ vẽ tay: https://claude.ai/artifact/PJMnQXxrTagH6yeijVCFkW (riêng tư). Các sơ đồ dưới đây dùng Mermaid, GitHub tự vẽ khi xem tệp.
+Status: **plan only, no code yet**. A hand-drawn diagram version is here: https://claude.ai/artifact/PJMnQXxrTagH6yeijVCFkW (private). The diagrams below use Mermaid, which GitHub renders when you view the file.
 
-Hai máy trong cùng mạng LAN chơi chung một game, mỗi người một tay cầm hoặc bàn phím. Mỗi máy tự chạy game; chỉ phím bấm đi qua mạng. Khi đoán sai phím của đối phương thì nạp lại trạng thái cũ và chạy lại vài khung hình (rollback).
+Two machines on the same LAN play the same game, each player with their own pad or keyboard. Each machine runs the game itself and only the button presses cross the network. When the guess about the other player's buttons turns out wrong, the machine loads an older state and re-runs a few frames (rollback).
 
-## Mục lục
+## Contents
 
-1. [Tóm tắt và quyết định](#1-tóm-tắt-và-quyết-định)
-2. [Bức tranh tổng thể](#2-bức-tranh-tổng-thể)
-3. [Kiến trúc phân lớp](#3-kiến-trúc-phân-lớp)
-4. [Luồng kết nối](#4-luồng-kết-nối)
-5. [Máy trạng thái của phiên](#5-máy-trạng-thái-của-phiên)
-6. [Luồng dữ liệu của một khung hình](#6-luồng-dữ-liệu-của-một-khung-hình)
+1. [Summary and decisions](#1-summary-and-decisions)
+2. [Big picture](#2-big-picture)
+3. [Layered architecture](#3-layered-architecture)
+4. [Connection flow](#4-connection-flow)
+5. [Session state machine](#5-session-state-machine)
+6. [Data flow of one frame](#6-data-flow-of-one-frame)
 7. [Rollback](#7-rollback)
-8. [Tính tất định](#8-tính-tất-định)
-9. [Giao thức](#9-giao-thức)
-10. [Chính sách phím tắt khi chơi mạng](#10-chính-sách-phím-tắt-khi-chơi-mạng)
-11. [Kế hoạch từng bước](#11-kế-hoạch-từng-bước)
-12. [Chiến lược kiểm thử](#12-chiến-lược-kiểm-thử)
-13. [Rủi ro](#13-rủi-ro)
-14. [Phương án đã cân nhắc](#14-phương-án-đã-cân-nhắc)
-15. [Cần quyết định](#15-cần-quyết-định)
-16. [Phòng 2 đến 4 máy](#16-phòng-2-đến-4-máy)
-17. [Internet và lớp truyền dữ liệu](#17-internet-và-lớp-truyền-dữ-liệu)
-18. [Tình trạng các dự án tham khảo](#18-tình-trạng-các-dự-án-tham-khảo)
+8. [Determinism](#8-determinism)
+9. [Protocol](#9-protocol)
+10. [Hotkey policy during network play](#10-hotkey-policy-during-network-play)
+11. [Step-by-step plan](#11-step-by-step-plan)
+12. [Test strategy](#12-test-strategy)
+13. [Risks](#13-risks)
+14. [Alternatives considered](#14-alternatives-considered)
+15. [Decisions needed](#15-decisions-needed)
+16. [Rooms of 2 to 4 machines](#16-rooms-of-2-to-4-machines)
+17. [Internet and the transport layer](#17-internet-and-the-transport-layer)
+18. [Status of reference projects](#18-status-of-reference-projects)
 
-## 1. Tóm tắt và quyết định
+## 1. Summary and decisions
 
 | | |
 |---|---|
-| **Cách làm** | Rollback netplay (kiểu GGPO). Hai máy chạy cùng game từ cùng một trạng thái đầu; mỗi khung gửi phím của mình và đoán phím đối phương bằng phím cũ; phím thật đến khác dự đoán thì nạp lại và chạy lại. |
-| **Thư viện** | [`ggrs`](https://crates.io/crates/ggrs) 0.13.0 (MIT hoặc Apache-2.0, cập nhật 06/2026). |
-| **Dữ liệu qua mạng** | 2 byte mỗi người mỗi khung (16 nút joypad libretro); với 60 khung/giây và gửi lại các phím chưa được xác nhận chỉ vài KB/giây. |
-| **Đo trên máy này** | Trạng thái FBNeo (Neo Geo) khoảng 415 KB; core chạy 1174 khung/giây ở bản debug, nên chạy lại 8 khung mất khoảng 7 ms (một khung là 16,7 ms). |
-| **Độ trễ phím** | 1 đến 2 khung trên LAN (ping dưới 2 ms), gần như không có rollback. |
-| **Mục tiêu dài hạn** | Một **phòng** có 2 đến 4 máy cùng chơi một game, trên LAN và trên Internet (xem [mục 16](#16-phòng-2-đến-4-máy) và [mục 17](#17-internet-và-lớp-truyền-dữ-liệu)). |
-| **Phạm vi v1** | Phòng 2 người, LAN, các core 2D mà kiểm tra tính tất định đạt (dự kiến Neo Geo, SNES, NES, Genesis, GBA). Thiết kế đã chừa chỗ cho 4 người và Internet. |
-| **Ngoài phạm vi v1** | Internet và xuyên NAT, 3 đến 4 người (làm ở giai đoạn P6, P7), khán giả, vào giữa chừng, hệ 3D và PS1, tạm dừng, tua lại, tua nhanh và nạp state trong lúc chơi mạng. |
-| **Ước lượng** | Khoảng 16 ngày công cho một developer (dự đoán, chưa kiểm chứng). |
+| **Approach** | Rollback netplay (GGPO style). Both machines run the same game from the same starting state. Every frame each machine sends its own buttons and guesses the other player's buttons by repeating their last ones. When the real buttons arrive and differ from the guess, the machine loads the saved state and re-runs the frames. |
+| **Library** | [`ggrs`](https://crates.io/crates/ggrs) 0.13.0 (MIT or Apache-2.0, updated 06/2026). See [section 18](#18-status-of-reference-projects): a later lookup only found 0.12.0, so confirm on crates.io. |
+| **Data on the wire** | 2 bytes per player per frame (the 16 libretro joypad buttons). At 60 frames per second, including re-sending buttons that are not yet acknowledged, that is a few KB per second. |
+| **Measured on this machine** | An FBNeo (Neo Geo) state is about 415 KB. The core runs 1174 frames per second in a debug build, so re-running 8 frames takes about 7 ms (one frame is 16.7 ms). |
+| **Input delay** | 1 to 2 frames on a LAN (ping under 2 ms), with almost no rollbacks. |
+| **Long-term goal** | A **room** of 2 to 4 machines playing one game, on a LAN and over the Internet (see [section 16](#16-rooms-of-2-to-4-machines) and [section 17](#17-internet-and-the-transport-layer)). |
+| **Scope of v1** | A 2-player room on a LAN, for 2D cores that pass the determinism check (expected: Neo Geo, SNES, NES, Genesis, GBA). The design leaves room for 4 players and the Internet. |
+| **Out of scope for v1** | Internet and NAT traversal, 3 to 4 players (phases P6 and P7), spectators, joining mid-game, 3D systems and PS1, and pause, rewind, fast-forward and loading a state during network play. |
+| **Estimate** | About 16 working days for one developer (a guess, not verified). |
 
-## 2. Bức tranh tổng thể
+## 2. Big picture
 
-Mỗi máy có hai tiến trình: ứng dụng Vuretro (giao diện) và `vuretro-runner` chạy game. Ba đường đi qua mạng, mỗi đường một nhiệm vụ.
+Each machine runs two processes: the Vuretro app (the UI) and `vuretro-runner`, which runs the game. Three paths cross the network, each with one job.
 
 ```mermaid
 flowchart LR
-  subgraph HOST["Máy chủ phòng (Host)"]
+  subgraph HOST["Room host (Host)"]
     direction TB
-    HA["Vuretro (app Tauri)<br/>mở phòng, hiện IP và PIN"]
+    HA["Vuretro (Tauri app)<br/>opens the room, shows IP and PIN"]
     subgraph HR["vuretro-runner"]
       direction TB
-      HS["Session<br/>vòng lặp khung hình"]
-      HN["NetSession (mới)<br/>ggrs: đoán phím, lưu và nạp state"]
+      HS["Session<br/>frame loop"]
+      HN["NetSession (new)<br/>ggrs: guess buttons, save and load state"]
       HC["libretro core"]
       HS --> HN --> HC
     end
-    HD["Bàn phím, tay cầm<br/>người chơi 1"]
-    HO["Cửa sổ, loa"]
+    HD["Keyboard, pad<br/>player 1"]
+    HO["Window, speakers"]
     HA -->|"spawn --netplay-host"| HR
     HD --> HR
     HR --> HO
   end
 
-  subgraph GUEST["Máy khách (Guest)"]
+  subgraph GUEST["Guest machine (Guest)"]
     direction TB
-    GA["Vuretro (app Tauri)<br/>tìm phòng, nhập PIN"]
+    GA["Vuretro (Tauri app)<br/>finds rooms, enters PIN"]
     subgraph GR["vuretro-runner"]
       direction TB
       GS["Session"]
-      GN["NetSession (mới)<br/>ggrs"]
-      GC["libretro core<br/>cùng bản, cùng ROM"]
+      GN["NetSession (new)<br/>ggrs"]
+      GC["libretro core<br/>same build, same ROM"]
       GS --> GN --> GC
     end
-    GD["Bàn phím, tay cầm<br/>người chơi 2"]
-    GO["Cửa sổ, loa"]
+    GD["Keyboard, pad<br/>player 2"]
+    GO["Window, speakers"]
     GA -->|"spawn --netplay-join"| GR
     GD --> GR
     GR --> GO
   end
 
-  HN <-->|"TCP 7845: bắt tay, state đầu, Ready, Bye"| GN
-  HN <-.->|"UDP 7846: phím từng khung (ggrs)"| GN
-  HN -.->|"UDP 7847: broadcast tìm phòng, mỗi giây"| GA
+  HN <-->|"TCP 7845: handshake, initial state, Ready, Bye"| GN
+  HN <-.->|"UDP 7846: per-frame buttons (ggrs)"| GN
+  HN -.->|"UDP 7847: broadcast room discovery, every second"| GA
 ```
 
-Mỗi máy chạy game riêng. Chỉ phím bấm đi qua mạng; hình và tiếng không bao giờ rời máy.
+Each machine runs its own copy of the game. Only button presses cross the network. Video and audio never leave the machine.
 
-## 3. Kiến trúc phân lớp
+## 3. Layered architecture
 
-Giữ đúng quy tắc của dự án: luật và use case nằm trong `vuretro-core` sau các port, adapter ở `vuretro-library`, giao tiếp mạng và rollback nằm trong một crate mới để kiểm thử độc lập. `vuretro-core` **không** phụ thuộc `ggrs` hay socket (test kiến trúc hiện có giữ nguyên).
+This follows the project's existing rules: rules and use cases live in `vuretro-core` behind ports, adapters live in `vuretro-library`, and networking and rollback live in a new crate so they can be tested on their own. `vuretro-core` does **not** depend on `ggrs` or on sockets (the existing architecture test stays as it is).
 
 ```mermaid
 flowchart TB
@@ -96,13 +96,13 @@ flowchart TB
   classDef chg fill:#b86e0033,stroke:#b86e00,color:#111
   classDef old fill:#ffffff,stroke:#8f9bb4,stroke-dasharray:4 3,color:#111
 
-  UI["UI (Svelte)<br/>PlayOverLan.svelte (mới)<br/>Library.svelte, menu Help (sửa)"]:::new
-  SHELL["Vỏ ứng dụng (src-tauri)<br/>lan_addresses, lan_find_rooms,<br/>lan_host, lan_join (mới)"]:::new
-  CORE["Lõi (vuretro-core, thuần)<br/>NetplayRoom, NetRole, port LanDiscovery,<br/>use case host_room, find_rooms, join_room (mới)<br/>LaunchSpec.net (sửa)"]:::chg
-  LIB["Adapter (vuretro-library)<br/>UdpLanDiscovery, liệt kê IP (mới)<br/>ProcessLauncher: --netplay-* (sửa)"]:::chg
-  RUN["vuretro-runner<br/>net.rs (mới)<br/>session.rs, frontend.rs, input.rs (sửa)"]:::chg
-  NP["vuretro-netplay (crate mới)<br/>proto, compat, input, driver, discovery"]:::new
-  GGRS["ggrs 0.13 (bên ngoài)"]:::old
+  UI["UI (Svelte)<br/>PlayOverLan.svelte (new)<br/>Library.svelte, Help menu (changed)"]:::new
+  SHELL["App shell (src-tauri)<br/>lan_addresses, lan_find_rooms,<br/>lan_host, lan_join (new)"]:::new
+  CORE["Core (vuretro-core, pure)<br/>NetplayRoom, NetRole, LanDiscovery port,<br/>use cases host_room, find_rooms, join_room (new)<br/>LaunchSpec.net (changed)"]:::chg
+  LIB["Adapters (vuretro-library)<br/>UdpLanDiscovery, IP listing (new)<br/>ProcessLauncher: --netplay-* (changed)"]:::chg
+  RUN["vuretro-runner<br/>net.rs (new)<br/>session.rs, frontend.rs, input.rs (changed)"]:::chg
+  NP["vuretro-netplay (new crate)<br/>proto, compat, input, driver, discovery"]:::new
+  GGRS["ggrs 0.13 (external)"]:::old
   LC["libretro core"]:::old
 
   UI --> SHELL --> CORE --> LIB
@@ -111,173 +111,173 @@ flowchart TB
   RUN --> LC
 ```
 
-Chú giải: xanh là mã mới, cam là mã sửa, nét đứt là bên ngoài.
+Legend: green is new code, orange is changed code, dashed is external.
 
-### Các tệp sẽ thêm hoặc sửa
+### Files to add or change
 
-| Tệp | | Việc làm |
+| File | | Work |
 |---|---|---|
-| `crates/netplay/src/proto.rs` | mới | Thông điệp điều khiển (Hello, Accept, Reject, StateOffer, StateChunk, StateAck, Ready, Start, Bye), phiên bản giao thức, mã hoá có tiền tố độ dài. |
-| `crates/netplay/src/compat.rs` | mới | So hai Hello: giao thức, core, phiên bản core, mã băm ROM, mã băm BIOS, mã băm tuỳ chọn core. Trả về lý do đọc được. |
-| `crates/netplay/src/input.rs` | mới | Đổi 16 nút bool sang `u16` và ngược lại; ánh xạ cổng Host = 0, Guest = 1. |
-| `crates/netplay/src/driver.rs` | mới | `trait Sim` (save, load, advance) và `RollbackDriver` bọc ggrs P2P và SyncTest; checksum; sự kiện (đồng bộ, lệch, mất kết nối). |
-| `crates/netplay/src/discovery.rs` | mới | Mã hoá và giải mã gói "VURETRO-LAN/1", bộ lọc gói lạ. |
-| `crates/runner/src/net.rs` | mới | Cầu nối: cài `Sim` cho core, bắt tay TCP, truyền state đầu, điều khiển vòng lặp rollback, tắt hình và tiếng khi chạy lại. |
-| `crates/runner/src/session.rs` | sửa | `run_core()` rẽ nhánh sang `net.step()`; bộ lọc hành động bị cấm khi chơi mạng. |
-| `crates/runner/src/frontend.rs` | sửa | Cờ `resim`: khi bật thì `audio_batch_cb` bỏ âm thanh và `video_cb` không đổi định dạng hình. |
-| `crates/runner/src/input.rs` | sửa | Tách `local_mask()` (sau macro và auto-coin) để gửi đi; nhận mask từ mạng và ghi vào `fe.buttons` trước mỗi lần `run()`. |
-| `crates/core/src/{ports,service,model}.rs` | sửa | `LaunchSpec.net`, port `LanDiscovery`, model `NetplayRoom`, use case `host_room`, `find_rooms`, `join_room` có test với bản giả. |
-| `crates/library/src/adapters/…` | mới | `UdpLanDiscovery`, liệt kê IP cục bộ, tham số dòng lệnh trong `ProcessLauncher`. |
-| `src-tauri/src/commands/lan.rs`, `ui/…/PlayOverLan.svelte` | mới | Bốn lệnh Tauri và hộp thoại Host, Join; thông báo lỗi dễ hiểu. |
+| `crates/netplay/src/proto.rs` | new | Control messages (Hello, Accept, Reject, StateOffer, StateChunk, StateAck, Ready, Start, Bye), protocol version, length-prefixed encoding. |
+| `crates/netplay/src/compat.rs` | new | Compare two Hellos: protocol, core, core version, ROM hash, BIOS hash, core-options hash. Returns a human-readable reason. |
+| `crates/netplay/src/input.rs` | new | Convert the 16 button bools to `u16` and back. Port mapping: Host = 0, Guest = 1. |
+| `crates/netplay/src/driver.rs` | new | `trait Sim` (save, load, advance) and `RollbackDriver` wrapping ggrs P2P and SyncTest. Checksums. Events (synchronized, desynced, disconnected). |
+| `crates/netplay/src/discovery.rs` | new | Encode and decode the "VURETRO-LAN/1" packet, filter for stray packets. |
+| `crates/runner/src/net.rs` | new | Bridge: implements `Sim` for the core, TCP handshake, initial state transfer, drives the rollback loop, mutes video and audio while re-running. |
+| `crates/runner/src/session.rs` | changed | `run_core()` branches to `net.step()`. Filter for actions that are forbidden during network play. |
+| `crates/runner/src/frontend.rs` | changed | `resim` flag: when set, `audio_batch_cb` drops audio and `video_cb` does not change the picture format. |
+| `crates/runner/src/input.rs` | changed | Split out `local_mask()` (after macros and auto-coin) to send. Receive masks from the network and write them into `fe.buttons` before each `run()`. |
+| `crates/core/src/{ports,service,model}.rs` | changed | `LaunchSpec.net`, `LanDiscovery` port, `NetplayRoom` model, use cases `host_room`, `find_rooms`, `join_room` with tests against fakes. |
+| `crates/library/src/adapters/…` | new | `UdpLanDiscovery`, local IP listing, command-line arguments in `ProcessLauncher`. |
+| `src-tauri/src/commands/lan.rs`, `ui/…/PlayOverLan.svelte` | new | Four Tauri commands and the Host and Join dialogs, with clear error messages. |
 
-## 4. Luồng kết nối
+## 4. Connection flow
 
-TCP lo mọi thứ cần chắc chắn (bắt tay, state đầu); UDP lo dữ liệu từng khung hình.
+TCP carries everything that must be reliable (handshake, initial state). UDP carries the per-frame data.
 
 ```mermaid
 sequenceDiagram
   autonumber
-  participant HA as App của Host
-  participant HR as Runner của Host
-  participant GR as Runner của Guest
-  participant GA as App của Guest
+  participant HA as Host app
+  participant HR as Host runner
+  participant GR as Guest runner
+  participant GA as Guest app
 
   rect rgb(184,110,0,0.08)
-  Note over HA,HR: A. Mở phòng
+  Note over HA,HR: A. Open the room
   HA->>HR: spawn --netplay-host --pin 4821
-  Note over HR: mở TCP 7845 và UDP 7846, nạp game, chờ người vào
+  Note over HR: open TCP 7845 and UDP 7846, load the game, wait for a player
   end
 
   rect rgb(10,127,191,0.08)
-  Note over HR,GA: B. Tìm và tham gia
-  HR-->>GA: UDP broadcast mỗi giây: game, system, tcp_port, tên máy, cần PIN
-  Note over GA: hiện danh sách phòng, người dùng chọn và nhập PIN
+  Note over HR,GA: B. Find and join
+  HR-->>GA: UDP broadcast every second: game, system, tcp_port, machine name, PIN needed
+  Note over GA: show the room list, the user picks one and enters the PIN
   GA->>GR: spawn --netplay-join IP:7845 --pin
   end
 
   rect rgb(192,36,106,0.08)
-  Note over HR,GR: C. Bắt tay và kiểm tra
-  GR->>HR: TCP connect + Hello (giao thức, core, rom_crc, bios, tuỳ chọn, pin)
-  HR->>GR: Hello của Host
-  Note over HR,GR: mỗi bên chạy compat check: 6 mục khớp và PIN đúng?
-  HR--xGR: nhánh lỗi: Reject (mã, lý do), app hiện lý do
+  Note over HR,GR: C. Handshake and checks
+  GR->>HR: TCP connect + Hello (protocol, core, rom_crc, bios, options, pin)
+  HR->>GR: Host Hello
+  Note over HR,GR: each side runs the compat check: do all 6 items match and is the PIN right?
+  HR--xGR: error branch: Reject (code, reason), the app shows the reason
   end
 
   rect rgb(31,138,82,0.08)
-  Note over HR,GR: D. Đồng bộ trạng thái đầu
-  Note over HR: chạy 1 khung, save_state (khoảng 415 KB với FBNeo)
-  HR->>GR: StateOffer (kích thước, crc) rồi StateChunk x N (64 KB)
-  GR->>HR: StateAck (crc khớp)
+  Note over HR,GR: D. Sync the initial state
+  Note over HR: run 1 frame, save_state (about 415 KB with FBNeo)
+  HR->>GR: StateOffer (size, crc) then StateChunk x N (64 KB each)
+  GR->>HR: StateAck (crc matches)
   Note over GR: load_state
   end
 
   rect rgb(120,120,120,0.08)
-  Note over HR,GR: E. Bắt đầu
-  HR<<->>GR: Ready, rồi Host gửi Start
-  Note over HR,GR: đếm ngược 3 giây trên cả hai máy
-  HR<<->>GR: UDP ggrs: SyncRequest và SyncReply, đến khi Synchronized
+  Note over HR,GR: E. Start
+  HR<<->>GR: Ready, then the Host sends Start
+  Note over HR,GR: 3 second countdown on both machines
+  HR<<->>GR: UDP ggrs: SyncRequest and SyncReply until Synchronized
   end
 
-  Note over HR,GR: F. Chơi: mỗi khung gửi phím, ack, checksum. Đoán sai thì rollback, mỗi 60 khung so checksum
-  Note over HR,GR: G. Kết thúc hoặc lỗi: Bye, mất liên lạc quá 5 giây, hoặc checksum lệch thì cả hai dừng và app hiện lý do
+  Note over HR,GR: F. Play: each frame sends buttons, acks and checksums. A wrong guess triggers a rollback, and every 60 frames the checksums are compared
+  Note over HR,GR: G. End or error: Bye, no contact for over 5 seconds, or a checksum mismatch makes both sides stop and the app shows the reason
 ```
 
-App chỉ cần tìm phòng và khởi chạy runner; mọi chuyện mạng còn lại do runner xử lý, nên một lỗi mạng không bao giờ làm sập giao diện.
+The app only has to find rooms and launch the runner. The runner handles everything else on the network, so a network error never crashes the UI.
 
-## 5. Máy trạng thái của phiên
+## 5. Session state machine
 
 ```mermaid
 stateDiagram-v2
   [*] --> Idle
-  Idle --> Listening: Host mở phòng
-  Idle --> Dialing: Guest nối
-  Listening --> Handshake: có kết nối
-  Dialing --> Handshake: nối được
-  Handshake --> StateSync: Hello khớp
-  Handshake --> Rejected: game hoặc PIN lệch
-  StateSync --> Countdown: crc state đúng
-  Countdown --> Running: Start, ggrs đồng bộ xong
-  Running --> Stalled: chờ phím đối phương quá 2 khung
-  Stalled --> Running: phím về lại
-  Running --> Desynced: checksum khác
-  Running --> Disconnected: Bye hoặc mất liên lạc 5 giây
-  Running --> Ended: thoát bình thường
+  Idle --> Listening: Host opens a room
+  Idle --> Dialing: Guest connects
+  Listening --> Handshake: a connection arrives
+  Dialing --> Handshake: connected
+  Handshake --> StateSync: Hello matches
+  Handshake --> Rejected: game or PIN differs
+  StateSync --> Countdown: state crc is correct
+  Countdown --> Running: Start, ggrs synchronized
+  Running --> Stalled: waiting for the other player's buttons for over 2 frames
+  Stalled --> Running: buttons arrive
+  Running --> Desynced: checksums differ
+  Running --> Disconnected: Bye or no contact for 5 seconds
+  Running --> Ended: normal exit
   Rejected --> Ended
   Desynced --> Ended
   Disconnected --> Ended
   Ended --> [*]
 ```
 
-- **Rejected** chỉ xảy ra trước khi chạy game: không bên nào mất dữ liệu.
-- **Stalled** không phải lỗi: ggrs giữ máy nhanh chờ máy chậm, hình đứng một nhịp rồi chạy tiếp.
-- **Desynced** và **Disconnected** dừng cả hai bên. Không cố "chữa" trạng thái lệch, vì như vậy sẽ che lỗi.
-- Người dùng thấy: tiêu đề cửa sổ `LAN · 1 ms · lùi 0/8` (ping, số khung đang rollback); khi Stalled có dòng "chờ đối phương…"; khi kết thúc có hộp thoại kèm lý do và gợi ý (kiểm tra ROM, kiểm tra tường lửa).
+- **Rejected** only happens before the game runs, so nobody loses any data.
+- **Stalled** is not an error: ggrs makes the faster machine wait for the slower one, the picture pauses for a beat and then continues.
+- **Desynced** and **Disconnected** stop both sides. We do not try to "repair" a diverged state, because that would hide the bug.
+- What the user sees: the window title `LAN · 1 ms · back 0/8` (ping, frames currently rolled back). While Stalled there is a "waiting for the other player…" line. At the end a dialog explains the reason and suggests a fix (check the ROM, check the firewall).
 
-## 6. Luồng dữ liệu của một khung hình
+## 6. Data flow of one frame
 
-Chạy 60 lần mỗi giây trên mỗi máy. Các bước ① đến ⑨ là thứ tự thực hiện.
+This runs 60 times a second on each machine. Steps ① to ⑨ are the order of execution.
 
 ```mermaid
 flowchart TD
-  subgraph DEV["Thiết bị và input (sửa)"]
-    A1["① Đọc bàn phím, tay cầm<br/>Input::poll"]
-    A2["② Macro và auto-coin<br/>local_mask() trả về u16"]
+  subgraph DEV["Devices and input (changed)"]
+    A1["① Read keyboard, pad<br/>Input::poll"]
+    A2["② Macros and auto-coin<br/>local_mask() returns a u16"]
     A1 --> A2
   end
-  subgraph NS["NetSession (ggrs, mới)"]
-    B3["③ add_local_input<br/>khung N + độ trễ phím (2)"]
-    B5["⑤ advance_frame()<br/>trả về danh sách yêu cầu"]
-    B9["⑨ Chỉnh nhịp<br/>frames_ahead() lớn thì kéo dài khung kế"]
+  subgraph NS["NetSession (ggrs, new)"]
+    B3["③ add_local_input<br/>frame N + input delay (2)"]
+    B5["⑤ advance_frame()<br/>returns a list of requests"]
+    B9["⑨ Pacing<br/>if frames_ahead() is large, stretch the next frame"]
     B3 --> B5
   end
-  subgraph NET["Mạng"]
-    N4["④ Gói UDP<br/>các phím chưa được xác nhận,<br/>ack, checksum (20 đến 60 byte)"]
+  subgraph NET["Network"]
+    N4["④ UDP packet<br/>unacknowledged buttons,<br/>acks, checksum (20 to 60 bytes)"]
   end
-  subgraph CORE["Core libretro"]
-    C6a["⑥ SaveGameState<br/>save_state() và checksum (415 KB)"]
-    C6b["⑥ LoadGameState<br/>load_state(bytes) khi rollback"]
-    C6c["⑥ AdvanceFrame(inputs)<br/>ghi 2 mask vào fe.buttons rồi core.run()"]
-    C7["⑦ video_cb, audio_cb<br/>khung chạy lại: bỏ hình và tiếng (cờ resim)<br/>khung cuối: giữ lại"]
+  subgraph CORE["libretro core"]
+    C6a["⑥ SaveGameState<br/>save_state() and checksum (415 KB)"]
+    C6b["⑥ LoadGameState<br/>load_state(bytes) on rollback"]
+    C6c["⑥ AdvanceFrame(inputs)<br/>write 2 masks into fe.buttons, then core.run()"]
+    C7["⑦ video_cb, audio_cb<br/>re-run frames: drop video and audio (resim flag)<br/>last frame: keep"]
     C6c --> C7
   end
-  subgraph OUT["Màn hình và loa (sửa)"]
-    D8["⑧ Hiển thị khung cuối<br/>hình qua Scale2x, CRT, LCD, tiếng vào hàng đợi"]
+  subgraph OUT["Screen and speakers (changed)"]
+    D8["⑧ Show the last frame<br/>picture through Scale2x, CRT, LCD, audio into the queue"]
   end
 
   A2 -->|"u16"| B3
-  B3 -->|"gửi phím của mình"| N4
-  N4 -->|"phím của đối phương"| B5
+  B3 -->|"send my buttons"| N4
+  N4 -->|"the other player's buttons"| B5
   B5 --> C6a
   B5 --> C6b
   B5 --> C6c
   C7 --> D8
   D8 --> B9
-  B9 -.->|"sang khung kế tiếp"| A1
+  B9 -.->|"next frame"| A1
 ```
 
-Khi không có rollback: một lần `AdvanceFrame` mỗi khung. Khi có rollback: một `LoadGameState`, rồi nhiều `AdvanceFrame` liên tiếp; người chơi chỉ thấy khung cuối cùng.
+Without a rollback there is one `AdvanceFrame` per frame. With a rollback there is one `LoadGameState` followed by several `AdvanceFrame` calls in a row, and the player only sees the final frame.
 
-### Vòng lặp, viết ra mã giả
+### The loop as pseudo-code
 
 ```rust
-// NetSession::step(): gọi một lần mỗi khung, thay cho phần chạy core thường
-let mask = input.local_mask();                 // ①② phím cục bộ, sau macro và auto-coin (u16)
-session.add_local_input(local_handle, mask)?;  // ③ ggrs nhớ phím cho khung N + delay
-session.poll_remote_clients();                 // ④ nhận và gửi UDP
+// NetSession::step(): called once per frame, replaces the normal core run
+let mask = input.local_mask();                 // ①② local buttons, after macros and auto-coin (u16)
+session.add_local_input(local_handle, mask)?;  // ③ ggrs remembers the buttons for frame N + delay
+session.poll_remote_clients();                 // ④ receive and send UDP
 
 for request in session.advance_frame()? {      // ⑤
     match request {
         SaveGameState { cell, frame } => {
-            let bytes = emu.save_state()?;     // ⑥ dùng lại bộ đệm, không cấp phát mỗi khung
+            let bytes = emu.save_state()?;     // ⑥ reuse the buffer, no allocation per frame
             cell.save(frame, Some(bytes), Some(checksum(&bytes)));
         }
         LoadGameState { cell, .. } => {
-            fe.resim = true;                   // bắt đầu mô phỏng lại: tắt hình, tắt tiếng
+            fe.resim = true;                   // start re-simulating: mute video and audio
             emu.load_state(&cell.load())?;
         }
         AdvanceFrame { inputs } => {
-            fe.buttons = to_buttons(inputs);   // [u16; 2] thành bool[2][16], cổng 0 và 1
-            emu.run();                         // ⑦ video_cb, audio_cb chạy bên trong
+            fe.buttons = to_buttons(inputs);   // [u16; 2] becomes bool[2][16], ports 0 and 1
+            emu.run();                         // ⑦ video_cb, audio_cb run inside
         }
     }
 }
@@ -288,246 +288,247 @@ pace(frames_ahead_adjusted_frame_time());      // ⑨
 
 ## 7. Rollback
 
-Ví dụ: Guest bấm nút ở khung 101 nhưng gói tin đến Host trễ vài khung.
+Example: the Guest presses a button on frame 101, but the packet reaches the Host a few frames late.
 
 ```mermaid
 flowchart LR
-  subgraph T1["Host mô phỏng lần 1 (đoán phím Guest = phím cũ)"]
+  subgraph T1["Host's first simulation (guess: Guest buttons = their last buttons)"]
     direction LR
-    F100["100<br/>phím thật"] --> F101["101<br/>đoán"] --> F102["102<br/>đoán"] --> F103["103<br/>đoán"]
+    F100["100<br/>real buttons"] --> F101["101<br/>guessed"] --> F102["102<br/>guessed"] --> F103["103<br/>guessed"]
   end
-  EV{{"Sau khung 103 nhận phím thật của khung 101<br/>KHÁC dự đoán"}}
-  subgraph T2["Sau khi phát hiện: nạp state khung 101 và chạy lại"]
+  EV{{"After frame 103 the real buttons for frame 101 arrive<br/>and DIFFER from the guess"}}
+  subgraph T2["After detecting it: load the state of frame 101 and re-run"]
     direction LR
-    R101["101<br/>phím thật"] --> R102["102<br/>phím thật"] --> R103["103<br/>phím thật"] --> R104["104<br/>bình thường"]
+    R101["101<br/>real buttons"] --> R102["102<br/>real buttons"] --> R103["103<br/>real buttons"] --> R104["104<br/>normal"]
   end
   F103 --> EV
   EV -->|"LoadGameState(101)"| R101
 ```
 
-- Ba khung chạy lại trong cùng một nhịp 16,7 ms, tốn khoảng 3 × 0,9 ms.
-- Khung 101 đến 103 đã hiển thị theo dự đoán, không bị vẽ lại; sai lệch (nhân vật chưa nhảy ngay) được sửa ở khung 104.
-- Dự đoán tối đa 8 khung; quá giới hạn này ggrs dừng máy nhanh (Stalled). Trên LAN gần như không bao giờ chạm tới.
-- Độ trễ phím 1 đến 2 khung giúp phần lớn phím của đối phương đến kịp, nên không phải rollback. Cho phép chỉnh trong cài đặt.
-- Chi phí: 60 lần lưu mỗi giây với state 415 KB là khoảng 25 MB/giây sao chép bộ nhớ, nhẹ. PS1 (khoảng 4 MB) nặng gấp 10 lần, chưa đưa vào v1.
+- Three re-run frames fit inside one 16.7 ms beat and cost about 3 × 0.9 ms.
+- Frames 101 to 103 were already shown using the guess and are not redrawn. The difference (the character did not jump right away) is corrected from frame 104.
+- Prediction is limited to 8 frames. Beyond that ggrs stops the faster machine (Stalled). On a LAN this is almost never reached.
+- An input delay of 1 to 2 frames lets most of the other player's buttons arrive in time, so no rollback is needed. It can be adjusted in settings.
+- Cost: saving 60 times a second with a 415 KB state is about 25 MB per second of memory copying, which is light. PS1 (about 4 MB) is 10 times heavier and is not part of v1.
 
-## 8. Tính tất định
+## 8. Determinism
 
-Rollback chỉ đúng khi cùng trạng thái đầu và cùng phím thì luôn ra cùng kết quả trên cả hai máy. Đây là rủi ro lớn nhất của dự án, nên bước đầu tiên là **đo**, không phải phỏng đoán.
+Rollback is only correct if the same starting state and the same buttons always give the same result on both machines. This is the project's biggest risk, so the first step is to **measure**, not to assume.
 
-Hai máy phải giống nhau về:
+The two machines must match on:
 
-1. Bản core (mã băm tệp thư viện) và phiên bản.
-2. ROM (CRC32 và kích thước).
-3. BIOS dùng chung, ví dụ `neogeo.zip` (mã băm).
-4. Tuỳ chọn core ảnh hưởng mô phỏng, ví dụ `fbneo-neogeo-mode` (mã băm tập tuỳ chọn).
-5. Trạng thái đầu: Host gửi state ở khung 0 để cả SRAM, đồng hồ thời gian thực và bộ sinh số ngẫu nhiên của game giống nhau.
-6. Không có cheat, không tua nhanh, không nạp state trong lúc chơi.
+1. Core build (hash of the library file) and version.
+2. ROM (CRC32 and size).
+3. Shared BIOS, for example `neogeo.zip` (hash).
+4. Core options that affect emulation, for example `fbneo-neogeo-mode` (hash of the options set).
+5. Starting state: the Host sends the state at frame 0 so the game's SRAM, real-time clock and random number generator are identical on both sides.
+6. No cheats, no fast-forward, no loading a state while playing.
 
-**Công cụ đo ở bước P0**: `vuretro-runner --determinism-check` chạy một game với chuỗi phím giả cố định (bộ sinh số có hạt giống), qua hai kiểm tra:
+**The measuring tool in step P0**: `vuretro-runner --determinism-check` runs a game with a fixed fake button sequence (a seeded random generator) and performs two checks:
 
-- **Nạp lại:** lưu state ở khung k, chạy tới khung 600, nạp lại state, chạy lại. Hai lần phải cho cùng mã băm hình, tiếng và state ở mọi khung.
-- **Hai tiến trình:** chạy hai tiến trình độc lập từ cùng điều kiện đầu, so mã băm ở mỗi khung.
+- **Reload:** save a state at frame k, run to frame 600, load the state again and re-run. Both runs must give the same video, audio and state hashes on every frame.
+- **Two processes:** run two independent processes from the same starting conditions and compare hashes on every frame.
 
-Kết quả là bảng "core × ROM: đạt hoặc lệch". Chỉ cặp đạt mới được bật netplay.
+The result is a "core × ROM: pass or mismatch" table. Only passing pairs may enable netplay.
 
-| Hệ máy, core | Dự đoán ban đầu | Lý do và điều cần kiểm tra |
+| System, core | Initial expectation | Reason and what to check |
 |---|---|---|
-| Neo Geo, arcade: FBNeo | Phù hợp | State đầy đủ (415 KB đã đo). Cần kiểm tra chế độ BIOS và các DIP switch phải giống nhau. |
-| SNES: snes9x | Phù hợp | Core cổ điển, tất định. Cẩn thận với tuỳ chọn tăng tốc như bỏ giới hạn sprite. |
-| NES: fceumm; Genesis, SMS: Genesis Plus GX; PC Engine | Phù hợp | Nhẹ, state nhỏ. Kiểm tra bằng công cụ P0 cho từng core. |
-| Game Boy Advance: mGBA | Cần kiểm tra | Một số game đọc đồng hồ thật (RTC): phải truyền trong state đầu hoặc cố định thời gian. Cáp link chưa mô phỏng. |
-| PlayStation: PCSX ReARMed | Để sau | State khoảng 4 MB, lưu mỗi khung tốn gấp 10 lần. Cần đo trước khi quyết định. |
-| Arcade: MAME 2003-Plus, MAME mới | Cần kiểm tra | Một số game dùng nhiều luồng hoặc bộ đếm thời gian thực. |
-| Hệ 3D (N64, PSP, GameCube, PS2, 3DS) | Không | Core đa luồng, dựng hình bằng GPU, state rất lớn. Ngoài phạm vi. |
+| Neo Geo, arcade: FBNeo | Suitable | Full state (415 KB measured). Check that the BIOS mode and DIP switches are the same. |
+| SNES: snes9x | Suitable | Classic, deterministic core. Be careful with speed-up options such as removing the sprite limit. |
+| NES: fceumm. Genesis, SMS: Genesis Plus GX. PC Engine | Suitable | Light, small state. Verify each core with the P0 tool. |
+| Game Boy Advance: mGBA | Needs checking | Some games read the real-time clock (RTC), which must be sent in the initial state or fixed. The link cable is not emulated. |
+| PlayStation: PCSX ReARMed | Later | State is about 4 MB, so saving every frame costs 10 times more. Measure before deciding. |
+| Arcade: MAME 2003-Plus, current MAME | Needs checking | Some games use several threads or real-time counters. |
+| 3D systems (N64, PSP, GameCube, PS2, 3DS) | No | Multi-threaded cores, GPU rendering, very large states. Out of scope. |
 
-## 9. Giao thức
+## 9. Protocol
 
-Điều khiển bằng TCP (tin cậy, có thứ tự), dữ liệu từng khung bằng UDP của ggrs. Thông điệp điều khiển nhỏ nên dùng JSON có tiền tố độ dài (dễ gỡ lỗi); riêng state đầu dùng khối nhị phân.
+Control uses TCP (reliable, ordered). Per-frame data uses ggrs's UDP. Control messages are small, so they use length-prefixed JSON (easy to debug). Only the initial state uses a binary block.
 
-| Cổng | Giao thức | Nội dung | Bên gửi |
+| Port | Protocol | Content | Sender |
 |---|---|---|---|
-| `7845` | TCP | Thông điệp điều khiển, state đầu | cả hai |
-| `7846` | UDP | Gói của ggrs: phím, ack, checksum, đồng bộ | cả hai |
-| `7847` | UDP broadcast | Thông báo phòng "VURETRO-LAN/1" | Host, mỗi giây |
+| `7845` | TCP | Control messages, initial state | both |
+| `7846` | UDP | ggrs packets: buttons, acks, checksums, sync | both |
+| `7847` | UDP broadcast | Room announcement "VURETRO-LAN/1" | Host, every second |
 
-| Thông điệp (TCP) | Trường chính | Mục đích |
+| Message (TCP) | Main fields | Purpose |
 |---|---|---|
-| `Hello` | `proto`, `app`, `core`, `core_hash`, `rom_crc`, `rom_size`, `bios_hash`, `options_hash`, `fps`, `pin` | Mỗi bên khai báo cấu hình để so sánh. |
-| `Accept`, `Reject` | `code`, `reason` (tiếng người đọc được) | Kết quả so sánh; lý do hiện thẳng cho người dùng. |
-| `StateOffer` | `size`, `crc32`, `chunks` | Host báo trước kích thước state đầu. |
-| `StateChunk` | `seq`, bytes (64 KB) | Chuyển state theo từng khối, có thể báo tiến độ. |
-| `StateAck` | `crc_ok` | Guest xác nhận đã nạp đúng. |
-| `Ready`, `Start` | `countdown_ms` | Cả hai sẵn sàng thì Host cho chạy; ggrs tự đồng bộ nhịp ở pha UDP. |
-| `Bye` | `reason` | Thoát có chủ ý, để bên kia hiện lời nhắn đúng. |
+| `Hello` | `proto`, `app`, `core`, `core_hash`, `rom_crc`, `rom_size`, `bios_hash`, `options_hash`, `fps`, `pin` | Each side declares its configuration for comparison. |
+| `Accept`, `Reject` | `code`, `reason` (human-readable) | Result of the comparison. The reason is shown to the user directly. |
+| `StateOffer` | `size`, `crc32`, `chunks` | The Host announces the size of the initial state. |
+| `StateChunk` | `seq`, bytes (64 KB) | Transfers the state block by block, and can report progress. |
+| `StateAck` | `crc_ok` | The Guest confirms it loaded the state correctly. |
+| `Ready`, `Start` | `countdown_ms` | When both are ready the Host starts the game. ggrs synchronizes the timing itself in the UDP phase. |
+| `Bye` | `reason` | A deliberate exit, so the other side can show the right message. |
 
-**Bảo mật cho một cổng mở trong LAN**
+**Security for an open port on the LAN**
 
-- PIN 4 chữ số trong Hello; nhận đúng một người chơi, các kết nối sau bị đóng.
-- Mọi gói có giới hạn kích thước; thông điệp không nhận ra bị bỏ.
-- Không bao giờ chạy mã hay mở tệp từ gói tin; chỉ đọc dữ liệu có cấu trúc cố định.
-- Có thể tắt phát hiện phòng và dùng IP nhập tay.
+- A 4-digit PIN in Hello. Exactly one player is accepted and later connections are closed.
+- Every packet has a size limit. Messages that are not recognized are dropped.
+- Never run code or open files from a packet. Only read data with a fixed structure.
+- Room discovery can be turned off in favor of typing the IP by hand.
 
-**Thực tế trên từng hệ điều hành**
+**What to expect on each operating system**
 
-- Windows và macOS có thể hỏi quyền tường lửa cho lần đầu mở cổng.
-- macOS 15 trở lên hỏi quyền "Mạng cục bộ" khi ứng dụng nghe broadcast.
-- Một số Wi-Fi cô lập từng thiết bị: broadcast không tới được, nên luôn có ô nhập IP.
+- Windows and macOS may ask for firewall permission the first time a port is opened.
+- macOS 15 and later asks for the "Local Network" permission when an app listens for broadcasts.
+- Some Wi-Fi networks isolate each device. Broadcasts do not arrive there, so there is always an IP entry field.
 
-## 10. Chính sách phím tắt khi chơi mạng
+## 10. Hotkey policy during network play
 
-Quy tắc: thứ gì thay đổi mô phỏng thì bị cấm; thứ chỉ thay đổi cách hiển thị trên máy mình thì được giữ.
+Rule: anything that changes the emulation is forbidden. Anything that only changes how things look on your own machine is kept.
 
-| Tính năng | Khi chơi mạng | Lý do |
+| Feature | During network play | Reason |
 |---|---|---|
-| Tạm dừng, tua nhanh, chuyển động chậm | Tắt | Đổi nhịp mô phỏng của một máy, hai bên lệch ngay. |
-| Rewind, nạp state, tiếp tục chỗ đang dừng | Tắt | Đưa trạng thái về quá khứ chỉ ở một máy. |
-| Cheat, đổi đĩa, reset | Tắt ở v1 | Thay đổi bộ nhớ; có thể làm sau bằng "yêu cầu cả hai bên". |
-| Lưu state (F5) | Được | Chỉ ghi ra tệp, không đổi mô phỏng. |
-| Chụp màn hình, tắt tiếng, đổi cỡ cửa sổ, toàn màn hình | Được | Chỉ ở phía hiển thị của máy mình. |
-| CRT, LCD, Scale2x | Được | Hiệu ứng áp lên hình đã vẽ, không đụng tới core. |
-| Macro và auto-coin | Được | Chạy trước khi tạo mask gửi đi, nên đối phương nhận kết quả cuối cùng. |
-| Thoát game | Kết thúc phiên | Bên kia nhận Bye và thấy lý do. |
+| Pause, fast-forward, slow motion | Off | Changes one machine's emulation pace, so the two sides diverge at once. |
+| Rewind, load state, resume where you stopped | Off | Moves the state into the past on only one machine. |
+| Cheats, disc swap, reset | Off in v1 | They change memory. Could be added later as "ask both sides". |
+| Save state (F5) | Allowed | Only writes to a file, does not change the emulation. |
+| Screenshot, mute, window resize, fullscreen | Allowed | Only affects the display on your own machine. |
+| CRT, LCD, Scale2x | Allowed | Effects applied to the already-drawn picture, never touching the core. |
+| Macros and auto-coin | Allowed | They run before the mask to send is built, so the other side receives the final result. |
+| Quit the game | Ends the session | The other side receives Bye and sees the reason. |
 
-Auto-coin đếm theo số lần poll, mỗi khung một lần, và poll chỉ xảy ra một lần cho mỗi khung thật (không lặp khi rollback), nên nó vẫn tất định.
+Auto-coin counts polls, one per frame, and polling happens only once per real frame (it is not repeated during a rollback), so it stays deterministic.
 
-## 11. Kế hoạch từng bước
+## 11. Step-by-step plan
 
-Sáu giai đoạn, mỗi giai đoạn có sản phẩm kiểm tra được và tiêu chí hoàn thành. Làm tuần tự. Số ngày là ước lượng cho một developer.
+Six phases, each with something you can check and a completion criterion. Do them in order. The numbers of days are estimates for one developer.
 
 ```mermaid
 gantt
-  title Lộ trình (ngày công, ước lượng)
+  title Roadmap (working days, estimated)
   dateFormat  YYYY-MM-DD
-  axisFormat  ngày %d
-  section Giai đoạn
-  P0 Đo tính tất định        :p0, 2026-01-01, 36h
-  P1 Crate vuretro-netplay   :p1, after p0, 72h
-  P2 Runner không cửa sổ     :p2, after p1, 72h
-  P3 Chạy với cửa sổ         :p3, after p2, 72h
-  P4 App và giao diện        :p4, after p3, 96h
-  P5 Hoàn thiện, phát hành   :p5, after p4, 48h
-  section Cột mốc
-  M1 Báo cáo tất định        :milestone, after p0, 0d
-  M2 Hai tiến trình đồng bộ  :milestone, after p2, 0d
-  M3 Chơi thử đầu tiên       :milestone, after p3, 0d
-  M4 UI xong                 :milestone, after p4, 0d
-  M5 Phát hành               :milestone, after p5, 0d
+  axisFormat  day %d
+  section Phases
+  P0 Measure determinism      :p0, 2026-01-01, 36h
+  P1 vuretro-netplay crate    :p1, after p0, 72h
+  P2 Runner without a window  :p2, after p1, 72h
+  P3 Run with a window        :p3, after p2, 72h
+  P4 App and UI               :p4, after p3, 96h
+  P5 Polish and release       :p5, after p4, 48h
+  section Milestones
+  M1 Determinism report       :milestone, after p0, 0d
+  M2 Two processes in sync    :milestone, after p2, 0d
+  M3 First play test          :milestone, after p3, 0d
+  M4 UI done                  :milestone, after p4, 0d
+  M5 Release                  :milestone, after p5, 0d
 ```
 
-### P0. Đo tính tất định (1,5 ngày)
+### P0. Measure determinism (1.5 days)
 
-Giải quyết rủi ro: core không tất định.
+Addresses the risk: a core is not deterministic.
 
-- Thêm cờ `--determinism-check` cho runner: chạy headless, chuỗi phím giả dùng bộ sinh số cố định, ghi mã băm hình, tiếng và state mỗi khung.
-- Hai chế độ: nạp lại state rồi chạy lại; chạy trong hai tiến trình khác nhau.
-- Chạy trên các ROM thật có sẵn cho FBNeo, snes9x, mGBA, Genesis Plus GX, fceumm.
+- Add a `--determinism-check` flag to the runner: runs headless, a fake button sequence from a fixed random generator, and records video, audio and state hashes on every frame.
+- Two modes: reload a state and re-run, and run in two separate processes.
+- Run on the real ROMs available for FBNeo, snes9x, mGBA, Genesis Plus GX and fceumm.
 
-**Xong khi:** có bảng "core × ROM: đạt hoặc lệch", danh sách hệ được phép bật netplay cho v1 đã chốt, và test-core của dự án đạt 100% (làm thành bài kiểm tra tự động trong CI).
+**Done when:** there is a "core × ROM: pass or mismatch" table, the list of systems allowed to enable netplay in v1 is settled, and the project's test core passes 100% (turned into an automatic check in CI).
 
-### P1. Crate `vuretro-netplay` (3 ngày, sau P0)
+### P1. The `vuretro-netplay` crate (3 days, after P0)
 
-- Crate thuần (không I/O trực tiếp): `proto`, `compat`, `input`, `discovery` codec.
-- `trait Sim` và `RollbackDriver` bọc ggrs; dùng **SyncTestSession** của ggrs để ép rollback mỗi khung trên một "mô phỏng giả" và so checksum.
-- Bộ đệm lưu state dùng lại, không cấp phát mỗi khung.
+- A pure crate (no direct I/O): `proto`, `compat`, `input` and the `discovery` codec.
+- `trait Sim` and `RollbackDriver` wrapping ggrs. Use ggrs's **SyncTestSession** to force a rollback every frame on a "fake simulation" and compare checksums.
+- A reused state buffer, with no allocation per frame.
+- Pin the ggrs version and record the version that was verified.
 
-**Xong khi:** test đơn vị cho mọi thông điệp và mọi nhánh compat; SyncTest 10 000 khung với mô phỏng giả không lệch; fuzz bộ giải mã gói không panic.
+**Done when:** unit tests cover every message and every compat branch, SyncTest over 10,000 frames on the fake simulation does not diverge, and fuzzing the packet decoder does not panic.
 
-### P2. Runner chạy được không cửa sổ (3 ngày, sau P1)
+### P2. The runner works without a window (3 days, after P1)
 
-- Cờ `--netplay-host`, `--netplay-join`, `--pin`, `--net-delay`.
-- Bắt tay TCP, chuyển state đầu, ggrs qua UDP thật, cờ `resim` trong frontend.
-- Bọc socket để chèn mất gói, trễ, đảo thứ tự trong test.
+- Flags `--netplay-host`, `--netplay-join`, `--pin` and `--net-delay`.
+- TCP handshake, initial state transfer, ggrs over real UDP, and the `resim` flag in the frontend.
+- Wrap the socket so tests can inject packet loss, delay and reordering.
 
-**Xong khi:** test tự động chạy hai tiến trình runner trên localhost với test-core, 3000 khung, mã băm state cuối của hai bên bằng nhau, trên cả ba hệ điều hành trong CI; vẫn đạt khi mất 10% gói và trễ ngẫu nhiên 0 đến 40 ms.
+**Done when:** an automatic test runs two runner processes on localhost with the test core for 3000 frames, the final state hashes of both sides are equal on all three operating systems in CI, and it still passes with 10% packet loss and 0 to 40 ms of random delay.
 
-### P3. Chạy với cửa sổ (3 ngày, sau P2)
+### P3. Run with a window (3 days, after P2)
 
-- Móc vào `Session::run_core`: nhịp theo `frames_ahead()`, chỉ hiển thị khung cuối, tắt tiếng khi chạy lại.
-- Bộ lọc phím tắt theo bảng chính sách; hiển thị ping và số khung rollback trong tiêu đề.
-- Xử lý rút tay cầm, đóng cửa sổ, mất mạng, Stalled.
+- Hook into `Session::run_core`: pace by `frames_ahead()`, show only the last frame, and mute audio during re-runs.
+- Hotkey filter following the policy table. Show ping and the number of rolled-back frames in the title.
+- Handle pad unplugged, window closed, network lost and Stalled.
 
-**Xong khi:** hai máy thật chơi Neo Geo qua LAN 10 phút không lệch; không có tiếng lạ khi rollback; thử đủ macOS, Windows, Linux.
+**Done when:** two real machines play Neo Geo over a LAN for 10 minutes without diverging, there is no odd sound during rollbacks, and it has been tried on macOS, Windows and Linux.
 
-### P4. App và giao diện (4 ngày, sau P3)
+### P4. App and UI (4 days, after P3)
 
-- Lõi: model `NetplayRoom`, port `LanDiscovery`, use case `host_room`, `find_rooms`, `join_room` có test với bản giả.
-- Adapter UDP broadcast, liệt kê IP; lệnh Tauri; hộp thoại Host (hiện IP và PIN) và Join (danh sách phòng và ô nhập IP).
-- Lỗi dễ hiểu (ROM khác, PIN sai, tường lửa); mục trong menu Help và nút ở chi tiết game; tài liệu USAGE.
+- Core: `NetplayRoom` model, `LanDiscovery` port, use cases `host_room`, `find_rooms` and `join_room` with tests against fakes.
+- UDP broadcast adapter and IP listing. Tauri commands. A Host dialog (shows IP and PIN) and a Join dialog (room list and an IP field).
+- Clear errors (different ROM, wrong PIN, firewall). An item in the Help menu and a button on the game detail. USAGE documentation.
 
-**Xong khi:** hai người không đọc tài liệu vẫn vào được phòng trong dưới một phút; mọi thông báo lỗi có hướng xử lý.
+**Done when:** two people who have not read the documentation can join a room in under a minute, and every error message tells them what to do.
 
-### P5. Hoàn thiện và phát hành (2 ngày, sau P4)
+### P5. Polish and release (2 days, after P4)
 
-- Thử trên Wi-Fi và Ethernet; chỉnh độ trễ phím mặc định theo số đo.
-- Chế độ ghi state khi lệch (`--net-dump-on-desync`) để điều tra lỗi từ người dùng.
-- Ghi vào CHANGELOG và USAGE, thêm mục "Chơi qua LAN" vào hướng dẫn, phát hành.
+- Try on Wi-Fi and Ethernet, and set the default input delay from the measurements.
+- A mode that dumps the state on divergence (`--net-dump-on-desync`) to investigate user-reported bugs.
+- Add entries to CHANGELOG and USAGE, add a "Play over LAN" section to the guide, and release.
 
-**Xong khi:** danh sách hệ được hỗ trợ được ghi rõ; có hướng dẫn xử lý sự cố; bản phát hành có ghi chú giới hạn.
+**Done when:** the list of supported systems is written down clearly, there is a troubleshooting guide, and the release has notes on the limitations.
 
-## 12. Chiến lược kiểm thử
+## 12. Test strategy
 
-Từ rẻ tới đắt:
+From cheap to expensive:
 
-1. **Đơn vị:** mã hoá thông điệp, so sánh compat, ánh xạ phím, gói broadcast (chạy trong mili-giây).
-2. **SyncTest:** ép rollback mỗi khung, mọi checksum phải khớp (bắt lỗi lưu và nạp state).
-3. **Hai tiến trình trên localhost:** test-core, so mã băm state cuối, chạy trong CI trên 3 hệ điều hành.
-4. **Chèn lỗi mạng:** mất gói 0, 5, 10, 20%; trễ 0 đến 40 ms; đảo thứ tự.
-5. **Ma trận core thật:** các core và ROM đã qua P0, chạy ban đêm hoặc thủ công.
-6. **Thủ công trên LAN thật:** danh sách kiểm tra cho Wi-Fi, Ethernet, tường lửa.
+1. **Unit:** message encoding, compat comparison, button mapping, the broadcast packet (runs in milliseconds).
+2. **SyncTest:** force a rollback every frame, and every checksum must match (catches save and load state bugs).
+3. **Two processes on localhost:** test core, compare the final state hash, run in CI on 3 operating systems.
+4. **Network fault injection:** packet loss of 0, 5, 10 and 20%, delay of 0 to 40 ms, and reordering.
+5. **Matrix of real cores:** the cores and ROMs that passed P0, run overnight or by hand.
+6. **Manual on a real LAN:** a checklist for Wi-Fi, Ethernet and firewalls.
 
-Những lỗi phải có test chặn:
+Bugs that must have a test guarding against them:
 
-- Lệch đồng bộ không được che giấu: phải dừng và báo.
-- Phím macro hoặc auto-coin không được gửi hai lần khi rollback.
-- Tiếng và hình của khung chạy lại không được lọt ra ngoài.
-- Gói lạ hoặc quá lớn không làm runner sập.
-- Test kiến trúc: `vuretro-core` không phụ thuộc ggrs hay socket.
+- A desync must not be hidden: it must stop and report.
+- A macro or auto-coin press must not be sent twice during a rollback.
+- Audio and video of re-run frames must not leak out.
+- A stray or oversized packet must not crash the runner.
+- Architecture test: `vuretro-core` does not depend on ggrs or sockets.
 
-## 13. Rủi ro
+## 13. Risks
 
-| Rủi ro | Mức | Giảm thiểu |
+| Risk | Level | Mitigation |
 |---|---|---|
-| Core không tất định (đồng hồ thật, đa luồng) làm hai máy lệch dần | Cao | P0 đo trước; chỉ bật netplay cho cặp core và ROM đã đạt; truyền state đầu; checksum định kỳ để dừng ngay khi lệch. |
-| Wi-Fi giật làm rollback dài | Vừa | Độ trễ phím 2 đến 3 khung, dự đoán tối đa 8, hiển thị ping; khuyên dùng Ethernet cho game đối kháng. |
-| Tường lửa, quyền Mạng cục bộ, Wi-Fi cô lập thiết bị | Vừa | Thông báo rõ nguyên nhân và cách mở; luôn có ô nhập IP tay. |
-| Âm thanh vỡ khi rollback | Vừa | Cờ `resim` bỏ tiếng của khung chạy lại; chỉ đẩy tiếng của khung cuối. |
-| State lớn (PS1) làm tốn CPU | Vừa | Danh sách cho phép; đo ở P0; bộ đệm tái sử dụng. |
-| Hai máy khác phiên bản core hoặc tuỳ chọn mà không biết | Vừa | Mã băm trong Hello, Reject kèm lý do đọc được. |
-| Một cổng mở trong LAN bị người khác chen vào | Vừa | PIN, nhận một người, giới hạn kích thước gói. |
-| Phụ thuộc `ggrs` (bảo trì bên ngoài) | Thấp | Bọc sau `RollbackDriver`; giấy phép MIT hoặc Apache-2.0; có bản cập nhật 06/2026. |
+| A core is not deterministic (real clock, multi-threading) and the two machines drift apart | High | Measure first in P0. Enable netplay only for passing core and ROM pairs. Send the initial state. Check checksums periodically to stop as soon as they diverge. |
+| Jittery Wi-Fi makes rollbacks long | Medium | Input delay of 2 to 3 frames, maximum prediction of 8, show the ping, and recommend Ethernet for fighting games. |
+| Firewall, Local Network permission, device-isolating Wi-Fi | Medium | Clear message about the cause and how to open it. Always provide a manual IP field. |
+| Audio breaks up during rollbacks | Medium | The `resim` flag drops audio from re-run frames. Only the last frame's audio is pushed. |
+| A large state (PS1) costs too much CPU | Medium | Allow-list, measure in P0, reused buffers. |
+| The two machines have different core versions or options without knowing | Medium | Hashes in Hello, and Reject with a human-readable reason. |
+| An open port on the LAN is joined by someone else | Medium | PIN, accept one player, packet size limits. |
+| Dependence on `ggrs` (externally maintained) | Low | Wrap it behind `RollbackDriver`. MIT or Apache-2.0 license. Updated 06/2026. |
 
-## 14. Phương án đã cân nhắc
+## 14. Alternatives considered
 
-| Phương án | Ưu | Nhược | Kết luận |
+| Option | Pros | Cons | Verdict |
 |---|---|---|---|
-| **Rollback bằng ggrs** | Cảm giác gần như chơi tại chỗ; thư viện đã được kiểm chứng; tận dụng sẵn lưu và nạp state | Cần core tất định; phải làm công cụ đo | **Chọn** |
-| Lockstep có độ trễ cố định | Đơn giản, dễ hiểu | Độ trễ bằng cả ping; một gói chậm là đứng hình | Dự phòng nếu ggrs gặp vấn đề |
-| Truyền hình (Parsec, Moonlight, Steam Remote Play) | Không cần viết mã; chạy được cả hệ 3D | Thêm 10 đến 30 ms; không tích hợp trong app | Cách dùng ngay hôm nay |
-| Tự viết rollback từ đầu | Toàn quyền | Nhiều tuần, dễ lỗi tinh vi; không hơn ggrs | Loại |
-| Tương thích giao thức netplay của RetroArch | Chơi chung với người dùng RetroArch | Phải khớp từng phiên bản core và giao thức; công việc lớn | Loại ở v1 |
-| WebRTC (matchbox) cho Internet | Xuyên NAT, không cần mở cổng | Cần máy chủ báo hiệu để vận hành | Giai đoạn sau, trên cùng `RollbackDriver` |
+| **Rollback with ggrs** | Feels almost like playing side by side. A proven library. Reuses the existing save and load state. | Needs a deterministic core. A measuring tool must be built. | **Chosen** |
+| Lockstep with a fixed delay | Simple and easy to understand | Delay equals the whole ping. One slow packet freezes the picture. | Fallback if ggrs gives trouble |
+| Video streaming (Parsec, Moonlight, Steam Remote Play) | No code to write. Works for 3D systems too. | Adds 10 to 30 ms. Not integrated into the app. | The way to play today |
+| Write rollback from scratch | Full control | Many weeks, subtle bugs, no better than ggrs | Rejected |
+| Compatibility with RetroArch's netplay protocol | Play with RetroArch users | Must match each core version and the protocol. A large job. | Rejected for v1 |
+| WebRTC (matchbox) for the Internet | NAT traversal, no need to open ports | Needs a signaling server to operate | A later phase, on the same `RollbackDriver` |
 
-## 15. Cần quyết định
+## 15. Decisions needed
 
-1. **Bắt đầu từ P0?** P0 mất 1,5 ngày và cho biết ngay core nào dùng được. Đề nghị làm trước, rồi mới cam kết các giai đoạn sau.
-2. **PIN mặc định?** Đề nghị bật PIN 4 số mặc định, cho phép tắt trong cài đặt (LAN gia đình hay quán thường có người lạ).
-3. **Phạm vi người chơi.** Mục tiêu là phòng 2 hoặc 4 máy ([mục 16](#16-phòng-2-đến-4-máy)). Đề nghị v1 làm hai người nhưng viết mã theo số người tuỳ ý ngay từ đầu, để bốn người chỉ còn là kiểm thử và giao diện.
-4. **Internet.** Đã vào kế hoạch như giai đoạn sau ([mục 17](#17-internet-và-lớp-truyền-dữ-liệu)). Cần chọn giữa Steam và WebRTC với máy chủ báo hiệu tự chạy; đề nghị chọn sau khi có số đo từ P0 và P2.
-5. **Cần Steam không?** Chỉ cần nếu chọn Steam cho Internet (phải có AppID và người dùng cài Steam). LAN không cần.
+1. **Start with P0?** P0 takes 1.5 days and shows right away which cores are usable. Recommended: do it first, and only then commit to the later phases.
+2. **Default PIN?** Recommended: PIN on by default with 4 digits, with an option to turn it off in settings (home LANs and cafés often have strangers).
+3. **Number of players.** The goal is a room of 2 or 4 machines ([section 16](#16-rooms-of-2-to-4-machines)). Recommended: v1 supports two players, but write the code for any number of players from the start, so four players is only testing and UI work.
+4. **Internet.** It is in the plan as a later phase ([section 17](#17-internet-and-the-transport-layer)). A choice is needed between Steam and WebRTC with a self-run signaling server. Recommended: decide after the measurements from P0 and P2.
+5. **Is Steam needed?** Only if Steam is chosen for the Internet (it needs an AppID and users must install Steam). A LAN does not need it.
 
-## 16. Phòng 2 đến 4 máy
+## 16. Rooms of 2 to 4 machines
 
-Một **phòng** là đơn vị người dùng thấy: Host mở phòng cho một game, chọn số chỗ, người khác vào, rồi tất cả bắt đầu cùng lúc.
+A **room** is the unit the user sees: the Host opens a room for one game and chooses the number of seats, others join, and then everyone starts at the same time.
 
 ```mermaid
 flowchart TB
-  subgraph ROOM["Phòng (Host chọn game và số chỗ)"]
+  subgraph ROOM["Room (the Host chooses the game and number of seats)"]
     direction LR
-    S1["Chỗ 1<br/>Host"]
-    S2["Chỗ 2"]
-    S3["Chỗ 3<br/>(nếu phòng 4)"]
-    S4["Chỗ 4<br/>(nếu phòng 4)"]
+    S1["Seat 1<br/>Host"]
+    S2["Seat 2"]
+    S3["Seat 3<br/>(if a 4-seat room)"]
+    S4["Seat 4<br/>(if a 4-seat room)"]
   end
   S1 <--> S2
   S1 <--> S3
@@ -537,143 +538,143 @@ flowchart TB
   S3 <--> S4
 ```
 
-Mỗi cặp máy nối trực tiếp với nhau (lưới đầy đủ): 2 máy có 1 đường, 4 máy có 6 đường. ggrs hỗ trợ nhiều người chơi theo mô hình này; mỗi người điều khiển một cổng của core.
+Every pair of machines connects directly (a full mesh): 2 machines have 1 link, 4 machines have 6 links. ggrs supports multiple players in this model, with each player controlling one port of the core.
 
-**Các quy tắc**
+**Rules**
 
-- Phòng có số chỗ 2 hoặc 4. Chỉ cho chọn 4 khi game thật sự có từ bốn cổng điều khiển (xem bảng dưới); không thì giao diện chỉ cho 2.
-- Chỗ trống có thể bỏ trống: phòng 4 chỗ vẫn bắt đầu được khi Host bấm Bắt đầu, nhưng ở v1 số người chơi phải đúng số chỗ đã chọn (đơn giản hoá; cổng bỏ trống có thể làm sau).
-- Mọi người nhận **cùng một state đầu** từ Host (cơ chế ở mục 4, giai đoạn D, mở rộng sang N người: Host gửi cho từng người, mỗi người trả `StateAck`; chỉ khi tất cả xong Host mới phát `Start`).
-- Hai đến bốn máy đều phải qua kiểm tra `compat` giống hệt Host (mục 8). Ai lệch thì bị loại khỏi phòng kèm lý do.
-- Ai mất kết nối trong lúc chơi: v1 kết thúc cả phiên (đơn giản, không làm lệch trạng thái). Sau này có thể cho phép bên còn lại tiếp tục với cổng đó để trống.
-- Vào giữa chừng: v1 không hỗ trợ. Có thể làm sau bằng cách gửi state hiện tại ở một điểm đồng bộ.
+- A room has 2 or 4 seats. Offer 4 only when the game really has four or more controller ports (see the table below). Otherwise the UI only offers 2.
+- Seats can be left empty: a 4-seat room can still start when the Host presses Start, but in v1 the number of players must equal the number of seats chosen (a simplification, empty ports can come later).
+- Everyone receives **the same initial state** from the Host (the mechanism in section 4, phase D, extended to N players: the Host sends to each player, each replies with `StateAck`, and only when all are done does the Host send `Start`).
+- All machines in the room must pass the same `compat` check as the Host (section 8). Anyone who differs is removed from the room with a reason.
+- If someone loses connection during play: v1 ends the whole session (simple, and it cannot leave the state diverged). Later the rest could be allowed to continue with that port left empty.
+- Joining mid-game: not supported in v1. It could be added later by sending the current state at a sync point.
 
-**Game nào chơi được bốn người**
+**Which games can have four players**
 
-| Hệ máy | Đa số game | Bốn người cần |
+| System | Most games | Four players needs |
 |---|---|---|
-| Neo Geo | 2 người | Không có (chỉ chọn phòng 2). |
-| SNES | 1 đến 2 | Bộ chia tay cầm (multitap) và game hỗ trợ (ví dụ Super Bomberman). |
-| NES | 1 đến 2 | Four Score hoặc Satellite và game hỗ trợ. |
-| Genesis, Master System | 1 đến 2 | Bộ chia tay cầm (EA 4-Way Play, Team Player) và game hỗ trợ. |
-| Arcade (CPS1, CPS2 và MAME) | 2 đến 4 | Game beat 'em up 3 đến 4 người như Cadillacs and Dinosaurs (3 người), Knights of the Round, X-Men (tuỳ bản). |
-| Game Boy, GBA | 1 | Cáp link chưa được mô phỏng, nên chưa có. |
+| Neo Geo | 2 players | Not available (only a 2-seat room). |
+| SNES | 1 to 2 | A multitap and a game that supports it (for example Super Bomberman). |
+| NES | 1 to 2 | A Four Score or Satellite and a game that supports it. |
+| Genesis, Master System | 1 to 2 | A multitap (EA 4-Way Play, Team Player) and a game that supports it. |
+| Arcade (CPS1, CPS2 and MAME) | 2 to 4 | Beat 'em up games with 3 to 4 players such as Cadillacs and Dinosaurs (3 players), Knights of the Round, X-Men (depending on the version). |
+| Game Boy, GBA | 1 | The link cable is not emulated, so not available. |
 
-Danh sách này là hiểu biết chung, chưa kiểm chứng từng core trong Vuretro; số cổng thật sẽ lấy từ core (`retro_set_controller_port_device` và thông tin cổng) và từ bảng hệ máy trong dữ liệu `systems.json`, rồi kiểm tra bằng P0 và thử thật.
+This list is general knowledge and has not been verified core by core in Vuretro. The real number of ports will come from the core (`retro_set_controller_port_device` and the port information) and from the systems table in the `systems.json` data, and then be checked with P0 and by trying it.
 
-**Thay đổi trong mã so với kế hoạch hai người**
+**Code changes compared with the two-player plan**
 
-- `Hello`, `StateOffer`: thêm `slot` (chỗ của người gửi) và `players` (số chỗ của phòng).
-- `RollbackDriver`: tạo ggrs với `num_players = N`; ánh xạ chỗ sang cổng core (chỗ 1 là cổng 0, và cứ thế); `fe.buttons` cần chứa đủ N cổng.
-- Giao diện Host: chọn số chỗ (2 hoặc 4), danh sách người đã vào, nút Bắt đầu chỉ bật khi đủ người và mọi `StateAck` đã về.
-- Chi phí mạng: mỗi máy gửi phím cho N-1 máy. Với 4 máy, vẫn chỉ vài KB/giây mỗi đường.
-- Độ trễ phím và dự đoán: ggrs dùng cùng một độ trễ cho cả phòng; đường yếu nhất quyết định độ mượt chung, nên trên Wi-Fi tệ phòng 4 người sẽ giật rõ hơn phòng 2 người.
+- `Hello`, `StateOffer`: add `slot` (the sender's seat) and `players` (the number of seats in the room).
+- `RollbackDriver`: create ggrs with `num_players = N`. Map seats to core ports (seat 1 is port 0, and so on). `fe.buttons` must hold all N ports.
+- Host UI: choose the number of seats (2 or 4), a list of who has joined, and a Start button that is only enabled when everyone is in and every `StateAck` has arrived.
+- Network cost: each machine sends its buttons to N-1 machines. With 4 machines it is still only a few KB per second per link.
+- Input delay and prediction: ggrs uses one delay for the whole room. The weakest link decides the overall smoothness, so on bad Wi-Fi a 4-player room will stutter more visibly than a 2-player room.
 
-## 17. Internet và lớp truyền dữ liệu
+## 17. Internet and the transport layer
 
-Để LAN và Internet dùng chung phần rollback, tách thành ba lớp, mỗi lớp thay được độc lập:
+So that a LAN and the Internet share the same rollback code, split the design into three layers, each replaceable independently:
 
 ```mermaid
 flowchart TB
-  subgraph L1["Lớp 1: Tìm và vào phòng (Signaling, Lobby)"]
+  subgraph L1["Layer 1: Find and join a room (Signaling, Lobby)"]
     direction LR
     A1["LAN: UDP broadcast 7847"]
-    A2["Internet, hướng A: Steam Lobby (bạn bè, mời)"]
-    A3["Internet, hướng B: máy chủ báo hiệu tự chạy"]
+    A2["Internet, option A: Steam Lobby (friends, invites)"]
+    A3["Internet, option B: a self-run signaling server"]
   end
-  subgraph L2["Lớp 2: Đường truyền game (Transport)"]
+  subgraph L2["Layer 2: Game transport (Transport)"]
     direction LR
-    B1["UDP trực tiếp (LAN)"]
-    B2["Steam Networking Sockets (xuyên NAT, relay của Valve)"]
-    B3["WebRTC data channel (xuyên NAT, TURN dự phòng)"]
+    B1["Direct UDP (LAN)"]
+    B2["Steam Networking Sockets (NAT traversal, Valve relay)"]
+    B3["WebRTC data channel (NAT traversal, TURN fallback)"]
   end
-  subgraph L3["Lớp 3: Rollback (dùng chung)"]
-    C1["ggrs + NetSession: đoán, lưu, nạp, chạy lại, checksum"]
+  subgraph L3["Layer 3: Rollback (shared)"]
+    C1["ggrs + NetSession: guess, save, load, re-run, checksum"]
   end
   L1 --> L2 --> L3
 ```
 
-- Lớp 3 không biết gì về đường truyền: chỉ nhận và gửi gói qua một giao diện `Transport` (với ggrs là trait `NonBlockingSocket`).
-- Lớp 1 trả về danh sách phòng và thông tin để nối (địa chỉ, mã phòng).
-- Lớp 2 lo kết nối thật giữa các cặp máy, kể cả xuyên NAT.
+- Layer 3 knows nothing about the transport. It only sends and receives packets through a `Transport` interface (with ggrs this is the `NonBlockingSocket` trait).
+- Layer 1 returns the room list and the information needed to connect (address, room code).
+- Layer 2 handles the real connection between each pair of machines, including NAT traversal.
 
-**Hai hướng cho Internet**
+**Two options for the Internet**
 
-| | Steam (Lobby, Sockets, Relay) | WebRTC và máy chủ báo hiệu tự chạy |
+| | Steam (Lobby, Sockets, Relay) | WebRTC and a self-run signaling server |
 |---|---|---|
-| Xuyên NAT, relay | Có sẵn (relay của Valve) | Có (STUN), relay cần TURN và tự vận hành |
-| Tìm bạn, mời | Danh sách bạn Steam, Lobby | Mã phòng hoặc liên kết; tự làm |
-| Vận hành | Gần như không | Phải chạy và trả tiền máy chủ nhỏ |
-| Ràng buộc | Cần Steam AppID (phát hành thật cần đăng ký app, theo điều khoản Valve); người dùng phải cài Steam | Không phụ thuộc nền tảng nào |
-| Độ trễ | Đường trực tiếp nếu xuyên NAT được; qua relay thì thêm vài ms | Tương tự |
-| Rủi ro | Phụ thuộc Valve; điều kiện phát hành tôi chưa kiểm tra lại | Tự chịu trách nhiệm vận hành và bảo mật |
+| NAT traversal, relay | Built in (Valve's relay) | Yes (STUN). A relay needs TURN and your own operation. |
+| Finding friends, invites | Steam friends list, Lobby | Room code or link, built by us |
+| Operation | Almost none | Must run and pay for a small server |
+| Constraints | Needs a Steam AppID (a real release needs a registered app, under Valve's terms). Users must have Steam installed. | Not tied to any platform |
+| Latency | A direct path if NAT traversal works. Through the relay it adds a few ms. | Similar |
+| Risk | Depends on Valve. I have not rechecked the release conditions. | You own the operation and security |
 
-Chưa chọn hướng. LAN không cần lớp 2 và 3 nào ngoài UDP trực tiếp, nên làm trước; quyết định Internet sau khi có số đo thật.
+The direction is not chosen yet. A LAN needs nothing in layers 2 and 3 beyond direct UDP, so it is built first. The Internet decision comes after real measurements.
 
-**Đặc thù của Internet cần tính trước**
+**Internet specifics to plan for**
 
-- Ping 30 đến 150 ms nên rollback xảy ra thường xuyên; cần đo CPU cho các lần chạy lại dài (xem mục 7) và có thể tăng độ trễ phím tự động theo ping.
-- Phòng 4 người qua Internet cần xuyên NAT cho 3 đường mỗi máy; chỉ cần một đường hỏng là cả phòng bị ảnh hưởng, nên cần hiển thị chất lượng từng đường.
-- Lộ địa chỉ IP cho người trong phòng: relay hoặc mã phòng có thể giảm điều này; cần ghi rõ cho người dùng.
-- Bảo mật: PIN hoặc mã mời ngắn hạn; giới hạn kích thước gói; không tin dữ liệu từ máy khác.
+- With a ping of 30 to 150 ms, rollbacks happen often. The CPU cost of long re-runs needs measuring (see section 7), and the input delay could be raised automatically with the ping.
+- A 4-player room over the Internet needs NAT traversal for 3 links per machine. One broken link affects the whole room, so the quality of each link must be shown.
+- IP addresses are exposed to people in the room. A relay or a room code can reduce this, and it must be stated clearly to users.
+- Security: a PIN or a short-lived invite code, packet size limits, and never trusting data from another machine.
 
-### Hai vấn đề riêng của Internet
+### Two problems specific to the Internet
 
-1. **Xuyên NAT.** Máy ở nhà nằm sau router, không có địa chỉ công khai. Hai máy phải "đục lỗ" (hole punching) với sự trợ giúp của máy chủ báo hiệu và STUN. Một số loại NAT (và mạng CGNAT của nhà mạng) làm đục lỗ thất bại; lúc đó phải đi vòng qua relay (TURN hoặc relay của Steam). Chưa có số liệu về tỉ lệ thất bại, cần đo khi thử thật.
-2. **Ping thật.** Ping 30 đến 150 ms khiến rollback chạy thường xuyên. Ngưỡng ước lượng (dự đoán, chưa đo):
+1. **NAT traversal.** A machine at home sits behind a router and has no public address. The two machines must "punch a hole" (hole punching) with help from a signaling server and STUN. Some kinds of NAT (and carrier-grade NAT, CGNAT) make hole punching fail. In that case traffic has to go around through a relay (TURN or Steam's relay). There are no figures yet on how often it fails, so this needs measuring in real tests.
+2. **Real ping.** A ping of 30 to 150 ms makes rollbacks run often. Estimated thresholds (a guess, not measured):
 
-| Ping một chiều đến đối phương | Cảm giác dự kiến |
+| One-way ping to the other player | Expected feel |
 |---|---|
-| dưới khoảng 60 ms | Chơi tốt |
-| khoảng 60 đến 100 ms | Chơi được, thấy giật nhẹ khi rollback |
-| trên khoảng 120 ms | Không còn dễ chịu với game đối kháng |
+| under about 60 ms | Plays well |
+| about 60 to 100 ms | Playable, with slight stutter during rollbacks |
+| over about 120 ms | No longer comfortable for fighting games |
 
-Giới hạn dự đoán 8 khung tương đương khoảng 133 ms; vượt giới hạn thì máy nhanh phải chờ (Stalled). Giao diện phải hiện ping của từng đường và cảnh báo khi vượt ngưỡng, để người chơi biết nên mời ai.
+The prediction limit of 8 frames is about 133 ms. Beyond it the faster machine has to wait (Stalled). The UI must show the ping of each link and warn when a threshold is crossed, so players know whom to invite.
 
-**Chi phí relay thấp:** lưu lượng game chỉ vài KB mỗi giây mỗi đường; phần nặng duy nhất là state đầu (khoảng 415 KB với FBNeo), gửi một lần. Nên chạy relay không tốn nhiều băng thông; chi phí chính là công vận hành.
+**Relay cost is low:** game traffic is only a few KB per second per link. The only heavy part is the initial state (about 415 KB with FBNeo), sent once. So running a relay does not use much bandwidth, and the main cost is the effort of operating it.
 
-### Ba lựa chọn cho Internet
+### Three options for the Internet
 
-| | Ưu | Nhược |
+| | Pros | Cons |
 |---|---|---|
-| **WebRTC bằng thư viện matchbox** | Làm riêng để chạy với ggrs; xuyên NAT, có thể cắm TURN làm relay; không phụ thuộc nền tảng | Phải tự chạy máy chủ báo hiệu nhỏ (và TURN nếu muốn relay); chưa kiểm tra tình trạng bảo trì hiện tại của thư viện |
-| **Steam** (Lobby, Sockets, Relay) | Gần như không phải vận hành; có bạn bè và lời mời sẵn | Cần AppID và người dùng cài Steam; phụ thuộc Valve |
-| **Tự mở cổng, nhập IP** | Không cần máy chủ | Khó dùng; nhiều mạng (CGNAT) không mở được |
+| **WebRTC with the matchbox library** | Built to work with ggrs. NAT traversal, and a TURN server can be plugged in as a relay. Not tied to a platform. | You must run a small signaling server (and TURN if you want a relay). I have not checked the library's current maintenance status. |
+| **Steam** (Lobby, Sockets, Relay) | Almost nothing to operate. Friends and invites already exist. | Needs an AppID and users must install Steam. Depends on Valve. |
+| **Open a port yourself, type an IP** | No server needed | Hard to use. Many networks (CGNAT) cannot open ports. |
 
-**Đề nghị:** WebRTC bằng matchbox, vì không ràng buộc nền tảng và nhắm đúng vào ggrs. Steam là phương án thay thế nếu chấp nhận đưa Vuretro lên Steam. Cả hai cắm vào lớp `Transport` ở trên nên chọn sau cũng không phải làm lại phần rollback.
+**Recommendation:** WebRTC with matchbox, because it is not tied to a platform and is aimed squarely at ggrs. Steam is the alternative if putting Vuretro on Steam is acceptable. Both plug into the `Transport` layer above, so choosing later does not mean redoing the rollback part.
 
-**Điều kiện trước khi làm Internet:** LAN (P0 đến P3) phải chạy ổn, vì lỗi tính tất định lộ ra nặng hơn nhiều trên Internet.
+**Precondition before starting the Internet work:** the LAN (P0 to P3) must run well, because determinism bugs show up much harder on the Internet.
 
-**Cần quyết định:** (a) có sẵn lòng chạy máy chủ báo hiệu (và có thể relay) không; nếu không thì chọn Steam. (b) mức ping tối đa chấp nhận cho một phòng (chỉ mời người gần, hay cả xa).
+**Decisions needed:** (a) are you willing to run a signaling server (and maybe a relay)? If not, choose Steam. (b) the maximum ping accepted for a room (invite only nearby people, or far away ones too).
 
-**Giai đoạn bổ sung**
+**Additional phases**
 
-| Giai đoạn | Nội dung | Ước lượng (dự đoán) |
+| Phase | Content | Estimate (a guess) |
 |---|---|---|
-| P6. Phòng 4 người | Tổng quát hoá giao thức và giao diện lên N người, test với bản giả 4 tiến trình trên localhost, thử một game 4 người thật | khoảng 3 ngày |
-| P7. Internet | Giao diện `Transport` và `Lobby`, một hướng (Steam hoặc WebRTC), xuyên NAT, chỉ báo chất lượng đường, thử trên mạng thật | khoảng 8 đến 12 ngày, tuỳ hướng chọn |
+| P6. 4-player rooms | Generalize the protocol and UI to N players, test with a fake 4-process setup on localhost, and try one real 4-player game | about 3 days |
+| P7. Internet | The `Transport` and `Lobby` interfaces, one option (Steam or WebRTC), NAT traversal, a link quality indicator, and trying it on a real network | about 8 to 12 days, depending on the option chosen |
 
-Hai giai đoạn này làm sau P5; P6 có thể làm ngay sau P3 nếu bạn muốn chơi bốn người trên LAN sớm hơn.
+These two phases come after P5. P6 can come right after P3 if you want four players on a LAN sooner.
 
-## 18. Tình trạng các dự án tham khảo
+## 18. Status of reference projects
 
-Tra cứu web (tháng 11/2026), nguồn thứ cấp và đôi chỗ mâu thuẫn nhau; **phải kiểm tra lại trên trang chính thức trước khi dựa vào**.
+Web lookup (November 2026). The sources are secondary and sometimes contradict each other, so **check the official pages before relying on any of this**.
 
-| Dự án | Điều tìm thấy | Độ tin cậy |
+| Project | What was found | Confidence |
 |---|---|---|
-| **Fightcade** | Gói Flathub mô tả trình giả lập là FightcadeFBNeo, dựa trên FBNeo 0.2.97.44 với bản GGPO tuỳ biến, vẫn là cách chơi rollback ngang hàng (P2P) hiện hành. Gói chỉ là bản đóng gói cộng đồng, không phải bản chính thức. Không tìm thấy thông báo hay changelog chính thức nào của năm 2026. | Vừa. Cần xem fightcade.com. |
-| **RetroArch** | Nguồn thứ cấp cho biết bản ổn định là 1.22.2 (từ tháng 11/2025). Rollback kiểu GGPO đã có từ lâu, nhưng chỉ chạy với core hỗ trợ serialization (lưu state) và tốn CPU; hai bên cần cùng bản core. Không tìm thấy ghi chú phát hành 2026 nào riêng về netplay. | Thấp đến vừa. Cần xem retroarch.com và diễn đàn Libretro. |
-| **Slippi** (Dolphin) | Rollback nằm trong nhánh riêng của Slippi (dựa trên Ishiiruka), không nằm trong Dolphin chính; Dolphin chính dùng netplay kiểu chờ. Số phiên bản của launcher và nhánh Ishiiruka mâu thuẫn giữa các nguồn (ví dụ launcher 2.10.5, 2.11.8, 2.13.1). | Thấp. Cần xem GitHub project-slippi. |
-| **ggrs và matchbox_socket** | Kết quả tìm thấy ggrs mới nhất là 0.12.0 (README gọi là khá ổn định), còn matchbox_socket 0.14.0 khai báo phụ thuộc ggrs 0.11 qua tính năng tuỳ chọn `ggrs`. Có một nhánh rẽ tên Fortress Rollback. | Vừa. **Lệch với mục 1:** tài liệu này ghi ggrs 0.13.0 (lấy từ lần tra cứu trước); cần mở crates.io để xác nhận. |
+| **Fightcade** | The Flathub package describes its emulator as FightcadeFBNeo, based on FBNeo 0.2.97.44 with a customized GGPO build, still the current way to play rollback peer to peer (P2P). The package is only a community repackaging, not an official release. No official announcement or changelog for 2026 was found. | Medium. Check fightcade.com. |
+| **RetroArch** | A secondary source says the stable release is 1.22.2 (from November 2025). GGPO-style rollback has existed for a long time, but only works with cores that support serialization (save state) and costs CPU. Both sides need the same core build. No 2026 release notes specifically about netplay were found. | Low to medium. Check retroarch.com and the Libretro forums. |
+| **Slippi** (Dolphin) | Rollback lives in Slippi's own fork (based on Ishiiruka), not in mainline Dolphin, whose netplay is the waiting kind. The version numbers of the launcher and the Ishiiruka fork contradict each other between sources (for example launcher 2.10.5, 2.11.8, 2.13.1). | Low. Check the project-slippi GitHub. |
+| **ggrs and matchbox_socket** | The lookup found ggrs 0.12.0 as the newest (its README calls it fairly stable), while matchbox_socket 0.14.0 declares a dependency on ggrs 0.11 through its optional `ggrs` feature. There is a fork called Fortress Rollback. | Medium. **Mismatch with section 1:** this document states ggrs 0.13.0 (from an earlier lookup), so confirm on crates.io. |
 
-**Hệ quả cho kế hoạch**
+**Consequences for the plan**
 
-- **Kiểm tra phiên bản ggrs.** Phiên bản ggrs mà matchbox hỗ trợ có thể cũ hơn bản ggrs ta muốn dùng. Nếu hai bên lệch nhau, đừng dùng tính năng `ggrs` của matchbox: tự viết một bộ chuyển (adapter) từ socket WebRTC sang trait `NonBlockingSocket` của ggrs (ít mã, nằm gọn trong lớp `Transport` ở mục 17).
-- **Khoá phiên bản ggrs ở bước P1** và ghi lại phiên bản đã kiểm tra, vì đây là phụ thuộc chính của phần rollback.
-- Thông tin về Fightcade và RetroArch cũng xác nhận điều đã nêu ở mục 8: chỉ bật netplay cho cặp core và ROM đã qua kiểm tra tất định, và hai bên phải cùng bản core.
+- **Check the ggrs version.** The ggrs version that matchbox supports may be older than the ggrs we want to use. If the two disagree, do not use matchbox's `ggrs` feature. Write an adapter from the WebRTC socket to ggrs's `NonBlockingSocket` trait instead (little code, contained in the `Transport` layer from section 17).
+- **Pin the ggrs version in step P1** and record the version that was verified, since it is the main dependency of the rollback part.
+- What was found about Fightcade and RetroArch also confirms what section 8 says: enable netplay only for core and ROM pairs that passed the determinism check, and both sides must use the same core build.
 
-Nguồn đã dùng: [Flathub, Fightcade](https://flathub.org/en/apps/com.fightcade.Fightcade), [RetroArch netplay guide (Retro Handheld HQ)](https://retrohandheldhq.com/posts/retroarch-netplay-guide/), [matchbox_socket 0.14.0 trên docs.rs](https://docs.rs/crate/matchbox_socket/0.14.0/source/Cargo.toml), [ggrs 0.12.0 trên docs.rs](https://docs.rs/crate/ggrs/0.12.0/source/README.md), [Slippi trên SSBWiki](https://ssbwiki.com/Slippi).
+Sources used: [Flathub, Fightcade](https://flathub.org/en/apps/com.fightcade.Fightcade), [RetroArch netplay guide (Retro Handheld HQ)](https://retrohandheldhq.com/posts/retroarch-netplay-guide/), [matchbox_socket 0.14.0 on docs.rs](https://docs.rs/crate/matchbox_socket/0.14.0/source/Cargo.toml), [ggrs 0.12.0 on docs.rs](https://docs.rs/crate/ggrs/0.12.0/source/README.md), [Slippi on SSBWiki](https://ssbwiki.com/Slippi).
 
 ---
 
-Số liệu "415 KB" và "1174 khung/giây" đo trên máy phát triển với core FBNeo và game Neo Geo (bản debug). Các ước lượng ngày công và độ trễ là dự đoán của người lập kế hoạch, chưa kiểm chứng; P0 và P2 sẽ cho số liệu thật.
+The figures "415 KB" and "1174 frames per second" were measured on the development machine with the FBNeo core and a Neo Geo game (debug build). The estimates of working days and latency are the planner's guesses and have not been verified. P0 and P2 will give real numbers.
