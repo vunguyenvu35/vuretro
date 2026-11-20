@@ -82,7 +82,7 @@ The core announces options with `SET_VARIABLES` (`"Description; a|b|c"`, first v
 
 ## Callbacks and global state
 
-libretro callbacks carry no user-data pointer, so frontend state lives in `OnceLock<Mutex<Frontend>>`. Rule: **never hold the lock while calling into the core**, because the core calls back and would lock the mutex again.
+libretro callbacks carry no user-data pointer, so frontend state lives in `OnceLock<Mutex<Frontend>>`, reached only through `frontend::with`. Rule: **never call into the core, or call `with` again, from inside `with`**, because the core calls back and would need the state that is already taken. A second lock on the same thread would wait for itself for ever, a hang inside a C callback with nothing to say why, so `with` marks the thread (a `thread_local` flag) and a violation stops at once with the reason (`frontend.rs`, `NESTED`). Other threads are not affected by the mark and simply wait their turn. A lock poisoned by an earlier panic is used as it is: in a core's callback that panic already ended the program.
 
 ## Supported environment calls
 

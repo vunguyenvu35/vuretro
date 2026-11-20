@@ -75,12 +75,53 @@ pub fn init(system_dir: &str, save_dir: &str, audio: AudioFeed, options: HashMap
     let _ = FRONTEND.set(Mutex::new(fe));
 }
 
+thread_local! {
+    /// This thread is inside [`with`] right now.
+    static INSIDE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// What is said when the rule below is broken.
+const NESTED: &str = "the frontend state was used while it was already in use: `with` was \
+    called inside a `with`, or a call into the core was made inside one (the core calls \
+    back into the frontend, which needs the state). Copy what is needed out of `with`, and \
+    call the core outside it.";
+
+/// Marks the thread as inside `with`, and unmarks it however the closure ends (also by a
+/// panic, so one violation does not make every later use look like another).
+struct Inside;
+
+impl Inside {
+    fn enter() -> Inside {
+        // A second lock on the same thread would wait for itself for ever: a program that
+        // hangs inside a callback of C code, with nothing to say why. Stop with the reason.
+        if INSIDE.with(|i| i.replace(true)) {
+            panic!("{NESTED}");
+        }
+        Inside
+    }
+}
+
+impl Drop for Inside {
+    fn drop(&mut self) {
+        INSIDE.with(|i| i.set(false));
+    }
+}
+
+/// Use the state the C callbacks share with the rest of the runner.
+///
+/// The rule: **never call into the core, or call `with` again, from inside `f`.** The core's
+/// callbacks come back here, so they would need the state `f` is holding. This is checked: a
+/// violation stops the program at once with [`NESTED`] instead of hanging.
 pub fn with<R>(f: impl FnOnce(&mut Frontend) -> R) -> R {
+    let _inside = Inside::enter();
     let mut guard = FRONTEND
         .get()
         .expect("frontend not initialised")
         .lock()
-        .unwrap();
+        // An earlier use that panicked marks the lock as poisoned. In a callback of the core
+        // that panic already ended the program, so this only happens to Rust callers (tests,
+        // the self-checks): carry on with the state as it is rather than fail every use after.
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     f(&mut guard)
 }
 
@@ -535,6 +576,58 @@ mod env_tests {
 
     fn call<T>(cmd: c_uint, value: &mut T) -> bool {
         unsafe { environment_cb(cmd, value as *mut T as *mut c_void) }
+    }
+
+    #[test]
+    fn using_the_state_inside_a_use_of_it_stops_with_the_reason_instead_of_hanging() {
+        init("/s", "/v", AudioFeed::detached(), HashMap::new());
+        let hit = std::panic::catch_unwind(|| with(|_| with(|fe| fe.shutdown)));
+        let message = match hit {
+            Ok(_) => panic!("a nested use must not go through"),
+            Err(p) => p
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_default(),
+        };
+        assert!(message.contains("already in use"), "{message}");
+        assert!(message.contains("call the core outside"), "{message}");
+        // the violation did not leave the state locked or the thread marked
+        assert!(!with(|fe| fe.hw_direct));
+        assert!(!with(|fe| fe.hw_direct), "and again");
+    }
+
+    #[test]
+    fn a_use_that_panics_does_not_make_later_uses_look_nested() {
+        init("/s", "/v", AudioFeed::detached(), HashMap::new());
+        // a panic in the middle of a use must not leave the thread marked as inside it
+        let _ = std::panic::catch_unwind(|| {
+            let _inside = Inside::enter();
+            panic!("something else went wrong");
+        });
+        assert!(!INSIDE.with(|i| i.get()), "the mark was cleared");
+        let _again = Inside::enter(); // does not panic
+    }
+
+    #[test]
+    fn other_threads_do_not_count_as_nested() {
+        init("/s", "/v", AudioFeed::detached(), HashMap::new());
+        // one thread is inside `with` while another comes in: it waits its turn, which is
+        // fine, and is not a violation
+        let (entered, release) = std::sync::mpsc::channel::<()>();
+        let (go, wait) = std::sync::mpsc::channel::<()>();
+        let holder = std::thread::spawn(move || {
+            with(|_| {
+                entered.send(()).unwrap();
+                wait.recv().unwrap();
+            })
+        });
+        release.recv().unwrap();
+        let other = std::thread::spawn(|| with(|fe| fe.shutdown));
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        go.send(()).unwrap();
+        holder.join().unwrap();
+        assert!(!other.join().unwrap());
     }
 
     #[test]
