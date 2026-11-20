@@ -115,6 +115,7 @@ export const api = {
   onGameExited: (fn) => on('game-exited', fn),
   onPadsChanged: (fn) => on('pads-changed', fn),
   onCoreProgress: (fn) => on('core-progress', fn),
+  onCoreDownloading: (fn) => on('core-downloading', fn),
   onPadButton: (fn) => on('pad-button', fn),
   onCoversUpdated: (fn) => on('covers-updated', fn),
   onCoversDone: (fn) => on('covers-done', fn),

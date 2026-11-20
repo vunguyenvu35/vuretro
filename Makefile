@@ -103,6 +103,9 @@ ci: check smoke ## Run every step GitHub Actions runs
 cores: ## Download fbneo, pcsx_rearmed, snes9x, mgba cores into cores/bin/
 	./cores/fetch-cores.sh
 
+cores-offline: ## Download core zips into cores/offline/ so they can be installed with no internet (ARGS=--all for the alternatives too)
+	./cores/fetch-offline.sh $(ARGS)
+
 scan: ## Scan a ROM folder: make scan ROMS=~/Games/roms
 	cargo run -p vuretro-library --bin vuretro-scan -- "$(ROMS)"
 

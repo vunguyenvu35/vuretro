@@ -936,6 +936,36 @@ impl CoreInstaller for FakeInstaller {
 }
 
 #[test]
+fn play_knows_which_core_has_to_be_downloaded_first() {
+    let installer = || {
+        Box::new(FakeInstaller {
+            fail: false,
+            calls: Arc::new(Mutex::new(Vec::new())),
+        })
+    };
+    let f = Fake::default(); // no core is installed
+    {
+        let mut w = f.0.lock().unwrap();
+        w.runner = true;
+        w.bios_ok = true;
+    }
+    let nes = "/data/roms/nes/a.nes";
+    let a = app(&f).with_installer(installer());
+    // nothing installed: the system's core is the one to get
+    assert_eq!(a.core_to_install(nes).as_deref(), Some("fceumm_libretro"));
+    // another core of the system is there: the game starts with it, nothing to get
+    f.0.lock().unwrap().cores.insert("mesen_libretro");
+    assert_eq!(a.core_to_install(nes), None);
+    // a core chosen for the game alone is the one to get when it is missing
+    f.0.lock().unwrap().cores.clear();
+    a.set_game_core(nes.into(), Some("mesen_libretro".into())).unwrap();
+    assert_eq!(a.core_to_install(nes).as_deref(), Some("mesen_libretro"));
+    // unknown files, and a build that cannot download, have nothing to get
+    assert_eq!(a.core_to_install("/x/readme.txt"), None);
+    assert_eq!(app(&f).core_to_install(nes), None);
+}
+
+#[test]
 fn cores_install_through_the_port_and_only_known_ones() {
     let calls = Arc::new(Mutex::new(Vec::new()));
     let make = |fail| {

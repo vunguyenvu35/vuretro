@@ -4,9 +4,9 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
 #[derive(Clone, Serialize)]
-struct Progress<'a> {
-    core: &'a str,
-    percent: u8,
+pub struct Progress<'a> {
+    pub core: &'a str,
+    pub percent: u8,
 }
 
 /// Download a core into the app's cores folder. Emits `core-progress` while it runs;

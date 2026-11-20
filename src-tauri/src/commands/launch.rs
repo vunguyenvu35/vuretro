@@ -21,7 +21,26 @@ pub async fn launch_game(
     slot: Option<u8>,
 ) -> Result<(), String> {
     let core = shell.app.clone();
-    let running = blocking(move || core.launch_game(path, slot)).await??;
+    let events = app.clone();
+    let running = blocking(move || {
+        // The core is downloaded first when the game needs one that is not here yet
+        // (from the offline set when there is one), so Play just works.
+        if let Some(stem) = core.core_to_install(&path) {
+            let _ = events.emit("core-downloading", stem.as_str());
+            core.install_core(&stem, |percent| {
+                let _ = events.emit(
+                    "core-progress",
+                    super::cores::Progress {
+                        core: &stem,
+                        percent,
+                    },
+                );
+            })
+            .map_err(|e| format!("could not get the {stem} core: {e}"))?;
+        }
+        core.launch_game(path, slot)
+    })
+    .await??;
     watch(&app, &shell, running);
     Ok(())
 }

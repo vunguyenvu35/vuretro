@@ -1123,6 +1123,29 @@ impl App {
         self.start(&core, &rom, Some(path), slot, sys.id)
     }
 
+    /// The core a game needs that is not on this computer yet and could be downloaded, so the
+    /// caller can fetch it before launching. `None` when the game can start as it is: its core
+    /// (or, for a game with no core of its own, another of its system's) is installed, the
+    /// system is unknown, or this build cannot download cores.
+    pub fn core_to_install(&self, path: &str) -> Option<String> {
+        self.installer.as_ref()?;
+        let rom_dir = self.settings.lock().unwrap().rom_dir.clone().unwrap_or_default();
+        let sys = detect::detect_system(Path::new(&rom_dir), Path::new(path))?;
+        let chosen = self.core_of(path, sys);
+        let own = self
+            .meta
+            .lock()
+            .unwrap()
+            .get(path)
+            .is_some_and(|m| m.core.is_some());
+        let usable = if own {
+            self.locator.core(chosen).is_some()
+        } else {
+            sys.all_cores().any(|c| self.locator.core(c).is_some())
+        };
+        (!usable).then(|| chosen.to_string())
+    }
+
     /// Run the fake test core so the app can be tried without any ROM.
     pub fn launch_demo(&self) -> Result<Option<Running>, String> {
         let core = self

@@ -21,15 +21,41 @@ pub struct BuildbotInstaller {
     paths: Paths,
     fetch: Fetch,
     base: String,
+    /// Folders that may already hold the core's zip (an offline set), looked at first.
+    offline: Vec<PathBuf>,
 }
 
 impl BuildbotInstaller {
     pub fn new(paths: Paths) -> Self {
-        Self::with_fetch(paths, BASE.to_string(), Box::new(http_get))
+        let offline = offline_dirs(&paths);
+        Self::with_fetch(paths, BASE.to_string(), Box::new(http_get)).with_offline(offline)
     }
 
     pub fn with_fetch(paths: Paths, base: String, fetch: Fetch) -> Self {
-        BuildbotInstaller { paths, fetch, base }
+        BuildbotInstaller {
+            paths,
+            fetch,
+            base,
+            offline: Vec::new(),
+        }
+    }
+
+    /// Where an offline set may be (see [`offline_dirs`]); a core found there is installed
+    /// without any download.
+    pub fn with_offline(mut self, dirs: Vec<PathBuf>) -> Self {
+        self.offline = dirs;
+        self
+    }
+
+    /// The zip of a core in an offline folder, if one has it. Both `<dir>/<core>.zip` and
+    /// `<dir>/<buildbot platform>/<core>.zip` (what `make cores-offline` writes) are found.
+    fn offline_zip(&self, name: &str) -> Option<PathBuf> {
+        let file = format!("{name}.zip");
+        self.offline.iter().find_map(|d| {
+            [d.join(&file), d.join(platform_dir()).join(&file)]
+                .into_iter()
+                .find(|p| p.is_file())
+        })
     }
 
     fn url(&self, stem: &str) -> String {
@@ -40,6 +66,32 @@ impl BuildbotInstaller {
             core_filename(stem)
         )
     }
+}
+
+/// Folders searched for an offline set of cores, so a computer with no internet can still
+/// install them: `$VURETRO_CORES_OFFLINE`, `<data dir>/cores-offline`, and `cores/offline`
+/// beside the app or the source it runs from (fill that one with `make cores-offline`).
+pub fn offline_dirs(paths: &Paths) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Ok(d) = std::env::var("VURETRO_CORES_OFFLINE") {
+        dirs.push(PathBuf::from(d));
+    }
+    dirs.push(paths.data_dir().join("cores-offline"));
+    let starts = [
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(std::path::Path::to_path_buf)),
+        std::env::current_dir().ok(),
+    ];
+    for start in starts.into_iter().flatten() {
+        for dir in start.ancestors() {
+            let d = dir.join("cores").join("offline");
+            if !dirs.contains(&d) {
+                dirs.push(d);
+            }
+        }
+    }
+    dirs
 }
 
 /// Buildbot folder for this OS and CPU.
@@ -135,11 +187,20 @@ impl CoreInstaller for BuildbotInstaller {
         }
         let name = core_filename(stem);
         progress(0);
-        let zipped = (self.fetch)(&self.url(stem), &|got, total| {
-            if let Some(t) = total.filter(|t| *t > 0) {
-                progress((got * 95 / t).min(95) as u8);
+        let zipped = match self.offline_zip(&name) {
+            Some(local) => {
+                log::info!("installing {name} from {}", local.display());
+                let bytes = std::fs::read(&local)
+                    .map_err(|e| format!("cannot read {}: {e}", local.display()))?;
+                progress(50);
+                bytes
             }
-        })?;
+            None => (self.fetch)(&self.url(stem), &|got, total| {
+                if let Some(t) = total.filter(|t| *t > 0) {
+                    progress((got * 95 / t).min(95) as u8);
+                }
+            })?,
+        };
         let lib = unpack(zipped, &name)?;
         if !is_native_library(&lib) {
             return Err(format!("{name} is not a native library for this system"));
@@ -234,6 +295,32 @@ mod tests {
         let seen = seen.into_inner().unwrap();
         assert_eq!((seen[0], *seen.last().unwrap()), (0, 100));
         assert!(seen.windows(2).all(|w| w[0] <= w[1]));
+    }
+
+    #[test]
+    fn a_core_in_an_offline_folder_is_installed_without_any_download() {
+        let dir = tempfile::tempdir().unwrap();
+        let offline = tempfile::tempdir().unwrap();
+        let name = core_filename("gambatte_libretro");
+        // in the platform folder `make cores-offline` writes
+        let sub = offline.path().join(platform_dir());
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join(format!("{name}.zip")), zip_of(&name, &magic())).unwrap();
+        // the download would fail: it must not be tried
+        let (inst, urls) = installer(dir.path(), Err("no internet".into()));
+        let inst = inst.with_offline(vec![offline.path().to_path_buf()]);
+        let path = inst.install("gambatte_libretro", &|_| {}).unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), magic());
+        assert!(urls.lock().unwrap().is_empty());
+        // a core that is not in the offline folder is downloaded, and without internet fails
+        assert_eq!(
+            inst.install("mgba_libretro", &|_| {}).unwrap_err(),
+            "no internet"
+        );
+        // a zip straight in the folder works too
+        std::fs::write(offline.path().join(format!("{name}.zip")), zip_of(&name, &magic())).unwrap();
+        std::fs::remove_dir_all(&sub).unwrap();
+        assert!(inst.install("gambatte_libretro", &|_| {}).is_ok());
     }
 
     #[test]

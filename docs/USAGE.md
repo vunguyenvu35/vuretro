@@ -14,6 +14,10 @@ make cores     # once: downloads the emulator cores (Neo Geo, PlayStation, SNES,
 make dev       # opens the app
 ```
 
+A core is downloaded **the first time a game needs it**: press **Play** on a game whose core is not installed and the app fetches it (a progress box shows how far it is), then starts the game. You can also install cores yourself in **Cores & BIOS**.
+
+**No internet?** Prepare the cores once on a computer that has it, with `make cores-offline` (add `ARGS=--all` for the alternative cores too). It saves the core zips in `cores/offline/<platform>/`. Copy that folder next to the app (or to `<data dir>/cores-offline`, or point `VURETRO_CORES_OFFLINE` at it) and the cores install from it with no connection. The zips are not committed to the repository: they are large (the MAME core is ~100 MB), differ per OS and CPU, and some cores have licences that do not allow passing them on.
+
 On first launch the app shows a welcome screen. **Try the demo** runs a built-in test program (a square you move with the arrow keys), so you can check video, sound and controls before adding any game.
 
 ## 2. Add games

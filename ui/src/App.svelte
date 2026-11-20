@@ -11,6 +11,7 @@
   import ContextMenu from './components/ContextMenu.svelte';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import Toasts from './components/Toasts.svelte';
+  import DownloadBanner from './components/DownloadBanner.svelte';
   import AboutDialog from './components/AboutDialog.svelte';
   import SupportDialog from './components/SupportDialog.svelte';
   import { startGamepadNav } from './lib/gamepadNav.js';
@@ -22,6 +23,13 @@
     api.onGameExited(() => refresh()).then((f) => off.push(f));
     api.onCoversUpdated((path) => loadCovers([path])).then((f) => off.push(f));
     api.onMenu(handleMenu).then((f) => off.push(f));
+    // Play fetches the core a game needs: show how far it is
+    api.onCoreDownloading((core) => (app.downloading = { core, percent: 0 })).then((f) => off.push(f));
+    api
+      .onCoreProgress((p) => {
+        if (app.downloading?.core === p.core) app.downloading.percent = p.percent;
+      })
+      .then((f) => off.push(f));
     api.onCoversDone(() => scheduleCovers()).then((f) => off.push(f));
     // a pad on the Controls screen is being recorded, not used to move around
     const stopNav = startGamepadNav(() => app.capturing);
@@ -61,6 +69,7 @@
     <SupportDialog onclose={() => (app.dialog = null)} />
   {/if}
   <Toasts />
+  <DownloadBanner />
 </div>
 
 <style>

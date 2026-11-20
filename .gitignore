@@ -1,5 +1,8 @@
 /target
 /cores/bin
+# core zips for offline installs (large, per OS): fill with `make cores-offline`
+/cores/offline/*
+!/cores/offline/README.md
 /data
 *.dylib
 *.dll

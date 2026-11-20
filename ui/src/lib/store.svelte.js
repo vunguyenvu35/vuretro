@@ -37,6 +37,7 @@ export const app = $state({
   capturing: false, // a key or button is being recorded on the Controls screen
   dialog: null, // 'about' | 'support': a small dialog over the page
   scope: '', // system id the Settings and Controls screens edit; empty = all games
+  downloading: null, // { core, percent } while Play fetches the core a game needs
 });
 
 const hash = typeof location !== "undefined" ? location.hash.slice(1).split(",") : [];
@@ -236,6 +237,8 @@ export async function play(game, slot = null) {
     toast(`Started ${game.title}`);
   } catch (e) {
     toast(String(e), 'error');
+  } finally {
+    app.downloading = null;
   }
   refresh();
 }
