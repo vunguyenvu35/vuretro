@@ -74,26 +74,63 @@ This follows the project's existing rules: rules and use cases live in `vuretro-
 
 ```mermaid
 flowchart TB
-  classDef new fill:#1f8a5233,stroke:#1f8a52,color:#111
-  classDef chg fill:#b86e0033,stroke:#b86e00,color:#111
-  classDef old fill:#ffffff,stroke:#8f9bb4,stroke-dasharray:4 3,color:#111
+  classDef new fill:#e4f6ea,stroke:#2e8b57,color:#111
+  classDef chg fill:#fff3d6,stroke:#b86e00,color:#111
+  classDef old fill:#fff,stroke:#8f9bb4,stroke-dasharray:4 3,color:#111
 
-  UI["UI (Svelte)<br/>PlayOverLan.svelte (new)<br/>Library.svelte, Help menu (changed)"]:::new
-  SHELL["App shell (src-tauri)<br/>lan_addresses, lan_find_rooms,<br/>lan_host, lan_join (new)"]:::new
-  CORE["Core (vuretro-core, pure)<br/>NetplayRoom, NetRole, LanDiscovery port,<br/>use cases host_room, find_rooms, join_room (new)<br/>LaunchSpec.net (changed)"]:::chg
-  LIB["Adapters (vuretro-library)<br/>UdpLanDiscovery, IP listing (new)<br/>ProcessLauncher: --netplay-* (changed)"]:::chg
-  RUN["vuretro-runner<br/>net.rs (new)<br/>session.rs, frontend.rs, input.rs (changed)"]:::chg
-  NP["vuretro-netplay (new crate)<br/>proto, compat, input, driver, discovery"]:::new
-  GGRS["ggrs 0.13 (external)"]:::old
-  LC["libretro core"]:::old
+  subgraph APP["App process (Tauri)"]
+    direction TB
+    subgraph UI["UI (Svelte)"]
+      direction LR
+      U1["PlayOverLan.svelte"]:::new
+      U2["Library, Help menu"]:::chg
+    end
+    subgraph SH["App shell (src-tauri)"]
+      direction LR
+      S1["lan_addresses, lan_find_rooms<br/>lan_host, lan_join"]:::new
+    end
+    subgraph CO["Core (vuretro-core, pure)"]
+      direction LR
+      C1["NetplayRoom, NetRole<br/>LanDiscovery port"]:::new
+      C2["host_room, find_rooms<br/>join_room"]:::new
+      C3["LaunchSpec.net"]:::chg
+    end
+    subgraph AD["Adapters (vuretro-library)"]
+      direction LR
+      A1["UdpLanDiscovery<br/>IP listing"]:::new
+      A2["ProcessLauncher<br/>--netplay-* flags"]:::chg
+    end
+    U1 --> S1
+    U2 --> S1
+    S1 --> C2
+    C2 --> C1
+    C2 --> C3
+    C1 --> A1
+    C3 --> A2
+  end
 
-  UI --> SHELL --> CORE --> LIB
-  LIB --> NP
-  RUN --> NP --> GGRS
-  RUN --> LC
+  subgraph RUNNER["Runner process"]
+    direction LR
+    R1["net.rs"]:::new
+    R2["session.rs, frontend.rs<br/>input.rs"]:::chg
+    R3["libretro core"]:::old
+    R2 --> R1
+    R2 --> R3
+  end
+
+  subgraph SHARED["Shared crate"]
+    direction LR
+    N1["vuretro-netplay<br/>proto, compat, input<br/>driver, discovery"]:::new
+    N2["ggrs 0.13"]:::old
+    N1 --> N2
+  end
+
+  A1 --> N1
+  R1 --> N1
+  A2 -.->|"spawns"| R2
 ```
 
-Legend: green is new code, orange is changed code, dashed is external.
+Legend: green is new code, orange is changed code, dashed is external. Arrows show who calls whom: the app process only reaches the runner by spawning it, and both processes share the `vuretro-netplay` crate.
 
 ### Files to add or change
 
