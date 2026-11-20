@@ -1,11 +1,12 @@
 //! Global frontend state shared with the libretro C callbacks.
 //! libretro callbacks carry no user pointer, so state lives in a global.
 
+use crate::audio::AudioFeed;
 use libretro_sys::*;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_uint, c_void};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock};
 
 pub const MAX_PORTS: usize = vuretro_controls::PLAYERS;
 
@@ -17,7 +18,7 @@ pub struct Frontend {
     pub height: usize,
     pub frame_dirty: bool,
     /// Interleaved stereo i16 samples at the core's sample rate.
-    pub audio: Arc<Mutex<VecDeque<i16>>>,
+    pub audio: AudioFeed,
     pub buttons: [[bool; JOYPAD_BUTTON_COUNT]; MAX_PORTS],
     /// Rumble the core asked for, per port: `[strong, weak]` strength (0 = off).
     pub rumble: [[u16; 2]; MAX_PORTS],
@@ -46,12 +47,7 @@ pub struct Frontend {
 
 static FRONTEND: OnceLock<Mutex<Frontend>> = OnceLock::new();
 
-pub fn init(
-    system_dir: &str,
-    save_dir: &str,
-    audio: Arc<Mutex<VecDeque<i16>>>,
-    options: HashMap<String, String>,
-) {
+pub fn init(system_dir: &str, save_dir: &str, audio: AudioFeed, options: HashMap<String, String>) {
     let fe = Frontend {
         pixel_format: RETRO_PIXEL_FORMAT_0RGB1555,
         frame: Vec::new(),
@@ -88,17 +84,10 @@ pub fn with<R>(f: impl FnOnce(&mut Frontend) -> R) -> R {
     f(&mut guard)
 }
 
-/// Max buffered audio (stereo samples) before old samples are dropped,
-/// so latency stays bounded when video pacing drifts or fast-forward is on.
-const AUDIO_MAX_SAMPLES: usize = 48_000 / 4 * 2;
-
+/// Hand the core's samples to the sound card's side. What does not fit is dropped; the sound
+/// card's side keeps the delay in check.
 fn push_audio(fe: &mut Frontend, samples: &[i16]) {
-    let mut q = fe.audio.lock().unwrap();
-    q.extend(samples.iter().copied());
-    let overflow = q.len().saturating_sub(AUDIO_MAX_SAMPLES);
-    if overflow > 0 {
-        q.drain(..overflow + (overflow & 1));
-    }
+    fe.audio.push(samples);
 }
 
 unsafe fn cstr_lossy(p: *const c_char) -> String {
@@ -591,12 +580,7 @@ mod env_tests {
 
     #[test]
     fn rotation_shutdown_and_set_variable_are_remembered() {
-        init(
-            "/s",
-            "/v",
-            Arc::new(Mutex::new(VecDeque::new())),
-            HashMap::new(),
-        );
+        init("/s", "/v", AudioFeed::detached(), HashMap::new());
         // `init` only counts the first time in a test run, so put the option in directly
         with(|fe| fe.options.insert("opt".into(), CString::new("a").unwrap()));
         let mut turns: c_uint = 1;
@@ -652,12 +636,7 @@ mod env_tests {
 
     #[test]
     fn a_gl_core_gets_its_functions_when_there_is_a_window_and_nothing_otherwise() {
-        init(
-            "/s",
-            "/v",
-            Arc::new(Mutex::new(VecDeque::new())),
-            HashMap::new(),
-        );
+        init("/s", "/v", AudioFeed::detached(), HashMap::new());
         with(|fe| {
             fe.hw_allowed = false;
             fe.hw = None;
@@ -713,12 +692,7 @@ mod log_tests {
 
     #[test]
     fn a_core_can_ask_for_rumble_and_the_request_is_remembered() {
-        init(
-            "/s",
-            "/v",
-            Arc::new(Mutex::new(VecDeque::new())),
-            HashMap::new(),
-        );
+        init("/s", "/v", AudioFeed::detached(), HashMap::new());
         let mut cb = retro_rumble_interface {
             set_rumble_state: None,
         };

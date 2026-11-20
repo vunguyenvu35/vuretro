@@ -33,7 +33,7 @@ Phases 0 to 2 are the foundation. M1 to M5 are ordered by what gets vuretro to r
 
 - [x] Dynamic core loading (`libloading`), all callbacks registered
 - [x] Video: XRGB8888 / RGB565 / 0RGB1555 → window (`minifb`)
-- [x] Audio: `cpal` + linear resampling, bounded buffer latency
+- [x] Audio: `cpal`, lock-free queue, band-limited (Kaiser sinc) resampling, bounded buffer latency
 - [x] Input: keyboard + gamepad (`gilrs`), left stick as D-pad, 2 players
 - [x] 4 save-state slots (F5/F7/F6), reset, fast-forward
 - [x] Headless mode + screenshot for CI

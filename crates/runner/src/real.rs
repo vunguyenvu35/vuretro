@@ -3,10 +3,9 @@
 use crate::screen::MiniFbScreen;
 use crate::{appicon, audio, core, display, frontend, input};
 use anyhow::Result;
-use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicU32;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use vuretro_controls::macros::Macro;
 use vuretro_controls::ControlsConfig;
 use vuretro_play::ports::{Controller, Emulator, Frame, FrameSource, Hotkeys, Screen, View};
@@ -94,7 +93,7 @@ pub struct Params {
     pub scale: Option<u8>,
     /// Where to save a preview image when the window closes.
     pub cover: Option<PathBuf>,
-    pub audio_buf: Arc<Mutex<VecDeque<i16>>>,
+    pub audio: audio::AudioSink,
     /// Save slot to load at start.
     pub start_slot: Option<u8>,
 }
@@ -119,7 +118,7 @@ pub fn open(p: Params) -> Result<Session> {
         log::info!("video paced to the display: {fps:.2} fps (core {core_fps:.2})");
     }
     let audio = match audio::start(
-        p.audio_buf,
+        p.audio,
         av.timing.sample_rate * fps / core_fps,
         gain.clone(),
         speed.clone(),

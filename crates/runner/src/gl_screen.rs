@@ -843,13 +843,12 @@ pub fn selftest() -> Result<()> {
 /// (`VURETRO_TEST_HW`), run it in a real window and check that the picture it drew with
 /// OpenGL comes back right way up: blue on top, red below.
 pub fn selftest_hw(core_path: &std::path::Path, rom: &std::path::Path) -> Result<()> {
-    use std::sync::{Arc, Mutex};
     use vuretro_play::ports::FrameSource;
     std::env::set_var("VURETRO_TEST_HW", "1");
     crate::frontend::init(
         "/nonexistent",
         "/nonexistent",
-        Arc::new(Mutex::new(Default::default())),
+        crate::audio::AudioFeed::detached(),
         Default::default(),
     );
     crate::frontend::with(|fe| fe.hw_allowed = true);

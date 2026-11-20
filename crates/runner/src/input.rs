@@ -523,8 +523,8 @@ mod tests {
 
     // ---- a keyboard key plays a move ----
 
-    use std::collections::{HashSet, VecDeque};
-    use std::sync::{Arc, Mutex};
+    use std::collections::HashSet;
+    use std::sync::Mutex;
     use vuretro_controls::macros::Kind;
 
     struct Keys(HashSet<Key>);
@@ -554,7 +554,7 @@ mod tests {
         frontend::init(
             "/s",
             "/v",
-            Arc::new(Mutex::new(VecDeque::new())),
+            crate::audio::AudioFeed::detached(),
             HashMap::new(),
         );
         let mut input = Input::new(ControlsConfig::default(), vec![m], 60.0);
@@ -640,7 +640,7 @@ mod tests {
         frontend::init(
             "/s",
             "/v",
-            Arc::new(Mutex::new(VecDeque::new())),
+            crate::audio::AudioFeed::detached(),
             HashMap::new(),
         );
         let mut cfg = ControlsConfig::default();
@@ -673,7 +673,7 @@ mod tests {
         frontend::init(
             "/s",
             "/v",
-            Arc::new(Mutex::new(VecDeque::new())),
+            crate::audio::AudioFeed::detached(),
             HashMap::new(),
         );
         let m = Macro {

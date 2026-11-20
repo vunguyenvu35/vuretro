@@ -26,13 +26,13 @@ mod mamebios;
 mod options;
 mod padkeys;
 mod real;
+mod resample;
 mod screen;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 
 #[derive(Parser)]
 #[command(
@@ -155,11 +155,11 @@ fn main() -> Result<()> {
         .unwrap_or_else(|| paths.core_options_file(&core_stem));
     let user_options = core_options(&options_path, &core_stem, &system_dir);
 
-    let audio_buf = Arc::new(Mutex::new(VecDeque::<i16>::new()));
+    let (audio_feed, mut audio_sink) = audio::channel();
     frontend::init(
         &system_dir.to_string_lossy(),
         &save_dir.to_string_lossy(),
-        audio_buf.clone(),
+        audio_feed,
         user_options,
     );
 
@@ -197,7 +197,7 @@ fn main() -> Result<()> {
         // stretch a 384x224 game: run one frame, then ask again.
         core.run();
         av = core.av_info();
-        audio_buf.lock().unwrap().clear();
+        audio_sink.clear();
     }
     if args.list_options {
         let defs = frontend::with(|fe| fe.definitions.clone());
@@ -282,7 +282,7 @@ fn main() -> Result<()> {
         macros: game_macros,
         scale: args.scale,
         cover: args.cover,
-        audio_buf,
+        audio: audio_sink,
         rom_name,
         start_slot: args.load_slot,
     })?

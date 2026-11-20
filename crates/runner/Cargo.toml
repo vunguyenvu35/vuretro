@@ -31,6 +31,7 @@ glutin = "0.32"
 glutin-winit = "0.5"
 raw-window-handle = "0.6"
 glow = "0.18.0"
+rtrb = "0.4.1"
 
 [dev-dependencies]
 tempfile = "3"
