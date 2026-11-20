@@ -558,7 +558,11 @@ fn launch_rejects_missing_bios_and_core_before_spawning() {
 
     let err = a.launch_game("/x/readme.txt".into(), None).err().unwrap();
     assert_eq!(err, "unknown system for this file");
-    assert_eq!(f.0.lock().unwrap().spawned.len(), started, "nothing else started");
+    assert_eq!(
+        f.0.lock().unwrap().spawned.len(),
+        started,
+        "nothing else started"
+    );
 }
 
 #[test]
@@ -958,7 +962,8 @@ fn play_knows_which_core_has_to_be_downloaded_first() {
     assert_eq!(a.core_to_install(nes), None);
     // a core chosen for the game alone is the one to get when it is missing
     f.0.lock().unwrap().cores.clear();
-    a.set_game_core(nes.into(), Some("mesen_libretro".into())).unwrap();
+    a.set_game_core(nes.into(), Some("mesen_libretro".into()))
+        .unwrap();
     assert_eq!(a.core_to_install(nes).as_deref(), Some("mesen_libretro"));
     // unknown files, and a build that cannot download, have nothing to get
     assert_eq!(a.core_to_install("/x/readme.txt"), None);

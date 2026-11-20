@@ -147,7 +147,10 @@ mod tests {
     #[test]
     fn bios_names_are_recognised() {
         assert!(is_bios_file("NeoGeo.zip"));
-        assert!(is_bios_file("PGM.zip"), "the PolyGame Master BIOS is not a game");
+        assert!(
+            is_bios_file("PGM.zip"),
+            "the PolyGame Master BIOS is not a game"
+        );
         assert!(!is_bios_file("mslug.zip"));
     }
 }

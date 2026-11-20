@@ -268,24 +268,39 @@ mod tests {
         let zip = tmp.path().join("Game (Japan).zip");
         let mut w = zip::ZipWriter::new(fs::File::create(&zip).unwrap());
         for (name, data) in [
-            ("Game (Japan).cue", "FILE \"Game [SLPS-1].bin\" BINARY\n  TRACK 01 MODE2/2352\n"),
+            (
+                "Game (Japan).cue",
+                "FILE \"Game [SLPS-1].bin\" BINARY\n  TRACK 01 MODE2/2352\n",
+            ),
             ("Game (Japan).bin", "disc data"),
             ("readme.html", "x"),
         ] {
-            w.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+            w.start_file(name, zip::write::SimpleFileOptions::default())
+                .unwrap();
             w.write_all(data.as_bytes()).unwrap();
         }
         w.finish().unwrap();
 
         let done = import_file(&zip, lib.path(), None).unwrap();
         assert_eq!(done.system, "psx");
-        assert!(done.dest.ends_with("psx/Game (Japan).cue"), "{:?}", done.dest);
+        assert!(
+            done.dest.ends_with("psx/Game (Japan).cue"),
+            "{:?}",
+            done.dest
+        );
         assert!(lib.path().join("psx/Game (Japan).bin").is_file());
         let cue = fs::read_to_string(&done.dest).unwrap();
         assert!(cue.contains("\"Game (Japan).bin\""), "{cue}");
-        assert!(!lib.path().join("psx/readme.html").exists(), "only the disc is imported");
+        assert!(
+            !lib.path().join("psx/readme.html").exists(),
+            "only the disc is imported"
+        );
         // nothing is left behind, and doing it again finds the game already there
-        let left: Vec<_> = fs::read_dir(lib.path()).unwrap().flatten().map(|e| e.file_name()).collect();
+        let left: Vec<_> = fs::read_dir(lib.path())
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name())
+            .collect();
         assert_eq!(left.len(), 1, "{left:?}");
         assert!(import_file(&zip, lib.path(), None).unwrap().already_there);
     }
@@ -299,7 +314,8 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let zip = dir.join("mslug.zip");
         let mut w = zip::ZipWriter::new(fs::File::create(&zip).unwrap());
-        w.start_file("201-p1.p1", zip::write::SimpleFileOptions::default()).unwrap();
+        w.start_file("201-p1.p1", zip::write::SimpleFileOptions::default())
+            .unwrap();
         w.write_all(b"rom").unwrap();
         w.finish().unwrap();
         let done = import_file(&zip, lib.path(), None).unwrap();

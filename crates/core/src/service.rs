@@ -885,7 +885,13 @@ impl App {
     /// Run one game on a core other than its system's (`None` goes back to the system's).
     /// Only cores the registry lists for the game's system are accepted.
     pub fn set_game_core(&self, path: String, core: Option<String>) -> Result<(), String> {
-        let rom_dir = self.settings.lock().unwrap().rom_dir.clone().unwrap_or_default();
+        let rom_dir = self
+            .settings
+            .lock()
+            .unwrap()
+            .rom_dir
+            .clone()
+            .unwrap_or_default();
         let sys = detect::detect_system(Path::new(&rom_dir), Path::new(&path))
             .ok_or("unknown system for this file")?;
         let core = match core.filter(|c| !c.is_empty()) {
@@ -1129,7 +1135,13 @@ impl App {
     /// system is unknown, or this build cannot download cores.
     pub fn core_to_install(&self, path: &str) -> Option<String> {
         self.installer.as_ref()?;
-        let rom_dir = self.settings.lock().unwrap().rom_dir.clone().unwrap_or_default();
+        let rom_dir = self
+            .settings
+            .lock()
+            .unwrap()
+            .rom_dir
+            .clone()
+            .unwrap_or_default();
         let sys = detect::detect_system(Path::new(&rom_dir), Path::new(path))?;
         let chosen = self.core_of(path, sys);
         let own = self

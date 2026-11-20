@@ -318,7 +318,11 @@ mod tests {
             "no internet"
         );
         // a zip straight in the folder works too
-        std::fs::write(offline.path().join(format!("{name}.zip")), zip_of(&name, &magic())).unwrap();
+        std::fs::write(
+            offline.path().join(format!("{name}.zip")),
+            zip_of(&name, &magic()),
+        )
+        .unwrap();
         std::fs::remove_dir_all(&sub).unwrap();
         assert!(inst.install("gambatte_libretro", &|_| {}).is_ok());
     }

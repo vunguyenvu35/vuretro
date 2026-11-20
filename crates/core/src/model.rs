@@ -565,7 +565,9 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            view("neogeo", &off, false, false, 0).blocked_reason().unwrap(),
+            view("neogeo", &off, false, false, 0)
+                .blocked_reason()
+                .unwrap(),
             "Neo Geo is switched off"
         );
         assert!(view("neogeo", &on, false, false, 0)
@@ -573,7 +575,9 @@ mod tests {
             .unwrap()
             .starts_with("core fbneo_libretro not installed"));
         assert_eq!(
-            view("neogeo", &on, true, false, 0).blocked_reason().unwrap(),
+            view("neogeo", &on, true, false, 0)
+                .blocked_reason()
+                .unwrap(),
             "BIOS missing"
         );
         assert_eq!(view("neogeo", &on, true, true, 0).blocked_reason(), None);

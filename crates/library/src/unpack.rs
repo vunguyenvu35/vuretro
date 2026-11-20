@@ -5,7 +5,9 @@
 use std::path::{Path, PathBuf};
 
 /// Extensions of disc images (and the lists that go with them).
-const DISC_EXTS: [&str; 9] = ["cue", "chd", "pbp", "iso", "img", "m3u", "ccd", "mds", "gdi"];
+const DISC_EXTS: [&str; 9] = [
+    "cue", "chd", "pbp", "iso", "img", "m3u", "ccd", "mds", "gdi",
+];
 
 fn ext_of(name: &str) -> String {
     Path::new(name)
@@ -17,7 +19,10 @@ fn ext_of(name: &str) -> String {
 
 pub fn is_archive(path: &Path) -> bool {
     matches!(
-        path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref(),
+        path.extension()
+            .and_then(|e| e.to_str())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
         Some("zip" | "7z")
     )
 }
@@ -43,7 +48,9 @@ pub fn names(archive: &Path) -> Result<Vec<String>, String> {
 
 /// Does the archive hold a disc image (and so has to be unpacked to be played)?
 pub fn holds_disc(names: &[String]) -> bool {
-    names.iter().any(|n| DISC_EXTS.contains(&ext_of(n).as_str()))
+    names
+        .iter()
+        .any(|n| DISC_EXTS.contains(&ext_of(n).as_str()))
 }
 
 /// Unpack everything into `dest`. Names that would leave `dest` are refused.
@@ -56,7 +63,9 @@ pub fn extract(archive: &Path, dest: &Path) -> Result<(), String> {
     let file = std::fs::File::open(archive).map_err(|e| format!("cannot open it: {e}"))?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| format!("cannot read the zip: {e}"))?;
     for i in 0..zip.len() {
-        let mut entry = zip.by_index(i).map_err(|e| format!("cannot unpack it: {e}"))?;
+        let mut entry = zip
+            .by_index(i)
+            .map_err(|e| format!("cannot unpack it: {e}"))?;
         let Some(rel) = entry.enclosed_name() else {
             return Err(format!("unsafe file name in the archive: {}", entry.name()));
         };
@@ -100,8 +109,15 @@ fn cue_files(text: &str) -> Vec<String> {
 /// same files under other names: the sheet is rewritten to use them, in order.
 pub fn mend_cues(dir: &Path) {
     let all = files_under(dir);
-    let cues: Vec<&PathBuf> = all.iter().filter(|p| ext_of(&p.to_string_lossy()) == "cue").collect();
-    let name_of = |p: &Path| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let cues: Vec<&PathBuf> = all
+        .iter()
+        .filter(|p| ext_of(&p.to_string_lossy()) == "cue")
+        .collect();
+    let name_of = |p: &Path| {
+        p.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
     let mut referenced: Vec<String> = Vec::new();
     for c in &cues {
         if let Ok(t) = std::fs::read_to_string(c) {
@@ -110,12 +126,16 @@ pub fn mend_cues(dir: &Path) {
     }
     let loose: Vec<String> = all
         .iter()
-        .filter(|p| !["cue", "m3u", "html", "txt", "nfo"].contains(&ext_of(&p.to_string_lossy()).as_str()))
+        .filter(|p| {
+            !["cue", "m3u", "html", "txt", "nfo"].contains(&ext_of(&p.to_string_lossy()).as_str())
+        })
         .map(|p| name_of(p))
         .filter(|n| !referenced.iter().any(|r| r.eq_ignore_ascii_case(n)))
         .collect();
     for c in cues {
-        let Ok(text) = std::fs::read_to_string(c) else { continue };
+        let Ok(text) = std::fs::read_to_string(c) else {
+            continue;
+        };
         let folder = c.parent().unwrap_or(dir);
         let missing: Vec<String> = cue_files(&text)
             .into_iter()
@@ -136,7 +156,11 @@ pub fn mend_cues(dir: &Path) {
 /// game), else every `.cue`, else the disc images that need nothing beside them.
 pub fn entry_points(dir: &Path) -> Vec<PathBuf> {
     let all = files_under(dir);
-    for set in [&["m3u"][..], &["cue"], &["chd", "pbp", "iso", "img", "ccd", "mds", "gdi"]] {
+    for set in [
+        &["m3u"][..],
+        &["cue"],
+        &["chd", "pbp", "iso", "img", "ccd", "mds", "gdi"],
+    ] {
         let found: Vec<PathBuf> = all
             .iter()
             .filter(|p| set.contains(&ext_of(&p.to_string_lossy()).as_str()))
@@ -157,7 +181,8 @@ mod tests {
     fn zip_with(path: &Path, files: &[(&str, &str)]) {
         let mut w = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
         for (name, data) in files {
-            w.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+            w.start_file(*name, zip::write::SimpleFileOptions::default())
+                .unwrap();
             w.write_all(data.as_bytes()).unwrap();
         }
         w.finish().unwrap();
@@ -167,7 +192,10 @@ mod tests {
     fn an_archive_with_a_disc_is_told_from_one_with_a_rom_set() {
         let dir = tempfile::tempdir().unwrap();
         let disc = dir.path().join("g.zip");
-        zip_with(&disc, &[("g.cue", "x"), ("g.bin", "y"), ("readme.html", "z")]);
+        zip_with(
+            &disc,
+            &[("g.cue", "x"), ("g.bin", "y"), ("readme.html", "z")],
+        );
         assert!(holds_disc(&names(&disc).unwrap()));
         let rom = dir.path().join("mslug.zip");
         zip_with(&rom, &[("201-p1.p1", "x"), ("201-c1.c1", "y")]);
@@ -194,7 +222,8 @@ mod tests {
     #[test]
     fn a_cue_that_names_another_file_is_mended_and_a_right_one_is_left() {
         let dir = tempfile::tempdir().unwrap();
-        let wrong = "FILE \"Game [SLPS-1].bin\" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00\n";
+        let wrong =
+            "FILE \"Game [SLPS-1].bin\" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00\n";
         std::fs::write(dir.path().join("Game.cue"), wrong).unwrap();
         std::fs::write(dir.path().join("Game.bin"), "d").unwrap();
         std::fs::write(dir.path().join("readme.html"), "r").unwrap();
@@ -203,12 +232,18 @@ mod tests {
         assert!(fixed.contains("FILE \"Game.bin\""), "{fixed}");
         // already right: untouched
         mend_cues(dir.path());
-        assert_eq!(std::fs::read_to_string(dir.path().join("Game.cue")).unwrap(), fixed);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("Game.cue")).unwrap(),
+            fixed
+        );
         // two files and one name: cannot tell which, so it is left for the import to refuse
         std::fs::write(dir.path().join("Other.bin"), "d").unwrap();
         std::fs::write(dir.path().join("Game.cue"), wrong).unwrap();
         mend_cues(dir.path());
-        assert_eq!(std::fs::read_to_string(dir.path().join("Game.cue")).unwrap(), wrong);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("Game.cue")).unwrap(),
+            wrong
+        );
     }
 
     #[test]

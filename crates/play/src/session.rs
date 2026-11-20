@@ -1,15 +1,17 @@
 //! An interactive game session: the window, the frame loop and the player's actions.
-//! Built from ports (see `ports.rs`), so it runs against fakes in tests; `real::open`
-//! builds the real one. [`Session::run`] plays until the window closes.
+//! Built from ports (see `ports.rs`), so it runs against fakes in tests; the real ports are
+//! adapters in `vuretro-runner`. [`Session::run`] plays until the window closes.
 
 use crate::perf::{self, PerfMonitor, Status};
-use crate::ports::{Controller, Emulator, Frame, FrameSource, Screen, View};
+use crate::keys::Key;
+use crate::ports::{Controller, Emulator, Files, Frame, FrameSource, Screen, View};
 use crate::rewind::Rewind;
 use crate::speed::{self, Mode};
-use crate::window::{self, clamp_scale, gain_for, pace, paused_overlay, quit_overlay, window_title, Act, SLOTS};
+use crate::window::{
+    self, clamp_scale, gain_for, pace, paused_overlay, quit_overlay, window_title, Act, SLOTS,
+};
 use crate::{cover, crt, lcd, scale, scale2x};
 use anyhow::Result;
-use minifb::Key;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -28,6 +30,7 @@ pub struct Parts {
     pub emulator: Box<dyn Emulator>,
     pub controller: Box<dyn Controller>,
     pub frames: Box<dyn FrameSource>,
+    pub files: Box<dyn Files>,
     /// Output level in percent, read by the audio thread.
     pub gain: Arc<AtomicU32>,
     /// Game speed in percent (100 = normal), read by the audio thread.
@@ -71,6 +74,7 @@ pub struct Session {
     emulator: Box<dyn Emulator>,
     controller: Box<dyn Controller>,
     frames: Box<dyn FrameSource>,
+    files: Box<dyn Files>,
     gain: Arc<AtomicU32>,
     speed_percent: Arc<AtomicU32>,
     _keep_alive: Box<dyn std::any::Any>,
@@ -142,6 +146,7 @@ impl Session {
             emulator: parts.emulator,
             controller: parts.controller,
             frames: parts.frames,
+            files: parts.files,
             gain: parts.gain,
             speed_percent: parts.speed,
             _keep_alive: parts.keep_alive,
@@ -333,7 +338,7 @@ impl Session {
         let png = self
             .save_dir
             .join(format!("{}.state{}.png", self.rom_name, self.slot));
-        if let Err(e) = cover::write_png(&png, &buf, w, h) {
+        if let Err(e) = self.files.write_png(&png, &buf, w, h) {
             log::warn!("cannot save slot thumbnail: {e}");
         }
     }
@@ -344,7 +349,7 @@ impl Session {
         if let Some(r) = self.rewind.as_mut() {
             r.clear();
         }
-        match std::fs::read(path) {
+        match self.files.read(path) {
             Ok(data) if self.emulator.load_state(&data) => Loaded::Yes,
             Ok(_) => Loaded::Rejected,
             Err(_) => Loaded::Missing,
@@ -355,7 +360,7 @@ impl Session {
     fn apply(&mut self, act: Act) -> Result<Option<String>> {
         Ok(match act {
             Act::SaveState => Some(match self.emulator.save_state() {
-                Some(data) => match std::fs::write(self.state_path(self.slot), data) {
+                Some(data) => match self.files.write(&self.state_path(self.slot), &data) {
                     Ok(_) => {
                         self.save_thumbnail();
                         format!("saved to slot {}", self.slot)
@@ -561,7 +566,7 @@ impl Session {
                 let path = self
                     .shots_dir
                     .join(format!("{}-{stamp}.png", self.rom_name));
-                match cover::write_png(&path, buf, *w, *h) {
+                match self.files.write_png(&path, buf, *w, *h) {
                     Ok(_) => format!("screenshot saved ({})", self.shots_dir.display()),
                     Err(e) => format!("screenshot failed: {e}"),
                 }
@@ -770,8 +775,10 @@ impl Session {
             let mut best = cover::Best::default();
             let (buf, w, h) = self.frames.current();
             best.offer(&buf, w, h);
-            if let Err(e) = best.save(path) {
-                log::warn!("cannot save cover: {e}");
+            if let Some((buf, w, h)) = best.frame() {
+                if let Err(e) = self.files.write_png(path, buf, w, h) {
+                    log::warn!("cannot save cover: {e}");
+                }
             }
         }
         match self.emulator.save_sram(&self.sram_path) {
@@ -781,7 +788,7 @@ impl Session {
         }
         if self.settings.resume {
             match self.emulator.save_state() {
-                Some(state) => match std::fs::write(self.auto_state_path(), state) {
+                Some(state) => match self.files.write(&self.auto_state_path(), &state) {
                     Ok(_) => log::info!("saved the game to carry on from it next time"),
                     Err(e) => log::warn!("cannot save the resume state: {e}"),
                 },
@@ -1051,7 +1058,11 @@ mod tests {
         r.log.borrow_mut().pressed.insert(Key::Escape);
         s.frame().unwrap();
         assert!(s.asking && !s.quit);
-        assert_eq!(r.log.borrow().ran, 1, "the game waits while the question is open");
+        assert_eq!(
+            r.log.borrow().ran,
+            1,
+            "the game waits while the question is open"
+        );
         assert_eq!(r.gain.load(Ordering::Relaxed), 0, "and is muted");
         s.frame().unwrap();
         assert!(!s.quit && r.log.borrow().ran == 1, "it keeps waiting");
@@ -1073,7 +1084,11 @@ mod tests {
             assert!(!s.asking && !s.quit, "{key:?}");
             let before = r.log.borrow().ran;
             s.frame().unwrap();
-            assert_eq!(r.log.borrow().ran, before + 1, "playing again after {key:?}");
+            assert_eq!(
+                r.log.borrow().ran,
+                before + 1,
+                "playing again after {key:?}"
+            );
             assert_eq!(r.gain.load(Ordering::Relaxed), 100, "sound is back");
         }
     }
@@ -1099,7 +1114,7 @@ mod tests {
         assert_eq!(out.len(), w * h);
         // the picture is dark, and the text is white on it
         assert_eq!(out[0], 0x003F_3F3F);
-        assert!(out.iter().any(|&p| p == 0x00FF_FFFF), "the text is drawn");
+        assert!(out.contains(&0x00FF_FFFF), "the text is drawn");
         // a picture too small for the text is just dimmed, never indexed out of range
         let tiny = window::quit_overlay(&[0x00FF_FFFF; 4], 2, 2);
         assert!(tiny.iter().all(|&p| p == 0x003F_3F3F));
