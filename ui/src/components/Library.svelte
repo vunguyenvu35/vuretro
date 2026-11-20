@@ -358,11 +358,13 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
 
 {#if selected && sel}
   <aside class="detail">
-    <div class="closerow">
+    <header class="dhead">
+      <span class="label">Details</span>
       <button type="button" class="closebtn" aria-label="Close details" title="Close (Esc)" onclick={closeDetails}>
-        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" /></svg>
       </button>
-    </div>
+    </header>
+    <div class="dbody">
     <div class="crt scan big" style="--c:{colorOf(selected.system)}">{#if covers[selected.path]}<img src={covers[selected.path]} alt="" />{:else}<span>{selected.title}</span>{/if}</div>
     <GameTitle game={selected} />
     <p class="muted">{sel.name} · {formatSize(selected.size)}</p>
@@ -427,6 +429,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
     {#if selected.imported}
       <button class="btn wide danger" onclick={() => remove(selected)}>Remove from library</button>
     {/if}
+    </div>
   </aside>
 {/if}
 {/if}
@@ -561,20 +564,26 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sub { color: var(--muted); font-size: 11px; margin-top: -4px; }
 
+  /* the details are two parts: a slim header that never moves, and the body under it that scrolls.
+     The header holds the close button, so it is where one looks for it and never on the game's
+     picture; the cross lines up with the right edge of the content below. */
   .detail {
-    width: 290px; flex: none; background: var(--surface); border-left: 1px solid var(--border);
-    padding: 16px; display: flex; flex-direction: column; gap: 8px; overflow: auto;
+    width: 290px; flex: none; min-height: 0; background: var(--surface); border-left: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden;
   }
-  /* the close button sits over the top right corner of the cover and stays there when the panel scrolls:
-     its row has no height of its own, so nothing moves down to make room for it */
-  .closerow { position: sticky; top: 8px; z-index: 3; height: 0; display: flex; justify-content: flex-end; flex: none; }
+  /* 55 px with its border: the same strip as the toolbar next to it (8 px, the 38 px search field,
+     8 px), so "Details" and the search field are on one line */
+  .dhead {
+    flex: none; box-sizing: border-box; height: 55px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 9px 0 16px; border-bottom: 1px solid var(--border);
+  }
+  .dbody { flex: 1; min-height: 0; overflow: auto; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
   .closebtn {
-    display: grid; place-items: center; width: 26px; height: 26px; margin: 8px 8px 0 0; padding: 0; border-radius: 50%;
-    color: var(--text); background: rgb(9 11 16 / .68); border: 1px solid rgb(255 255 255 / .16);
-    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); transition: background .12s, color .12s, border-color .12s;
+    display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border-radius: 8px;
+    color: var(--muted); background: none; border: 0; transition: background .12s, color .12s;
   }
-  .closebtn:hover { background: rgb(9 11 16 / .9); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
-  .closebtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .closebtn:hover { background: var(--surface-2); color: var(--text); }
+  .closebtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   dl { margin: 10px 0; display: grid; gap: 2px; }
   dt { margin-top: 10px; }
   dd { margin: 0; }
