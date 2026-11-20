@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { visibleGames, heroFor, missingCovers, lastPlayed, headingFor, pickRange, formatSize, summarizeImport, summarizeRemoval, summarizeBios } from './library.js';
+import { visibleGames, sortDirection, nextSorts, STATUSES, heroFor, missingCovers, lastPlayed, headingFor, pickRange, formatSize, summarizeImport, summarizeRemoval, summarizeBios } from './library.js';
 
-const game = (title, o = {}) => ({ system: 'snes', title, path: `/lib/${title}`, size: 1e6, last_played: 0, favorite: false, imported: true, ...o });
+const game = (title, o = {}) => ({ system: 'snes', title, path: `/lib/${title}`, size: 1e6, last_played: 0, play_secs: 0, favorite: false, imported: true, ...o });
 const overview = (games, disabled = []) => ({
   systems: ['snes', 'psx'].map((id) => ({ id, name: id.toUpperCase(), enabled: !disabled.includes(id) })),
   games,
@@ -27,9 +27,128 @@ test('filters by system, recent, favorites and search text', () => {
 
 test('sorts by recent (ties by title), az and size', () => {
   const ov = overview([game('b', { size: 5e6 }), game('a', { size: 1e6 }), game('c', { size: 9e6, last_played: 3 })]);
-  assert.deepEqual(visibleGames(ov, { sort: 'recent' }).map((g) => g.title), ['c', 'a', 'b']);
-  assert.deepEqual(visibleGames(ov, { sort: 'az' }).map((g) => g.title), ['a', 'b', 'c']);
-  assert.deepEqual(visibleGames(ov, { sort: 'size' }).map((g) => g.title), ['c', 'b', 'a']);
+  const one = (key, reverse = false) => ({ sorts: [{ key, reverse }] });
+  assert.deepEqual(visibleGames(ov, one('recent')).map((g) => g.title), ['c', 'a', 'b']);
+  assert.deepEqual(visibleGames(ov, one('az')).map((g) => g.title), ['a', 'b', 'c']);
+  assert.deepEqual(visibleGames(ov, one('size')).map((g) => g.title), ['c', 'b', 'a']);
+});
+
+const titles = (list) => list.map((g) => g.title);
+
+test('every sort can go either way, and the arrow says which', () => {
+  const ov = overview([
+    game('b', { size: 5, last_played: 10, play_secs: 30, system: 'psx' }),
+    game('a', { size: 9, last_played: 30, play_secs: 10 }),
+    game('c', { size: 1, last_played: 20, play_secs: 20 }),
+  ]);
+  const order = (key, reverse = false) => titles(visibleGames(ov, { sorts: [{ key, reverse }] }));
+  // newest, biggest and most played first; names and systems from A to Z
+  assert.deepEqual(order('recent'), ['a', 'c', 'b']);
+  assert.deepEqual(order('recent', true), ['b', 'c', 'a']);
+  assert.deepEqual(order('az'), ['a', 'b', 'c']);
+  assert.deepEqual(order('az', true), ['c', 'b', 'a']);
+  assert.deepEqual(order('size'), ['a', 'b', 'c']);
+  assert.deepEqual(order('size', true), ['c', 'b', 'a']);
+  assert.deepEqual(order('played'), ['b', 'c', 'a']);
+  assert.deepEqual(order('played', true), ['a', 'c', 'b']);
+  // by system name (PSX before SNES), a tie by title
+  assert.deepEqual(order('system'), ['b', 'a', 'c']);
+  assert.deepEqual(order('system', true), ['a', 'c', 'b']);
+
+  assert.equal(sortDirection('recent'), 'desc');
+  assert.equal(sortDirection('recent', true), 'asc');
+  assert.equal(sortDirection('az'), 'asc');
+  assert.equal(sortDirection('az', true), 'desc');
+  assert.equal(sortDirection('nonsense'), 'desc', 'an unknown key is the default one');
+});
+
+test('games with nothing to compare stay at the end, whichever way', () => {
+  const ov = overview([game('never'), game('old', { last_played: 5, play_secs: 5 }), game('new', { last_played: 9, play_secs: 9 }), game('also never')]);
+  for (const key of ['recent', 'played']) {
+    assert.deepEqual(titles(visibleGames(ov, { sorts: [{ key, reverse: false }] })), ['new', 'old', 'also never', 'never'], key);
+    assert.deepEqual(titles(visibleGames(ov, { sorts: [{ key, reverse: true }] })), ['old', 'new', 'also never', 'never'], `${key} reversed`);
+  }
+});
+
+test('filters by status, together with the rest', () => {
+  const ov = overview([
+    game('fresh'),
+    game('played', { last_played: 5, play_secs: 600 }),
+    game('cleared', { play_secs: 90 }), // its place in Recent was cleared, but it was played
+    game('locked', { blocked: 'BIOS missing' }),
+    game('twin1', { duplicate: true }),
+    game('twin2', { duplicate: true, system: 'psx' }),
+  ]);
+  const by = (status, more = {}) => titles(visibleGames(ov, { status, sorts: [{ key: 'az', reverse: false }], ...more }));
+  assert.deepEqual(by('never'), ['fresh', 'locked', 'twin1', 'twin2']);
+  assert.deepEqual(by('played'), ['cleared', 'played']);
+  assert.deepEqual(by('ready'), ['cleared', 'fresh', 'played', 'twin1', 'twin2']);
+  assert.deepEqual(by('blocked'), ['locked']);
+  assert.deepEqual(by('duplicates'), ['twin1', 'twin2']);
+  assert.deepEqual(by('duplicates', { system: 'psx' }), ['twin2']);
+  assert.deepEqual(by('never', { query: 'tw' }), ['twin1', 'twin2']);
+  assert.deepEqual(by('played', { filter: 'recent' }), ['played'], 'with the sidebar filter');
+  assert.deepEqual(by(''), ['cleared', 'fresh', 'locked', 'played', 'twin1', 'twin2'], 'no status: all');
+  assert.deepEqual(by('nonsense'), by(''), 'an unknown status filters nothing');
+  assert.deepEqual(STATUSES.map((s) => s.value), ['', 'never', 'played', 'ready', 'blocked', 'duplicates']);
+});
+
+test('the card to continue with ignores the status filter, as it does the search', () => {
+  const ov = overview([game('old', { last_played: 5 }), game('fresh')]);
+  assert.equal(heroFor(ov, { status: 'never' })?.title, 'old');
+  assert.equal(heroFor(ov, { status: 'never', query: 'fresh' })?.title, 'old');
+});
+
+test('several sorts work together: the next one settles what the one before cannot', () => {
+  const ov = overview([
+    game('zelda', { system: 'psx', size: 5 }),
+    game('mario', { system: 'snes', size: 5 }),
+    game('crash', { system: 'psx', size: 9 }),
+    game('alundra', { system: 'psx', size: 5 }),
+    game('metroid', { system: 'snes', size: 1 }),
+  ]);
+  const order = (...sorts) => titles(visibleGames(ov, { sorts: sorts.map(([key, reverse = false]) => ({ key, reverse })) }));
+  // by system, then by name inside each system
+  assert.deepEqual(order(['system'], ['az']), ['alundra', 'crash', 'zelda', 'mario', 'metroid']);
+  assert.deepEqual(order(['system'], ['az', true]), ['zelda', 'crash', 'alundra', 'metroid', 'mario']);
+  // by size, biggest first, the ones of the same size by system, then by name
+  assert.deepEqual(order(['size'], ['system'], ['az']), ['crash', 'alundra', 'zelda', 'mario', 'metroid']);
+  // the order of the sorts matters
+  assert.deepEqual(order(['az'], ['system']), ['alundra', 'crash', 'mario', 'metroid', 'zelda']);
+  // never played games are at the end by the first sort, and still ordered by the next
+  const never = overview([game('b'), game('a'), game('played', { last_played: 5 })]); // all of the same size
+  assert.deepEqual(titles(visibleGames(never, { sorts: [{ key: 'recent', reverse: false }, { key: 'az', reverse: false }] })), ['played', 'a', 'b']);
+  // what no sort can tell apart goes by title
+  assert.deepEqual(titles(visibleGames(never, { sorts: [{ key: 'size', reverse: false }] })), ['a', 'b', 'played']);
+});
+
+test('clicking a heading, and Shift-clicking one, give the sorts', () => {
+  const R = (key, reverse = false) => ({ key, reverse });
+  const base = [R('recent')];
+  // a click turns the main sort round, a click on another makes it the only one
+  assert.deepEqual(nextSorts(base, 'recent'), [R('recent', true)]);
+  assert.deepEqual(nextSorts([R('recent', true)], 'recent'), [R('recent')]);
+  assert.deepEqual(nextSorts(base, 'az'), [R('az')]);
+  // Shift adds the next sort; again it turns round; once more it goes
+  const two = nextSorts(base, 'az', { add: true });
+  assert.deepEqual(two, [R('recent'), R('az')]);
+  const turned = nextSorts(two, 'az', { add: true });
+  assert.deepEqual(turned, [R('recent'), R('az', true)]);
+  assert.deepEqual(nextSorts(turned, 'az', { add: true }), [R('recent')]);
+  // the main sort, with Shift, only turns round and back: it cannot go
+  assert.deepEqual(nextSorts(base, 'recent', { add: true }), [R('recent', true)]);
+  assert.deepEqual(nextSorts([R('recent', true)], 'recent', { add: true }), [R('recent')]);
+  // a plain click on the main sort keeps the others; on another one it drops them
+  assert.deepEqual(nextSorts(two, 'recent'), [R('recent', true), R('az')]);
+  assert.deepEqual(nextSorts(two, 'az'), [R('az')]);
+  // three at most make sense, but nothing stops a fourth, and a key is never there twice
+  const three = nextSorts(two, 'size', { add: true });
+  assert.deepEqual(three.map((s) => s.key), ['recent', 'az', 'size']);
+  assert.deepEqual(nextSorts(three, 'size', { add: true }).map((s) => s.key), ['recent', 'az', 'size']);
+  // nothing known, nothing changes; an empty list starts from the default
+  assert.deepEqual(nextSorts(base, 'nonsense'), base);
+  assert.deepEqual(nextSorts([], 'az', { add: true }), [R('recent'), R('az')]);
+  assert.deepEqual(nextSorts(undefined, 'recent'), [R('recent', true)]);
 });
 
 test('no overview means no games', () => {

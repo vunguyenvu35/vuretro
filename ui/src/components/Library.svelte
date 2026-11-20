@@ -2,9 +2,10 @@
   import { chooseCover, resetCover, regenerateCovers } from '../lib/store.svelte.js';
 import { gameScope } from '../lib/scope.js';
 import { lazyCover } from '../lib/lazyCovers.js';
-import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, applyPatch, covers, setLayout, pinCovers, pickRomFiles, pickRomFolder, clearRecent } from '../lib/store.svelte.js';
+import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, applyPatch, covers, setLayout, pinCovers, pickRomFiles, pickRomFolder, clearRecent, setSort } from '../lib/store.svelte.js';
   import { openMenu, confirmDialog } from '../lib/ui.svelte.js';
-  import { visibleGames, heroFor, headingFor, pickRange, formatSize } from '../lib/library.js';
+  import { visibleGames, heroFor, headingFor, pickRange, formatSize, sortDirection, STATUSES } from '../lib/library.js';
+  import Select from './Select.svelte';
   import Welcome from "./Welcome.svelte";
   import Icon from './Icon.svelte';
   import SaveSlots from './SaveSlots.svelte';
@@ -40,6 +41,19 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   $effect(() => pinCovers([hero?.path, selected?.path]));
   const sel = $derived(selected ? ov.systems.find((s) => s.id === selected.system) : null);
   const heading = $derived(headingFor(ov, app));
+  /** The sorts offered in the toolbar of the grid; the list sorts by its column headings. */
+  const SORT_OPTIONS = [
+    { value: 'recent', label: 'Recent' },
+    { value: 'az', label: 'A–Z' },
+    { value: 'system', label: 'System' },
+    { value: 'size', label: 'Size' },
+    { value: 'played', label: 'Time played' },
+  ];
+  /** The columns of the list that can be sorted: key, heading, and whether the column is right aligned. */
+  /** The main sort (there is always one). */
+  const primary = $derived(app.sorts[0] ?? { key: 'recent', reverse: false });
+  const sortName = (key) => SORT_OPTIONS.find((o) => o.value === key)?.label ?? key;
+  const SORT_COLUMNS = [['az', 'Game', ''], ['system', 'System', ''], ['size', 'Size', 'r'], ['recent', 'Last played', ''], ['played', 'Time played', 'r']];
 
   let over = $state(false);
   onMount(() => {
@@ -262,6 +276,9 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
             <kbd>{modKey} K</kbd>
           {/if}
         </label>
+        <div class="filter" class:on={!!app.status}>
+          <Select compact bind:value={app.status} options={STATUSES} ariaLabel="Filter by status" />
+        </div>
         <div class="tools">
           {#if app.filter === 'recent' && !app.query && !app.selecting && visible.length}
             <button onclick={clearRecent} title="Empty the Recent list. Your games stay in the library.">Clear recent</button>
@@ -277,12 +294,19 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
             <button onclick={() => { autoSelect = false; app.selecting = true; }} title="Choose several games to remove ({modKey}-click or Shift-click a game)">Select</button>
           {/if}
         </div>
-        <div class="sort">
-          Sort:
-          {#each [['recent', 'Recent'], ['az', 'A–Z'], ['size', 'Size']] as [k, name] (k)}
-            <button class:on={app.sort === k} onclick={() => (app.sort = k)}>{name}</button>
-          {/each}
-        </div>
+        {#if app.layout !== 'list'}
+          <!-- the list sorts by its column headings; the grid has none, so it sorts from here -->
+          <div class="sort" role="group" aria-label="Sort">
+            Sort:
+            <Select compact bind:value={() => primary.key, (k) => (app.sorts = [{ key: k, reverse: false }])} options={SORT_OPTIONS} ariaLabel="Sort by" />
+            <button type="button" class="dir" onclick={() => setSort(primary.key)} aria-label="Reverse the order" title={sortDirection(primary.key, primary.reverse) === 'desc' ? 'Biggest, newest or last first: click to turn it round' : 'A to Z or smallest first: click to turn it round'}>
+              <svg class="arrow" class:up={sortDirection(primary.key, primary.reverse) === 'asc'} viewBox="0 0 10 10" width="11" height="11" aria-hidden="true"><path d="M5 1.6v6.8M2.2 5.8L5 8.6l2.8-2.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </button>
+            {#if app.sorts.length > 1}
+              <span class="more" title="Then by {app.sorts.slice(1).map((x) => sortName(x.key)).join(', ')}">+{app.sorts.length - 1}</span>
+            {/if}
+          </div>
+        {/if}
         <div class="layout" role="radiogroup" aria-label="View">
           <button role="radio" aria-checked={app.layout === 'grid'} class:on={app.layout === 'grid'} onclick={() => setLayout('grid')} title="Grid" aria-label="Grid view">
             <svg viewBox="0 0 16 16" width="15" height="15"><rect x="2" y="2" width="5" height="5" rx="1.2" fill="currentColor" /><rect x="9" y="2" width="5" height="5" rx="1.2" fill="currentColor" /><rect x="2" y="9" width="5" height="5" rx="1.2" fill="currentColor" /><rect x="9" y="9" width="5" height="5" rx="1.2" fill="currentColor" /></svg>
@@ -295,16 +319,40 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
 
   <div class="scroll" role="presentation" oncontextmenu={listMenu}>
       {#if visible.length === 0}
-        <p class="muted pad">Nothing matches.</p>
+        <p class="muted pad">
+          Nothing matches.
+          {#if app.status}<button type="button" class="linkbtn" onclick={() => (app.status = '')}>Show every status</button>{/if}
+        </p>
       {:else if app.layout === 'list'}
         <div class="list" class:selecting={app.selecting} role="list">
-          <div class="lhead" aria-hidden={!app.selecting}>
+          <div class="lhead">
             {#if app.selecting}
               <button class="hcheck" class:on={allPicked} class:part={pickedGames.length > 0 && !allPicked} onclick={toggleAll} aria-label={allPicked ? 'Clear selection' : 'Select all'}>
                 {#if allPicked}<svg viewBox="0 0 16 16" width="11" height="11"><path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg>{:else if pickedGames.length}<svg viewBox="0 0 16 16" width="11" height="11"><path d="M3.5 8h9" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" /></svg>{/if}
               </button>
             {/if}
-            <span></span><span>Game</span><span>System</span><span class="r">Size</span><span>Last played</span><span class="r">Time played</span><span></span>
+            <span></span>
+            {#each SORT_COLUMNS as [k, name, align] (k)}
+              {@const at = app.sorts.findIndex((x) => x.key === k)}
+              {@const many = app.sorts.length > 1}
+              <button
+                type="button"
+                class="hsort {align}"
+                class:on={at >= 0}
+                aria-pressed={at >= 0}
+                title={at < 0
+                  ? `Sort by ${name} · Shift+click to sort by it as well`
+                  : !many
+                    ? `Sorted by ${name}: click to turn it round · Shift+click another heading to add a second sort`
+                    : at === 0
+                      ? `Main sort, by ${name}: click to turn it round · click another heading to start again`
+                      : `Sort ${at + 1}, by ${name}: Shift+click to turn it round, then to remove it`}
+                onclick={(e) => setSort(k, { add: e.shiftKey })}
+              >
+                {name}{#if at >= 0}<svg class="arrow" class:up={sortDirection(k, app.sorts[at].reverse) === 'asc'} viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M5 1.6v6.8M2.2 5.8L5 8.6l2.8-2.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>{#if many}<span class="rank">{at + 1}</span>{/if}{/if}
+              </button>
+            {/each}
+            <span></span>
           </div>
           {#each visible as g (g.path)}
             <button use:lazyCover={g.path} class="card lrow" class:sel={app.selected === g.path && !app.selecting} class:picked={app.picked.includes(g.path)} class:locked={app.selecting && !g.imported} title={app.selecting && !g.imported ? 'Games read from a linked folder cannot be removed here' : ''} onclick={(e) => cardClick(g, e)} oncontextmenu={(e) => gameMenu(e, g)} ondblclick={() => !app.selecting && play(g)}>
@@ -435,7 +483,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
      runs along the games and not beside the toolbar */
   .main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 0 20px 0; }
   .search {
-    flex: 1 1 260px; min-width: 180px; max-width: 380px; display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 10px 0 12px;
+    flex: 1 1 120px; min-width: 120px; display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 10px 0 12px;
     background: var(--surface); border: 1px solid var(--border); border-radius: 12px; color: var(--faint);
     transition: border-color .15s, box-shadow .15s, color .15s;
   }
@@ -476,9 +524,33 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   .bar h3 { font-size: 15px; }
   .bar h3 small { color: var(--faint); font: 12px var(--font-body); margin-left: 6px; }
   .sort { color: var(--muted); display: flex; gap: 4px; align-items: center; }
-  .sort button { background: none; border: 0; padding: 2px 6px; color: var(--muted); border-radius: 4px; }
-  .sort button.on { color: var(--accent); }
-  .sort button:hover { color: var(--text); }
+  .sort { flex: none; gap: 6px; }
+  .dir { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; background: none; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); }
+  .dir:hover { color: var(--text); border-color: var(--faint); }
+  /* the arrow says which way: down is the biggest, the newest and the most played first, up is A to Z */
+  .arrow { flex: none; transition: transform .15s; }
+  .arrow.up { transform: rotate(180deg); }
+  @media (prefers-reduced-motion: reduce) { .arrow { transition: none; } }
+  /* a column heading of the list that sorts by it. The button is the whole cell, not just the word in
+     it, so a click anywhere in the heading counts; and the words cannot be selected, which a
+     double-click on a heading would otherwise do */
+  .lhead { user-select: none; -webkit-user-select: none; }
+  .hsort {
+    display: flex; align-items: center; justify-content: flex-start; gap: 5px; width: 100%; min-width: 0; align-self: stretch; padding: 0;
+    background: none; border: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; text-align: inherit; cursor: pointer;
+    user-select: none; -webkit-user-select: none;
+  }
+  .hsort.r { justify-content: flex-end; }
+  /* the place of a sort among several: 1 is the main one */
+  .rank { flex: none; min-width: 13px; padding: 1px 3px; border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 7px; font-size: 9px; line-height: 1.1; text-align: center; letter-spacing: 0; }
+  .more { flex: none; padding: 2px 6px; border: 1px solid var(--border); border-radius: 7px; color: var(--muted); font-size: 11px; cursor: default; }
+  .hsort:hover { color: var(--text); }
+  .hsort.on { color: var(--accent); }
+  .hsort:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  /* a filter that is on says so: the control is in the accent colour */
+  .filter { flex: none; }
+  .filter.on :global(button.trigger) { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+  .linkbtn { background: none; border: 0; padding: 0; margin-left: 6px; color: var(--accent); font: inherit; text-decoration: underline; text-underline-offset: 3px; }
 
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 18px 16px; }
   .card { background: none; border: 0; padding: 0; text-align: center; display: flex; flex-direction: column; gap: 6px; }

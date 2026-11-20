@@ -1,5 +1,5 @@
 import { api } from './api.js';
-import { missingCovers, summarizeBios, summarizeImport, summarizeRemoval } from './library.js';
+import { missingCovers, nextSorts, summarizeBios, summarizeImport, summarizeRemoval } from './library.js';
 import { toast, confirmDialog } from './ui.svelte.js';
 import { clampSidebar, parseSidebar } from './layout.js';
 
@@ -28,7 +28,8 @@ export const app = $state({
   system: null, // system id or null
   collection: null, // collection name or null
   query: '',
-  sort: 'recent', // recent | az | size
+  sorts: [{ key: 'recent', reverse: false }], // how the games are ordered: keys recent | az | system | size | played, the first the main one
+  status: '', // '' | never | played | ready | blocked | duplicates: a filter next to the sidebar's
   layout: readLayout(), // grid | list
   selected: null, // game path
   renaming: null, // path of the game whose name is being edited in the detail panel
@@ -45,6 +46,11 @@ const hash = typeof location !== "undefined" ? location.hash.slice(1).split(",")
 if (["cores", "controls", "macros", "settings"].includes(hash[0])) app.view = hash[0];
 export const startSelect = hash.includes("select");
 if (["about", "support"].includes(hash[1])) app.dialog = hash[1]; // for development: #settings,support
+
+/** A click on the heading of a sort: see `nextSorts`. With `add` (Shift) it joins the sorts already there. */
+export function setSort(key, { add = false } = {}) {
+  app.sorts = nextSorts(app.sorts, key, { add });
+}
 
 export function setLayout(layout) {
   app.layout = layout;
