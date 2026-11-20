@@ -40,6 +40,12 @@
     <circle cx="7" cy="5.5" r="1.8" /><path d="M3 5.5h2.2M8.8 5.5H17" />
     <circle cx="13" cy="10" r="1.8" /><path d="M3 10h8.2M14.8 10H17" />
     <circle cx="8.5" cy="14.5" r="1.8" /><path d="M3 14.5h3.7M10.3 14.5H17" />
+  {:else if name === 'file'}
+    <path d="M5.2 2.8h6l3.6 3.6v10.8H5.2V2.8z" /><path d="M11.2 2.8v3.8h3.6" />
+  {:else if name === 'folder'}
+    <path d="M2.8 5.6A1.6 1.6 0 014.4 4h3.2l1.6 1.8h6.4a1.6 1.6 0 011.6 1.6v6.6a1.6 1.6 0 01-1.6 1.6H4.4a1.6 1.6 0 01-1.6-1.6V5.6z" />
+  {:else if name === 'link'}
+    <path d="M8.4 11.6a3 3 0 004.2 0l2.4-2.4a3 3 0 00-4.2-4.2l-.8.8" /><path d="M11.6 8.4a3 3 0 00-4.2 0L5 10.8A3 3 0 009.2 15l.8-.8" />
   {:else}
     <circle cx="10" cy="10" r="3" fill="currentColor" stroke="none" />
   {/if}

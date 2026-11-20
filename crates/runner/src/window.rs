@@ -26,6 +26,69 @@ pub fn paused_overlay(buf: &[u32], w: usize, h: usize) -> Vec<u32> {
     out
 }
 
+/// 5x7 glyphs for the few letters the quit question needs (a bit per column, top row first).
+fn glyph(c: char) -> [u8; 7] {
+    match c {
+        'A' => [0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11],
+        'C' => [0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E],
+        'E' => [0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F],
+        'G' => [0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0F],
+        'H' => [0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11],
+        'I' => [0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E],
+        'M' => [0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11],
+        'N' => [0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11],
+        'O' => [0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E],
+        'Q' => [0x0E, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0D],
+        'R' => [0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11],
+        'S' => [0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E],
+        'T' => [0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04],
+        'U' => [0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E],
+        'Y' => [0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04],
+        '?' => [0x0E, 0x11, 0x01, 0x02, 0x04, 0x00, 0x04],
+        '=' => [0x00, 0x00, 0x1F, 0x00, 0x1F, 0x00, 0x00],
+        _ => [0; 7],
+    }
+}
+
+/// Draw `text` in white with its top-left at (x, y), each glyph pixel `k` picture pixels
+/// wide. Nothing is drawn if it would not fit.
+fn draw_text(out: &mut [u32], w: usize, h: usize, x: usize, y: usize, k: usize, text: &str) {
+    let width = text.chars().count() * 6 * k;
+    if x + width > w || y + 7 * k > h {
+        return;
+    }
+    for (i, c) in text.chars().enumerate() {
+        for (row, bits) in glyph(c).iter().enumerate() {
+            for col in 0..5 {
+                if bits >> (4 - col) & 1 == 1 {
+                    for dy in 0..k {
+                        for dx in 0..k {
+                            out[(y + row * k + dy) * w + x + (i * 6 + col) * k + dx] = 0x00FF_FFFF;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The picture while the game asks whether to quit: dimmed, with the question on it.
+pub fn quit_overlay(buf: &[u32], w: usize, h: usize) -> Vec<u32> {
+    let mut out: Vec<u32> = buf.iter().map(|p| (p >> 2) & 0x003F_3F3F).collect();
+    let k = (w / 160).max(1);
+    let lines = ["QUIT THE GAME?", "ESC = YES   ENTER = NO"];
+    let text_h = 7 * k * 2 + 3 * k;
+    for (i, line) in lines.iter().enumerate() {
+        let width = line.chars().count() * 6 * k;
+        if width <= w && text_h <= h {
+            let x = (w - width) / 2;
+            let y = (h - text_h) / 2 + i * 10 * k;
+            draw_text(&mut out, w, h, x, y, k, line);
+        }
+    }
+    out
+}
+
 /// Things the player can do while a game runs: by hotkey or from the menu bar.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Act {

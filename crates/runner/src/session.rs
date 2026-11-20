@@ -6,7 +6,7 @@ use crate::perf::{self, PerfMonitor, Status};
 use crate::ports::{Controller, Emulator, Frame, FrameSource, Screen, View};
 use crate::rewind::Rewind;
 use crate::speed::{self, Mode};
-use crate::window::{self, clamp_scale, gain_for, pace, paused_overlay, window_title, Act, SLOTS};
+use crate::window::{self, clamp_scale, gain_for, pace, paused_overlay, quit_overlay, window_title, Act, SLOTS};
 use crate::{cover, crt, lcd, scale, scale2x};
 use anyhow::Result;
 use minifb::Key;
@@ -117,6 +117,10 @@ pub struct Session {
     sound_on: bool,
     /// Pause: F3, or the window losing focus when that is switched on in the settings.
     paused: bool,
+    /// Esc was pressed: the game waits, with the question "quit?" on the picture.
+    asking: bool,
+    /// What the dimmed picture was made for (the pause or the question).
+    dim_asking: bool,
     /// Paused or in the background: emulation is stopped.
     holding: bool,
     last_frame: Option<Frame>,
@@ -180,6 +184,8 @@ impl Session {
             start_slot: cfg.start_slot.filter(|n| (1..=SLOTS).contains(n)),
             paused: false,
             holding: false,
+            asking: false,
+            dim_asking: false,
             last_frame: None,
             dimmed: None,
             notice: None,
@@ -206,7 +212,7 @@ impl Session {
             };
             self.notice = Some((note.to_string(), Instant::now()));
         }
-        while self.screen.is_open() && !self.quit && !self.screen.key_down(Key::Escape) {
+        while self.screen.is_open() && !self.quit {
             self.frame()?;
         }
         self.finish();
@@ -215,9 +221,14 @@ impl Session {
 
     /// One pass of the loop: handle input, then either show the paused picture or run the core.
     fn frame(&mut self) -> Result<()> {
+        self.update_quit_question();
         let hotkeys = self.controller.hotkeys(&*self.screen);
         let mut acts = self.pending_actions();
         acts.extend(hotkeys.acts);
+        if self.asking {
+            // while the question is open only the menu's Quit counts
+            acts.retain(|a| *a == Act::Quit);
+        }
         for act in acts {
             if let Some(msg) = self.apply(act)? {
                 log::info!("{msg}");
@@ -246,6 +257,24 @@ impl Session {
             pace(&mut self.deadline, self.frame_time * self.plan.stretch);
         }
         Ok(())
+    }
+
+    /// Esc asks "quit the game?" (an accidental press must not lose the play): Esc again
+    /// quits, Enter, Space or N go on playing. Closing the window or the menu's Quit are
+    /// deliberate and quit at once.
+    fn update_quit_question(&mut self) {
+        if self.asking {
+            if self.screen.key_pressed(Key::Escape) {
+                self.quit = true;
+            } else if [Key::Enter, Key::Space, Key::N]
+                .iter()
+                .any(|k| self.screen.key_pressed(*k))
+            {
+                self.asking = false;
+            }
+        } else if self.screen.key_pressed(Key::Escape) {
+            self.asking = true;
+        }
     }
 
     /// Hotkeys and menu choices end up as the same list of actions.
@@ -543,17 +572,26 @@ impl Session {
 
     /// Pause on request, or when the window goes to the background if that is enabled.
     fn update_hold(&mut self) {
-        let hold = self.paused || (self.settings.pause_on_blur && !self.screen.is_active());
-        if hold == self.holding {
+        let hold =
+            self.paused || self.asking || (self.settings.pause_on_blur && !self.screen.is_active());
+        if hold == self.holding && self.asking == self.dim_asking {
             return;
         }
+        let changed = hold != self.holding;
         self.holding = hold;
+        self.dim_asking = self.asking;
         self.set_gain();
-        self.dimmed = self
-            .last_frame
-            .as_ref()
-            .map(|(buf, w, h)| paused_overlay(buf, *w, *h));
-        log::info!("{}", if hold { "paused" } else { "resumed" });
+        let asking = self.asking;
+        self.dimmed = self.last_frame.as_ref().map(|(buf, w, h)| {
+            if asking {
+                quit_overlay(buf, *w, *h)
+            } else {
+                paused_overlay(buf, *w, *h)
+            }
+        });
+        if changed {
+            log::info!("{}", if hold { "paused" } else { "resumed" });
+        }
     }
 
     fn update_title(&mut self) {
@@ -996,17 +1034,75 @@ mod tests {
     }
 
     #[test]
-    fn escape_or_the_quit_menu_ends_the_session() {
-        let (s, r) = rig(100);
-        r.log.borrow_mut().down.insert(Key::Escape);
-        s.run().unwrap();
-        assert_eq!(r.log.borrow().ran, 0);
-
+    fn the_quit_menu_ends_the_session_at_once() {
         let (s, r) = rig(100);
         r.log.borrow_mut().menu.push_back(window::act_id(Act::Quit));
         s.run().unwrap();
         // the frame that handled the menu choice still runs; then the loop ends
         assert_eq!(r.log.borrow().ran, 1);
+    }
+
+    #[test]
+    fn escape_asks_first_and_a_second_escape_quits() {
+        let (mut s, r) = rig(100);
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().ran, 1);
+        // the first Esc stops the game and asks; nothing quits
+        r.log.borrow_mut().pressed.insert(Key::Escape);
+        s.frame().unwrap();
+        assert!(s.asking && !s.quit);
+        assert_eq!(r.log.borrow().ran, 1, "the game waits while the question is open");
+        assert_eq!(r.gain.load(Ordering::Relaxed), 0, "and is muted");
+        s.frame().unwrap();
+        assert!(!s.quit && r.log.borrow().ran == 1, "it keeps waiting");
+        // a second Esc quits
+        r.log.borrow_mut().pressed.insert(Key::Escape);
+        s.frame().unwrap();
+        assert!(s.quit);
+    }
+
+    #[test]
+    fn enter_space_or_n_goes_on_playing() {
+        for key in [Key::Enter, Key::Space, Key::N] {
+            let (mut s, r) = rig(100);
+            r.log.borrow_mut().pressed.insert(Key::Escape);
+            s.frame().unwrap();
+            assert!(s.asking);
+            r.log.borrow_mut().pressed.insert(key);
+            s.frame().unwrap();
+            assert!(!s.asking && !s.quit, "{key:?}");
+            let before = r.log.borrow().ran;
+            s.frame().unwrap();
+            assert_eq!(r.log.borrow().ran, before + 1, "playing again after {key:?}");
+            assert_eq!(r.gain.load(Ordering::Relaxed), 100, "sound is back");
+        }
+    }
+
+    #[test]
+    fn while_asking_other_hotkeys_wait_and_the_menu_quit_still_works() {
+        let (mut s, r) = rig(100);
+        r.log.borrow_mut().pressed.insert(Key::Escape);
+        s.frame().unwrap();
+        // F2 (reset) is ignored while the question is open
+        r.log.borrow_mut().pressed.insert(Key::F2);
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().resets, 0);
+        r.log.borrow_mut().menu.push_back(window::act_id(Act::Quit));
+        s.frame().unwrap();
+        assert!(s.quit);
+    }
+
+    #[test]
+    fn the_question_is_drawn_on_the_dimmed_picture() {
+        let (w, h) = (320, 224);
+        let out = window::quit_overlay(&vec![0x00FF_FFFF; w * h], w, h);
+        assert_eq!(out.len(), w * h);
+        // the picture is dark, and the text is white on it
+        assert_eq!(out[0], 0x003F_3F3F);
+        assert!(out.iter().any(|&p| p == 0x00FF_FFFF), "the text is drawn");
+        // a picture too small for the text is just dimmed, never indexed out of range
+        let tiny = window::quit_overlay(&[0x00FF_FFFF; 4], 2, 2);
+        assert!(tiny.iter().all(|&p| p == 0x003F_3F3F));
     }
 
     #[test]

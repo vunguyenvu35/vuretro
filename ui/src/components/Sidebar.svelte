@@ -28,6 +28,22 @@
     setSidebarWidth(next, true);
   }
 
+  // The app's own screens, as a 2×2 block of tiles at the bottom (a list of four rows was a lot
+  // of height for four doors).
+  const APP = [
+    { view: 'cores', icon: 'cores', label: 'Cores', title: 'Cores & BIOS' },
+    { view: 'controls', icon: 'controls', label: 'Controls', title: 'Controls' },
+    { view: 'macros', icon: 'macros', label: 'Macros', title: 'Macros' },
+    { view: 'settings', icon: 'settings', label: 'Settings', title: 'Settings' },
+  ];
+
+  // the "more ways to add games" menu
+  let menu = $state(false);
+  function run(action) {
+    menu = false;
+    action();
+  }
+
   const total = $derived(app.overview?.games.length ?? 0);
   const recent = $derived(app.overview?.games.filter((g) => g.last_played).length ?? 0);
   const favs = $derived(app.overview?.games.filter((g) => g.favorite).length ?? 0);
@@ -78,35 +94,64 @@
         </button>
       {/each}
     {/if}
-
-    <div class="label gap">App</div>
-    <button class:active={app.view === 'cores'} onclick={() => (app.view = 'cores')}><Icon name="cores" />Cores &amp; BIOS</button>
-    <button class:active={app.view === 'controls'} onclick={() => (app.view = 'controls')}><Icon name="controls" />Controls</button>
-    <button class:active={app.view === 'macros'} onclick={() => (app.view = 'macros')}><Icon name="macros" />Macros</button>
-    <button class:active={app.view === 'settings'} onclick={() => (app.view = 'settings')}><Icon name="settings" />Settings</button>
   </nav>
 
-  <div class="folder">
-    <div class="label">Add games</div>
-    <button class="btn primary add" onclick={pickRomFiles} disabled={app.busy}>
-      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
-      {app.busy ? 'Importing…' : 'Import ROMs'}
-    </button>
-    {#if app.busy}<p class="hint" aria-live="polite">Copying games. Unpacking a disc from an archive can take a minute.</p>{/if}
-    <button class="btn add ghost" onclick={pickRomFolder} disabled={app.busy}>Import a folder</button>
-    {#if app.system}<p class="hint">Archives (.zip) go to {app.overview?.systems.find((s) => s.id === app.system)?.name}.</p>{/if}
-    {#if app.overview?.rom_dir}
-      <div class="linked">
-        <div class="lhead">
-          <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M2 4.5A1.5 1.5 0 013.5 3H6l1.5 1.5h5A1.5 1.5 0 0114 6v5.5a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 11.5v-7z" fill="none" stroke="currentColor" stroke-width="1.4" /></svg>
-          <span>Linked folder</span>
+  <div class="dock">
+    <div class="tiles" role="group" aria-label="App">
+      {#each APP as t (t.view)}
+        <button class="tile" class:active={app.view === t.view} aria-current={app.view === t.view ? 'page' : undefined} title={t.title} onclick={() => (app.view = t.view)}>
+          <Icon name={t.icon} size={20} />
+          <span>{t.label}</span>
+        </button>
+      {/each}
+    </div>
+
+    <div class="addrow">
+      <button class="addbtn" onclick={pickRomFiles} disabled={app.busy} aria-busy={app.busy}>
+        {#if app.busy}
+          <span class="spin" aria-hidden="true"></span> Importing…
+        {:else}
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+          Add games
+        {/if}
+      </button>
+      <button class="more" aria-label="More ways to add games" aria-haspopup="menu" aria-expanded={menu} disabled={app.busy} onclick={(e) => { e.stopPropagation(); menu = !menu; }}>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.3" fill="currentColor" /><circle cx="8" cy="8" r="1.3" fill="currentColor" /><circle cx="12.5" cy="8" r="1.3" fill="currentColor" /></svg>
+      </button>
+
+      {#if menu}
+        <div class="menu" role="menu" aria-label="Add games" tabindex="-1" onpointerdown={(e) => e.stopPropagation()}>
+          <button role="menuitem" onclick={() => run(pickRomFiles)}>
+            <Icon name="file" size={16} /><span>Import ROM files…</span>
+          </button>
+          <button role="menuitem" onclick={() => run(pickRomFolder)}>
+            <Icon name="folder" size={16} /><span>Import a folder…</span>
+          </button>
+          <div class="sep" role="separator"></div>
+          {#if app.overview?.rom_dir}
+            <div class="linked">
+              <div class="lhead"><Icon name="link" size={14} /><span>Linked folder (read in place)</span></div>
+              <div class="path mono" title={app.overview.rom_dir}>{app.overview.rom_dir}</div>
+              <div class="acts">
+                <button onclick={() => run(linkFolder)}>Change</button>
+                <button onclick={() => run(unlinkFolder)}>Remove</button>
+              </div>
+            </div>
+          {:else}
+            <button role="menuitem" onclick={() => run(linkFolder)} title="Read games from a folder without copying them">
+              <Icon name="link" size={16} /><span>Link a folder…</span>
+            </button>
+          {/if}
         </div>
-        <div class="path mono" title={app.overview.rom_dir}>{app.overview.rom_dir}</div>
-        <div class="acts">
-          <button onclick={linkFolder}>Change</button>
-          <button onclick={unlinkFolder}>Remove</button>
-        </div>
-      </div>
+      {/if}
+    </div>
+
+    {#if app.busy}
+      <p class="hint" aria-live="polite">Copying games. Unpacking a disc from an archive can take a minute.</p>
+    {:else if app.system}
+      <p class="hint">Archives (.zip) go to {app.overview?.systems.find((s) => s.id === app.system)?.name}.</p>
+    {:else}
+      <p class="hint">Or drop files on the library.</p>
     {/if}
   </div>
   <div
@@ -129,7 +174,7 @@
   ></div>
 </aside>
 
-<svelte:window onblur={endDrag} />
+<svelte:window onblur={endDrag} onpointerdown={() => (menu = false)} onkeydown={(e) => e.key === 'Escape' && (menu = false)} />
 {#if dragging}<div class="dragshield"></div>{/if}
 
 <style>
@@ -164,14 +209,49 @@
   nav button:hover :global(svg), nav button.active :global(svg) { opacity: 1; }
   .sysico { display: inline-flex; flex: none; }
   i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-  .folder { padding: 10px 8px 0; border-top: 1px solid var(--border); }
-  .folder .label { padding: 0; }
-  .add { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; margin-top: 8px; padding: 8px 10px; font-size: 13px; }
-  .add.ghost { background: none; border: 1px solid var(--border); color: var(--muted); }
-  .add.ghost:hover { color: var(--text); border-color: var(--faint); }
-  .hint { color: var(--faint); font-size: 11px; margin: 8px 2px 0; }
-  .linked { margin-top: 14px; padding: 10px 10px 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; }
-  .lhead { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
+  /* ---- the dock: app screens and adding games, always at the bottom ---- */
+  .dock { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 12px 2px 2px; border-top: 1px solid var(--border); }
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .tile {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+    padding: 10px 4px 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+    color: var(--muted); font-size: 12px; transition: color .12s, border-color .12s, background .12s;
+  }
+  .tile :global(svg) { opacity: .9; }
+  .tile:hover { color: var(--text); border-color: var(--faint); }
+  .tile.active {
+    color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+    background: color-mix(in srgb, var(--accent) 9%, var(--surface-2));
+  }
+  .addrow { position: relative; display: flex; gap: 6px; }
+  .addbtn {
+    flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 10px 12px; border: 0; border-radius: 10px; background: var(--accent); color: #090b10;
+    font-weight: 700; font-size: 13px; transition: filter .12s, transform .06s;
+  }
+  .addbtn:hover:not(:disabled) { filter: brightness(1.08); }
+  .addbtn:active:not(:disabled) { transform: translateY(1px); }
+  .addbtn:disabled { opacity: .7; }
+  .spin { width: 13px; height: 13px; border-radius: 50%; border: 2px solid color-mix(in srgb, #090b10 30%, transparent); border-top-color: #090b10; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .more {
+    flex: none; width: 40px; display: grid; place-items: center; border-radius: 10px;
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--muted);
+  }
+  .more:hover:not(:disabled), .more[aria-expanded="true"] { color: var(--text); border-color: var(--faint); }
+  .more:disabled { opacity: .55; }
+  .menu {
+    position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); z-index: 20;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 6px;
+    box-shadow: 0 12px 32px rgba(0,0,0,.45); display: flex; flex-direction: column; gap: 2px;
+  }
+  .menu > button { display: flex; align-items: center; gap: 10px; text-align: left; background: none; border: 0; padding: 9px 10px; border-radius: 8px; color: var(--text); font-size: 13px; }
+  .menu > button:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+  .menu > button :global(svg) { flex: none; opacity: .85; }
+  .sep { height: 1px; background: var(--border); margin: 4px 2px; }
+  .hint { color: var(--faint); font-size: 11px; margin: 0 2px; line-height: 1.4; }
+  .linked { padding: 6px 10px 6px; }
+  .lhead { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
   .path { display: block; margin: 6px 0 4px; font-size: 11px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .acts { display: flex; gap: 14px; }
   .acts button { background: none; border: 0; padding: 2px 0; color: var(--muted); font-size: 12px; }

@@ -58,7 +58,7 @@ Each system card shows **Ready**, **BIOS missing**, **Core missing** or **Off**,
 
 Select a game and press **Play** (or double-click it, or press `Enter`). If **Play** is locked, the reason is shown: a missing BIOS or core, or the system is switched off.
 
-**One game at a time.** While a game is open, pressing **Play** on another one shows "<game> is already open" instead of opening a second window. Close the game (`Esc`) first.
+**One game at a time.** While a game is open, pressing **Play** on another one shows "<game> is already open" instead of opening a second window. Close the game first (`Esc`, then `Esc` again to confirm).
 
 The Library has **All games**, **Recently played** and **Favorites**, plus one entry per system. Search with `⌘K` / `Ctrl+K` (or `⌘F`). Sort by recent, A–Z or size, and switch between grid and list. **Pictures.** A game shows the picture it already has: cover art you chose or downloaded, or a preview made before. Only a game with none gets a preview made, by running it for a short while in the background, and only while its card is on screen (or about to be): scroll to other games and those are made next, the ones you scrolled past are dropped. Closing a game does **not** replace its picture with the last frame.
 
@@ -94,7 +94,7 @@ On Windows and Linux use `Ctrl` in place of `⌘`.
 
 | Key | Action |
 |---|---|
-| `Esc` | Quit the game |
+| `Esc` | Ask "Quit the game?": the game waits; `Esc` again quits, `Enter`, `Space` or `N` go on playing |
 | `P` or `F3` | Pause / resume (dims the picture and mutes the sound) |
 | `F5` / `F7` | Save state / load state, in the current slot |
 | `F6` | Next save slot (there are 4) |
