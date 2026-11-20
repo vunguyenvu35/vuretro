@@ -74,9 +74,13 @@ Acted on: `SET_VARIABLES` (recorded for `--list-options`), `SET_VARIABLE` (a cor
 
 Acknowledged, nothing to do: `SET_GEOMETRY` (the size comes with every frame), `SET_PERFORMANCE_LEVEL`, `SET_SUPPORT_NO_GAME`, `SET_CONTROLLER_INFO`, `SET_SUBSYSTEM_INFO`, `SET_MEMORY_MAPS`, `SET_SERIALIZATION_QUIRKS`.
 
-Hardware rendering (`VURETRO_WINDOW=gl` only): `SET_HW_RENDER` is accepted for `OPENGL_CORE` and `OPENGL` contexts when the run has the OpenGL window, and `GET_PREFERRED_HW_RENDER` answers `OPENGL_CORE`. See [Hardware rendering](#hardware-rendering). Refused with a warning in the log: other renderer types (Vulkan, GLES, Direct3D), `SET_HW_SHARED_CONTEXT`, and `SET_SYSTEM_AV_INFO` (the frame rate and sample rate are not changed while playing). Other commands return `false` and are logged at `trace` level (`RUST_LOG=trace make dev`).
+Hardware rendering (not with `VURETRO_WINDOW=minifb`): `SET_HW_RENDER` is accepted for `OPENGL_CORE` and `OPENGL` contexts when the run has the OpenGL window, and `GET_PREFERRED_HW_RENDER` answers `OPENGL_CORE`. See [Hardware rendering](#hardware-rendering). Refused with a warning in the log: other renderer types (Vulkan, GLES, Direct3D), `SET_HW_SHARED_CONTEXT`, and `SET_SYSTEM_AV_INFO` (the frame rate and sample rate are not changed while playing). Other commands return `false` and are logged at `trace` level (`RUST_LOG=trace make dev`).
 
 The `EXPERIMENTAL` flag (0x10000) is part of the command number and is never stripped: the header has two commands numbered 44 (`SET_SERIALIZATION_QUIRKS`, and `SET_HW_SHARED_CONTEXT` with the flag).
+
+## The game window
+
+The game window is the OpenGL one (`gl_screen.rs`, winit + glutin) unless `VURETRO_WINDOW=minifb` asks for the basic minifb window, which cannot run 3D cores and draws the CRT and LCD looks on the CPU. If no OpenGL window can be made, a game that does not need one plays in the basic window with a warning in the log.
 
 ## Hardware rendering
 

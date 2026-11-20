@@ -152,9 +152,16 @@ pub fn open(p: Params) -> Result<Session> {
                 (av.geometry.max_height as usize).max(base_h),
             ),
         });
-        Box::new(crate::gl_screen::GlScreen::open(
-            &title, base_w, base_h, factor, view, hw,
-        )?)
+        let wants_gpu = hw.is_some();
+        match crate::gl_screen::GlScreen::open(&title, base_w, base_h, factor, view, hw) {
+            Ok(screen) => Box::new(screen),
+            // a computer with no usable OpenGL still plays the games that do not need it
+            Err(e) if !wants_gpu => {
+                log::warn!("no OpenGL window ({e:#}); using the basic window");
+                Box::new(MiniFbScreen::open(&title, base_w, base_h, factor, view)?)
+            }
+            Err(e) => return Err(e.context("this game needs an OpenGL window")),
+        }
     } else {
         Box::new(MiniFbScreen::open(&title, base_w, base_h, factor, view)?)
     };
@@ -202,8 +209,8 @@ pub fn open(p: Params) -> Result<Session> {
     ))
 }
 
-/// Which window to use: `VURETRO_WINDOW=gl` for the OpenGL one (winit), anything else for
-/// the minifb one that is still the default.
+/// Which window to use: the OpenGL one (winit) unless `VURETRO_WINDOW=minifb` asks for the
+/// basic one. The basic window cannot run 3D cores.
 pub fn use_gl_window() -> bool {
-    std::env::var("VURETRO_WINDOW").is_ok_and(|v| v.eq_ignore_ascii_case("gl"))
+    !std::env::var("VURETRO_WINDOW").is_ok_and(|v| v.eq_ignore_ascii_case("minifb"))
 }
