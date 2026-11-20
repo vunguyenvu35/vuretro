@@ -329,6 +329,20 @@ pub unsafe extern "C" fn retro_run() {
     if let Some(b) = batch {
         b(audio.as_ptr(), n);
     }
+    // `VURETRO_TEST_SHUTDOWN_AFTER=<frames>`: ask the frontend to close, as a core does from
+    // its own menu, so a test can watch a game end without anyone closing the window
+    if let Some(after) = std::env::var("VURETRO_TEST_SHUTDOWN_AFTER")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+    {
+        let (frame, env) = {
+            let s = S.lock().unwrap();
+            (s.frame, s.env)
+        };
+        if let (true, Some(env)) = (frame >= after, env) {
+            env(RETRO_ENVIRONMENT_SHUTDOWN, std::ptr::null_mut());
+        }
+    }
 }
 
 #[no_mangle]
