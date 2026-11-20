@@ -23,7 +23,7 @@ use vuretro_library::adapters::{
 
 fn build_app() -> App {
     let paths =
-        Paths::system_default().unwrap_or_else(|| Paths::new(PathBuf::from("vuretro-data")));
+        vuretro_library::adapters::system_paths().unwrap_or_else(|| Paths::new(PathBuf::from("vuretro-data")));
     let app = App::new(
         paths.clone(),
         Box::new(JsonStore::new(paths.clone())),

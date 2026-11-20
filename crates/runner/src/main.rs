@@ -40,7 +40,6 @@ use clap::Parser;
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use vuretro_core::paths::Paths;
 
 #[derive(Parser)]
 #[command(
@@ -132,7 +131,7 @@ fn main() -> Result<()> {
         appicon::apply();
     }
 
-    let paths = Paths::system_default().context("no home directory")?;
+    let paths = vuretro_library::adapters::system_paths().context("no home directory")?;
     let system_dir = args.system_dir.unwrap_or_else(|| paths.system_dir());
     let save_dir = args.save_dir.unwrap_or_else(|| paths.saves_dir());
     std::fs::create_dir_all(&system_dir)?;

@@ -41,7 +41,6 @@ fn core_is_pure() {
         &[
             "serde",
             "serde_json", // parses the embedded systems registry (no I/O)
-            "directories",
             "vuretro-controls",
             "vuretro-settings",
         ],

@@ -1681,7 +1681,6 @@ dependencies = [
 name = "vuretro-core"
 version = "0.1.7"
 dependencies = [
- "directories",
  "serde",
  "serde_json",
  "vuretro-controls",
@@ -1728,6 +1727,7 @@ dependencies = [
  "tempfile",
  "vuretro-controls",
  "vuretro-core",
+ "vuretro-library",
  "vuretro-settings",
 ]
 

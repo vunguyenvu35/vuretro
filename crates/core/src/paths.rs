@@ -1,6 +1,5 @@
 //! Where vuretro keeps its files. Only builds paths; creating folders is the adapters' job.
 
-use directories::ProjectDirs;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
@@ -13,11 +12,6 @@ impl Paths {
         Paths {
             data_dir: data_dir.into(),
         }
-    }
-
-    /// The per-user data folder of the OS (`~/Library/Application Support/dev.vuvn.vuretro`, ...).
-    pub fn system_default() -> Option<Self> {
-        ProjectDirs::from("dev", "vuvn", "vuretro").map(|d| Paths::new(d.data_dir()))
     }
 
     pub fn data_dir(&self) -> &Path {
