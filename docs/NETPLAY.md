@@ -45,43 +45,25 @@ Each machine runs two processes: the Vuretro app (the UI) and `vuretro-runner`, 
 
 ```mermaid
 flowchart LR
-  subgraph HOST["Room host (Host)"]
-    direction TB
-    HA["Vuretro (Tauri app)<br/>opens the room, shows IP and PIN"]
-    subgraph HR["vuretro-runner"]
-      direction TB
-      HS["Session<br/>frame loop"]
-      HN["NetSession (new)<br/>ggrs: guess buttons, save and load state"]
-      HC["libretro core"]
-      HS --> HN --> HC
-    end
-    HD["Keyboard, pad<br/>player 1"]
-    HO["Window, speakers"]
-    HA -->|"spawn --netplay-host"| HR
-    HD --> HR
-    HR --> HO
-  end
-
-  subgraph GUEST["Guest machine (Guest)"]
-    direction TB
-    GA["Vuretro (Tauri app)<br/>finds rooms, enters PIN"]
-    subgraph GR["vuretro-runner"]
-      direction TB
-      GS["Session"]
-      GN["NetSession (new)<br/>ggrs"]
-      GC["libretro core<br/>same build, same ROM"]
-      GS --> GN --> GC
-    end
-    GD["Keyboard, pad<br/>player 2"]
-    GO["Window, speakers"]
-    GA -->|"spawn --netplay-join"| GR
-    GD --> GR
-    GR --> GO
-  end
-
-  HN <-->|"TCP 7845: handshake, initial state, Ready, Bye"| GN
-  HN <-.->|"UDP 7846: per-frame buttons (ggrs)"| GN
-  HN -.->|"UDP 7847: broadcast room discovery, every second"| GA
+  classDef host fill:#e3f0ff,stroke:#3b78c4,color:#111
+  classDef guest fill:#e4f6ea,stroke:#2e8b57,color:#111
+  HP["Keyboard, pad<br/>player 1"]:::host
+  HA["Host app (Tauri)<br/>opens the room, shows IP and PIN"]:::host
+  HR["Host runner<br/>Session, NetSession (ggrs), libretro core"]:::host
+  HO["Window, speakers"]:::host
+  GP["Keyboard, pad<br/>player 2"]:::guest
+  GA["Guest app (Tauri)<br/>finds rooms, enters PIN"]:::guest
+  GR["Guest runner<br/>Session, NetSession (ggrs), libretro core<br/>same build, same ROM"]:::guest
+  GO["Window, speakers"]:::guest
+  HP --> HR
+  HA -->|"spawn --netplay-host"| HR
+  HR --> HO
+  GP --> GR
+  GA -->|"spawn --netplay-join"| GR
+  GR --> GO
+  HR <-->|"TCP 7845: handshake, initial state"| GR
+  HR <-.->|"UDP 7846: buttons every frame"| GR
+  HR -.->|"UDP 7847: room broadcast"| GA
 ```
 
 Each machine runs its own copy of the game. Only button presses cross the network. Video and audio never leave the machine.
@@ -142,44 +124,35 @@ sequenceDiagram
   participant GR as Guest runner
   participant GA as Guest app
 
-  rect rgb(184,110,0,0.08)
-  Note over HA,HR: A. Open the room
+  Note over HA,GA: A. Open the room
   HA->>HR: spawn --netplay-host --pin 4821
-  Note over HR: open TCP 7845 and UDP 7846, load the game, wait for a player
-  end
+  Note over HR: open TCP 7845 and UDP 7846, wait
 
-  rect rgb(10,127,191,0.08)
-  Note over HR,GA: B. Find and join
-  HR-->>GA: UDP broadcast every second: game, system, tcp_port, machine name, PIN needed
-  Note over GA: show the room list, the user picks one and enters the PIN
+  Note over HA,GA: B. Find and join
+  HR-->>GA: UDP broadcast every second (game, port, PIN needed)
+  Note over GA: user picks the room and enters the PIN
   GA->>GR: spawn --netplay-join IP:7845 --pin
-  end
 
-  rect rgb(192,36,106,0.08)
-  Note over HR,GR: C. Handshake and checks
-  GR->>HR: TCP connect + Hello (protocol, core, rom_crc, bios, options, pin)
+  Note over HA,GA: C. Handshake and checks
+  GR->>HR: TCP connect, Hello (core, ROM crc, BIOS, options, PIN)
   HR->>GR: Host Hello
-  Note over HR,GR: each side runs the compat check: do all 6 items match and is the PIN right?
-  HR--xGR: error branch: Reject (code, reason), the app shows the reason
-  end
+  Note over HR,GR: compat check: do all items match?
+  HR--xGR: on mismatch: Reject (code, reason)
 
-  rect rgb(31,138,82,0.08)
-  Note over HR,GR: D. Sync the initial state
-  Note over HR: run 1 frame, save_state (about 415 KB with FBNeo)
-  HR->>GR: StateOffer (size, crc) then StateChunk x N (64 KB each)
-  GR->>HR: StateAck (crc matches)
-  Note over GR: load_state
-  end
+  Note over HA,GA: D. Sync the initial state
+  Note over HR: run 1 frame, save_state (about 415 KB)
+  HR->>GR: StateOffer, then StateChunk x N (64 KB)
+  GR->>HR: StateAck (crc matches), then load_state
 
-  rect rgb(120,120,120,0.08)
-  Note over HR,GR: E. Start
-  HR<<->>GR: Ready, then the Host sends Start
-  Note over HR,GR: 3 second countdown on both machines
-  HR<<->>GR: UDP ggrs: SyncRequest and SyncReply until Synchronized
-  end
+  Note over HA,GA: E. Start
+  HR->>GR: Ready, then Start (3 second countdown)
+  HR<<->>GR: UDP ggrs sync until Synchronized
 
-  Note over HR,GR: F. Play: each frame sends buttons, acks and checksums. A wrong guess triggers a rollback, and every 60 frames the checksums are compared
-  Note over HR,GR: G. End or error: Bye, no contact for over 5 seconds, or a checksum mismatch makes both sides stop and the app shows the reason
+  Note over HA,GA: F. Play
+  Note over HR,GR: buttons, acks and checksums every frame, rollback on a wrong guess, checksum compare every 60 frames
+
+  Note over HA,GA: G. End or error
+  Note over HR,GR: Bye, 5 seconds of silence, or a checksum mismatch stops both sides
 ```
 
 The app only has to find rooms and launch the runner. The runner handles everything else on the network, so a network error never crashes the UI.
@@ -219,40 +192,20 @@ This runs 60 times a second on each machine. Steps ① to ⑨ are the order of e
 
 ```mermaid
 flowchart TD
-  subgraph DEV["Devices and input (changed)"]
-    A1["① Read keyboard, pad<br/>Input::poll"]
-    A2["② Macros and auto-coin<br/>local_mask() returns a u16"]
-    A1 --> A2
-  end
-  subgraph NS["NetSession (ggrs, new)"]
-    B3["③ add_local_input<br/>frame N + input delay (2)"]
-    B5["⑤ advance_frame()<br/>returns a list of requests"]
-    B9["⑨ Pacing<br/>if frames_ahead() is large, stretch the next frame"]
-    B3 --> B5
-  end
-  subgraph NET["Network"]
-    N4["④ UDP packet<br/>unacknowledged buttons,<br/>acks, checksum (20 to 60 bytes)"]
-  end
-  subgraph CORE["libretro core"]
-    C6a["⑥ SaveGameState<br/>save_state() and checksum (415 KB)"]
-    C6b["⑥ LoadGameState<br/>load_state(bytes) on rollback"]
-    C6c["⑥ AdvanceFrame(inputs)<br/>write 2 masks into fe.buttons, then core.run()"]
-    C7["⑦ video_cb, audio_cb<br/>re-run frames: drop video and audio (resim flag)<br/>last frame: keep"]
-    C6c --> C7
-  end
-  subgraph OUT["Screen and speakers (changed)"]
-    D8["⑧ Show the last frame<br/>picture through Scale2x, CRT, LCD, audio into the queue"]
-  end
-
-  A2 -->|"u16"| B3
-  B3 -->|"send my buttons"| N4
-  N4 -->|"the other player's buttons"| B5
-  B5 --> C6a
-  B5 --> C6b
-  B5 --> C6c
-  C7 --> D8
-  D8 --> B9
-  B9 -.->|"next frame"| A1
+  A["① Read keyboard and pad"] --> B["② Macros and auto-coin<br/>local mask (u16)"]
+  B --> C["③ add_local_input<br/>frame N + input delay"]
+  C --> D["⑤ advance_frame()<br/>returns a list of requests"]
+  C <-->|"④ UDP: my buttons out,<br/>the other player's buttons in"| N(("Network"))
+  D --> E{"next request"}
+  E -->|"SaveGameState"| F["⑥ save_state() + checksum"]
+  E -->|"LoadGameState"| G["⑥ load_state(), set resim"]
+  E -->|"AdvanceFrame"| H["⑥ write masks to fe.buttons<br/>core.run()"]
+  F --> E
+  G --> E
+  H --> I["⑦ video and audio callbacks<br/>re-run frames: dropped (resim)<br/>last frame: kept"]
+  I --> J["⑧ Show the last frame<br/>Scale2x, CRT, LCD, audio queue"]
+  J --> K["⑨ Pacing<br/>stretch the next frame if far ahead"]
+  K -.->|"next frame"| A
 ```
 
 Without a rollback there is one `AdvanceFrame` per frame. With a rollback there is one `LoadGameState` followed by several `AdvanceFrame` calls in a row, and the player only sees the final frame.
@@ -292,17 +245,12 @@ Example: the Guest presses a button on frame 101, but the packet reaches the Hos
 
 ```mermaid
 flowchart LR
-  subgraph T1["Host's first simulation (guess: Guest buttons = their last buttons)"]
-    direction LR
-    F100["100<br/>real buttons"] --> F101["101<br/>guessed"] --> F102["102<br/>guessed"] --> F103["103<br/>guessed"]
-  end
-  EV{{"After frame 103 the real buttons for frame 101 arrive<br/>and DIFFER from the guess"}}
-  subgraph T2["After detecting it: load the state of frame 101 and re-run"]
-    direction LR
-    R101["101<br/>real buttons"] --> R102["102<br/>real buttons"] --> R103["103<br/>real buttons"] --> R104["104<br/>normal"]
-  end
-  F103 --> EV
-  EV -->|"LoadGameState(101)"| R101
+  classDef real fill:#e4f6ea,stroke:#2e8b57,color:#111
+  classDef guess fill:#fff3d6,stroke:#b86e00,color:#111
+  classDef ev fill:#fde4ef,stroke:#c0246a,color:#111
+  F100["100<br/>real"]:::real --> F101["101<br/>guessed"]:::guess --> F102["102<br/>guessed"]:::guess --> F103["103<br/>guessed"]:::guess
+  F103 --> EV{{"Real buttons for 101 arrive<br/>and differ from the guess<br/>LoadGameState(101)"}}:::ev
+  EV --> R101["101<br/>re-run, real"]:::real --> R102["102<br/>re-run, real"]:::real --> R103["103<br/>re-run, real"]:::real --> R104["104<br/>normal"]:::real
 ```
 
 - Three re-run frames fit inside one 16.7 ms beat and cost about 3 × 0.9 ms.
@@ -523,19 +471,12 @@ A **room** is the unit the user sees: the Host opens a room for one game and cho
 
 ```mermaid
 flowchart TB
-  subgraph ROOM["Room (the Host chooses the game and number of seats)"]
-    direction LR
-    S1["Seat 1<br/>Host"]
-    S2["Seat 2"]
-    S3["Seat 3<br/>(if a 4-seat room)"]
-    S4["Seat 4<br/>(if a 4-seat room)"]
-  end
-  S1 <--> S2
+  S1["Seat 1<br/>Host"] <--> S2["Seat 2"]
+  S3["Seat 3<br/>(4-seat room)"] <--> S4["Seat 4<br/>(4-seat room)"]
   S1 <--> S3
+  S2 <--> S4
   S1 <--> S4
   S2 <--> S3
-  S2 <--> S4
-  S3 <--> S4
 ```
 
 Every pair of machines connects directly (a full mesh): 2 machines have 1 link, 4 machines have 6 links. ggrs supports multiple players in this model, with each player controlling one port of the core.
@@ -576,21 +517,12 @@ So that a LAN and the Internet share the same rollback code, split the design in
 
 ```mermaid
 flowchart TB
-  subgraph L1["Layer 1: Find and join a room (Signaling, Lobby)"]
-    direction LR
-    A1["LAN: UDP broadcast 7847"]
-    A2["Internet, option A: Steam Lobby (friends, invites)"]
-    A3["Internet, option B: a self-run signaling server"]
-  end
-  subgraph L2["Layer 2: Game transport (Transport)"]
-    direction LR
-    B1["Direct UDP (LAN)"]
-    B2["Steam Networking Sockets (NAT traversal, Valve relay)"]
-    B3["WebRTC data channel (NAT traversal, TURN fallback)"]
-  end
-  subgraph L3["Layer 3: Rollback (shared)"]
-    C1["ggrs + NetSession: guess, save, load, re-run, checksum"]
-  end
+  classDef l1 fill:#e3f0ff,stroke:#3b78c4,color:#111
+  classDef l2 fill:#fff3d6,stroke:#b86e00,color:#111
+  classDef l3 fill:#e4f6ea,stroke:#2e8b57,color:#111
+  L1["<b>Layer 1: find and join a room</b><br/>LAN: UDP broadcast 7847<br/>Internet, option A: Steam Lobby (friends, invites)<br/>Internet, option B: a self-run signaling server"]:::l1
+  L2["<b>Layer 2: game transport</b><br/>LAN: direct UDP<br/>Steam Networking Sockets (NAT traversal, Valve relay)<br/>WebRTC data channel (NAT traversal, TURN fallback)"]:::l2
+  L3["<b>Layer 3: rollback (shared)</b><br/>ggrs + NetSession: guess, save, load, re-run, checksum"]:::l3
   L1 --> L2 --> L3
 ```
 
