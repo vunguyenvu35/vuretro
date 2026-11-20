@@ -16,6 +16,8 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   import GameTitle from './GameTitle.svelte';
   import ScopedSettingsEditor from './ScopedSettingsEditor.svelte';
   let newTag = $state('');
+  /** How wide the games' own area is: the list drops columns by it (a script, not a container query: WebKit left the cells showing when the width changed) */
+  let gw = $state(1000);
   async function setTags(game, tags) {
     await api.setTags(game.path, tags);
     await refresh();
@@ -295,14 +297,14 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
         </div>
       </div>
 
-  <div class="scroll" role="presentation" oncontextmenu={listMenu}>
+  <div class="scroll" role="presentation" oncontextmenu={listMenu} bind:clientWidth={gw}>
       {#if visible.length === 0}
         <p class="muted pad">
           Nothing matches.
           {#if app.status}<button type="button" class="linkbtn" onclick={() => (app.status = '')}>Show every status</button>{/if}
         </p>
       {:else if app.layout === 'list'}
-        <div class="list" class:selecting={app.selecting} role="list">
+        <div class="list" class:selecting={app.selecting} class:lt700={gw < 700} class:lt600={gw < 600} class:lt500={gw < 500} class:lt400={gw < 400} class:lt300={gw < 300} role="list">
           <div class="lhead">
             {#if app.selecting}
               <button class="hcheck" class:on={allPicked} class:part={pickedGames.length > 0 && !allPicked} onclick={toggleAll} aria-label={allPicked ? 'Clear selection' : 'Select all'}>
@@ -315,7 +317,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
               {@const many = app.sorts.length > 1}
               <button
                 type="button"
-                class="hsort {align}"
+                class="hsort col-{k} {align}"
                 class:on={at >= 0}
                 aria-pressed={at >= 0}
                 title={at < 0
@@ -339,10 +341,10 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
               {/if}
               <span class="thumb cover scan" style="--c:{colorOf(g.system)}">{#if covers[g.path]}<img src={covers[g.path]} alt="" loading="lazy" />{/if}</span>
               <span class="rname"><b>{g.title}</b>{#if g.favorite}<i class="rstar" title="Favorite">★</i>{/if}{#if g.blocked}<i class="rlock" title={g.blocked}>🔒</i>{/if}</span>
-              <span class="rsys"><span class="sico" style="color:{colorOf(g.system)}"><Icon name={g.system} size={16} /></span>{sysName(g.system)}</span>
-              <span class="r muted2">{formatSize(g.size)}</span>
-              <span class="muted2">{g.last_played ? formatAgo(g.last_played) : '—'}</span>
-              <span class="r muted2">{g.play_secs ? formatPlaytime(g.play_secs) : '—'}</span>
+              <span class="rsys col-system"><span class="sico" style="color:{colorOf(g.system)}"><Icon name={g.system} size={16} /></span><span class="sname">{sysName(g.system)}</span></span>
+              <span class="r muted2 col-size">{formatSize(g.size)}</span>
+              <span class="muted2 col-recent">{g.last_played ? formatAgo(g.last_played) : '—'}</span>
+              <span class="r muted2 col-played">{g.play_secs ? formatPlaytime(g.play_secs) : '—'}</span>
               <span class="rplay" class:off={app.selecting || !!g.blocked} role="button" tabindex="-1" aria-label="Play {g.title}" title={g.blocked ? g.blocked : 'Play'} onclick={(e) => { e.stopPropagation(); if (!app.selecting) play(g); }} onkeydown={() => {}}>
                 <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor" /></svg>
               </span>
@@ -459,7 +461,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   .danger { color: var(--bad); }
   /* the card and the toolbar stay where they are; only the games under them scroll, so the scroll bar
      runs along the games and not beside the toolbar */
-  .main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 0 20px 0; }
+  .main { container: main / inline-size; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 0 20px 0; }
   .search {
     flex: 1 1 120px; min-width: 120px; display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 10px 0 12px;
     background: var(--surface); border: 1px solid var(--border); border-radius: 12px; color: var(--faint);
@@ -568,9 +570,26 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   .layout button.on { background: var(--surface-2); color: var(--accent); }
 
   .list { display: flex; flex-direction: column; gap: 2px; }
-  .lhead, .lrow { display: grid; grid-template-columns: 76px minmax(0, 2.2fr) minmax(0, 1.1fr) 84px minmax(0, 1fr) minmax(0, .8fr) 34px; align-items: center; gap: 16px; }
-  /* in selection mode a checkbox gutter opens to the left of the picture */
-  .list.selecting .lhead, .list.selecting .lrow { grid-template-columns: 18px 76px minmax(0, 2.2fr) minmax(0, 1.1fr) 84px minmax(0, 1fr) minmax(0, .8fr) 34px; }
+  /* The columns of the list, with the checkbox gutter in front of them in selection mode. The list is as
+     wide as the games' own area, not the window, so the columns go by what room there is: from the
+     right, Time played, Last played, Size and System step aside (the Sort menu still sorts by them),
+     and the picture shrinks, so nothing is ever drawn over its neighbour. (`.list .col-…`: a cell's own
+     `display` further down would otherwise win over `display: none`.) */
+  .list { --cols: 76px minmax(0, 2.2fr) minmax(0, 1.1fr) 84px minmax(0, 1fr) minmax(0, .8fr) 34px; }
+  .list.selecting .lhead, .list.selecting .lrow { grid-template-columns: 18px var(--cols); }
+  .lhead, .lrow { display: grid; grid-template-columns: var(--cols); align-items: center; gap: 16px; }
+  .list.lt700 { --cols: 76px minmax(0, 2.2fr) minmax(0, 1.1fr) 84px minmax(0, 1fr) 34px; }
+  .list.lt700 .col-played { display: none; }
+  .list.lt600 { --cols: 76px minmax(0, 2.2fr) minmax(0, 1.1fr) 84px 34px; }
+  .list.lt600 .col-recent { display: none; }
+  .list.lt500 { --cols: 76px minmax(0, 2.2fr) minmax(0, 1.1fr) 34px; }
+  .list.lt500 .col-size { display: none; }
+  .list.lt400 { --cols: 56px minmax(0, 1fr) 34px; }
+  .list.lt400 .col-system { display: none; }
+  .list.lt400 .lrow .thumb { width: 56px; height: 42px; }
+  .list.lt300 { --cols: 44px minmax(0, 1fr); }
+  .list.lt300 .lrow .rplay, .list.lt300 .lhead > :last-child { display: none; }
+  .list.lt300 .lrow .thumb { width: 44px; height: 33px; }
   .lhead { position: sticky; top: 0; z-index: 3; height: 34px; padding: 0 14px 0 18px; background: var(--bg); border-bottom: 1px solid var(--border); color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
   .lhead .r, .lrow .r { text-align: right; justify-self: end; }
   .lrow { width: 100%; padding: 7px 14px 7px 18px; border-radius: 10px; border: 1px solid transparent; background: none; color: var(--text); text-align: left; transition: background .12s; }
@@ -585,6 +604,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   .lrow:hover .thumb img { transform: none; }
   .rname { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .rsys { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; min-width: 0; white-space: nowrap; }
+  .sname { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .sico { display: inline-flex; flex: none; }
   .rplay { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #17110a; opacity: 0; transform: scale(.85); transition: opacity .12s, transform .12s; padding-left: 2px; }
   .lrow:hover .rplay, .lrow.sel .rplay { opacity: 1; transform: none; }
@@ -639,4 +659,24 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   .ok { color: var(--ok); }
   .bad { color: var(--bad); }
   .wide { width: 100%; }
+  /* (last in the file, so that nothing above it overrides the order and the sizes it sets.)
+     In a narrow column the toolbar does not squeeze all its controls on one row, which left the search a
+     sliver: the title and the view switch share the first row, the search takes the whole second row,
+     and the filters, Select and Sort the third. */
+  @container main (max-width: 600px) {
+    /* the Continue playing card: no big picture and no second line, the title on one line with the buttons beside it */
+    .hero { margin-top: 14px; padding: 10px 12px; gap: 12px; align-items: center; }
+    .hero .crt, .hero-body p { display: none; }
+    .hero-body { flex: 1 1 0; min-width: 0; }
+    .hero-body h2 { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hero-body .row { margin-top: 6px; }
+    .hero .btn { padding: 6px 12px; }
+    /* the first row    /* the first row is as tall as the strip's row of the wide toolbar, so the title stays level with "Details" */
+    .bar h3 { order: 1; flex: 1 1 0; min-width: 0; min-height: 38px; display: flex; align-items: center; }
+    .bar .layout { order: 2; margin-left: 0; }
+    .bar .search { order: 3; flex: 1 1 100%; }
+    .bar .filter { order: 4; }
+    .bar .tools { order: 5; margin-left: 0; }
+    .bar > :global(.wrap) { order: 6; margin-left: auto; }
+  }
 </style>
