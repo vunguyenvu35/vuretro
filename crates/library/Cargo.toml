@@ -9,6 +9,10 @@ description = "Adapters for vuretro-core ports: ROM scanning, BIOS files, storag
 name = "vuretro-scan"
 path = "src/bin/scan.rs"
 
+[[bin]]
+name = "vuretro-bios-check"
+path = "src/bin/bios_check.rs"
+
 [dependencies]
 vuretro-core = { path = "../core" }
 log.workspace = true

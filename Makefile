@@ -106,6 +106,9 @@ cores: ## Download fbneo, pcsx_rearmed, snes9x, mgba cores into cores/bin/
 cores-offline: ## Download core zips into cores/offline/ so they can be installed with no internet (ARGS=--all for the alternatives too)
 	./cores/fetch-offline.sh $(ARGS)
 
+check-bios: ## Tell what each BIOS file in a folder is: make check-bios DIR=docs/bios
+	cargo run -q -p vuretro-library --bin vuretro-bios-check -- "$(or $(DIR),docs/bios)"
+
 scan: ## Scan a ROM folder: make scan ROMS=~/Games/roms
 	cargo run -p vuretro-library --bin vuretro-scan -- "$(ROMS)"
 
