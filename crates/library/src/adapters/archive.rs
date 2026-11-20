@@ -130,11 +130,16 @@ impl Archive for ZipBackup {
                 continue;
             }
             // anything that is not a safe, allowed path inside the data folder is skipped
-            let Some(rel) = restore_target(entry.name()) else {
+            // a name that cannot be read is no safe path either: skipped like any other
+            let name = entry.name().map(|n| n.into_owned()).ok();
+            let Some(rel) = name.as_deref().and_then(restore_target) else {
                 continue;
             };
             if entry.size() > MAX_ENTRY {
-                return Err(format!("{} is too large for a backup", entry.name()));
+                return Err(format!(
+                    "{} is too large for a backup",
+                    name.unwrap_or_default()
+                ));
             }
             let target = self.data_dir.join(rel);
             if let Some(dir) = target.parent() {
@@ -186,7 +191,7 @@ mod tests {
     fn names(zip: &Path) -> Vec<String> {
         let mut z = zip::ZipArchive::new(File::open(zip).unwrap()).unwrap();
         let mut v: Vec<String> = (0..z.len())
-            .map(|i| z.by_index(i).unwrap().name().to_string())
+            .map(|i| z.by_index(i).unwrap().name().unwrap().to_string())
             .collect();
         v.sort();
         v

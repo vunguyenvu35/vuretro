@@ -42,7 +42,10 @@ pub fn names(archive: &Path) -> Result<Vec<String>, String> {
             .collect())
     } else {
         let zip = zip::ZipArchive::new(file).map_err(|e| format!("cannot read the zip: {e}"))?;
-        Ok(zip.file_names().map(str::to_string).collect())
+        zip.file_names()
+            .map(|n| n.map(|n| n.into_owned()))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("cannot read the zip: {e}"))
     }
 }
 
@@ -67,7 +70,8 @@ pub fn extract(archive: &Path, dest: &Path) -> Result<(), String> {
             .by_index(i)
             .map_err(|e| format!("cannot unpack it: {e}"))?;
         let Some(rel) = entry.enclosed_name() else {
-            return Err(format!("unsafe file name in the archive: {}", entry.name()));
+            let name = entry.name().map(|n| n.into_owned()).unwrap_or_default();
+            return Err(format!("unsafe file name in the archive: {name}"));
         };
         let out = dest.join(rel);
         if entry.is_dir() {
@@ -258,5 +262,63 @@ mod tests {
         assert_eq!(one.len(), 1);
         assert!(one[0].ends_with("all.m3u"));
         assert!(entry_points(&dir.path().join("nothing")).is_empty());
+    }
+
+    /// Written by Python's zipfile, not by the zip crate this program uses.
+    const PYTHON_ZIP: &[u8] = &[
+        80, 75, 3, 4, 20, 0, 0, 0, 8, 0, 0, 0, 33, 80, 227, 81, 61, 141, 10, 0, 0, 0, 23, 0, 0, 0,
+        5, 0, 0, 0, 97, 46, 98, 105, 110, 203, 72, 205, 201, 201, 87, 200, 64, 39, 1, 80, 75, 3, 4,
+        20, 0, 0, 0, 8, 0, 0, 0, 33, 80, 105, 17, 31, 182, 8, 0, 0, 0, 6, 0, 0, 0, 9, 0, 0, 0, 100,
+        105, 114, 47, 98, 46, 116, 120, 116, 43, 78, 77, 206, 207, 75, 1, 0, 80, 75, 1, 2, 20, 3,
+        20, 0, 0, 0, 8, 0, 0, 0, 33, 80, 227, 81, 61, 141, 10, 0, 0, 0, 23, 0, 0, 0, 5, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 128, 1, 0, 0, 0, 0, 97, 46, 98, 105, 110, 80, 75, 1, 2, 20, 3, 20, 0,
+        0, 0, 8, 0, 0, 0, 33, 80, 105, 17, 31, 182, 8, 0, 0, 0, 6, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 128, 1, 45, 0, 0, 0, 100, 105, 114, 47, 98, 46, 116, 120, 116, 80, 75, 5, 6, 0,
+        0, 0, 0, 2, 0, 2, 0, 106, 0, 0, 0, 92, 0, 0, 0, 0, 0,
+    ];
+
+    /// Written by Python's zipfile, not by the zip crate this program uses.
+    const PYTHON_ZIP_WITH_AN_ESCAPING_NAME: &[u8] = &[
+        80, 75, 3, 4, 20, 0, 0, 0, 8, 0, 0, 0, 33, 80, 146, 84, 169, 190, 6, 0, 0, 0, 4, 0, 0, 0,
+        8, 0, 0, 0, 103, 111, 111, 100, 46, 116, 120, 116, 75, 203, 204, 75, 5, 0, 80, 75, 3, 4,
+        20, 0, 0, 0, 8, 0, 0, 0, 33, 80, 91, 12, 248, 146, 9, 0, 0, 0, 7, 0, 0, 0, 11, 0, 0, 0, 46,
+        46, 47, 101, 118, 105, 108, 46, 116, 120, 116, 75, 45, 78, 78, 44, 72, 77, 1, 0, 80, 75, 1,
+        2, 20, 3, 20, 0, 0, 0, 8, 0, 0, 0, 33, 80, 146, 84, 169, 190, 6, 0, 0, 0, 4, 0, 0, 0, 8, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 1, 0, 0, 0, 0, 103, 111, 111, 100, 46, 116, 120, 116,
+        80, 75, 1, 2, 20, 3, 20, 0, 0, 0, 8, 0, 0, 0, 33, 80, 91, 12, 248, 146, 9, 0, 0, 0, 7, 0,
+        0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 1, 44, 0, 0, 0, 46, 46, 47, 101, 118, 105,
+        108, 46, 116, 120, 116, 80, 75, 5, 6, 0, 0, 0, 0, 2, 0, 2, 0, 111, 0, 0, 0, 94, 0, 0, 0, 0,
+        0,
+    ];
+
+    #[test]
+    fn a_zip_written_by_another_program_is_listed_and_unpacked() {
+        let dir = tempfile::tempdir().unwrap();
+        let zip = dir.path().join("python.zip");
+        std::fs::write(&zip, PYTHON_ZIP).unwrap();
+        let mut names = names(&zip).unwrap();
+        names.sort();
+        assert_eq!(names, ["a.bin", "dir/b.txt"]);
+        let out = dir.path().join("out");
+        extract(&zip, &out).unwrap();
+        assert_eq!(
+            std::fs::read(out.join("a.bin")).unwrap(),
+            b"hello hello hello hello"
+        );
+        assert_eq!(std::fs::read(out.join("dir/b.txt")).unwrap(), b"second");
+    }
+
+    #[test]
+    fn a_name_that_leaves_the_folder_is_refused_and_nothing_escapes() {
+        let dir = tempfile::tempdir().unwrap();
+        let zip = dir.path().join("evil.zip");
+        std::fs::write(&zip, PYTHON_ZIP_WITH_AN_ESCAPING_NAME).unwrap();
+        let out = dir.path().join("inner").join("out");
+        let err = extract(&zip, &out).unwrap_err();
+        assert!(err.contains("unsafe file name"), "{err}");
+        assert!(err.contains("evil.txt"), "{err}");
+        // not beside the folder, nor anywhere above it
+        assert!(!out.parent().unwrap().join("evil.txt").exists());
+        assert!(!dir.path().join("evil.txt").exists());
     }
 }
