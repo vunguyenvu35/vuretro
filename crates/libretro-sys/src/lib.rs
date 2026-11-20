@@ -7,7 +7,31 @@ use std::os::raw::{c_char, c_int, c_uint, c_void};
 pub const RETRO_API_VERSION: c_uint = 1;
 
 // Environment commands
+/// Flag some newer commands carry in the C header; the frontend strips it before matching.
+pub const RETRO_ENVIRONMENT_EXPERIMENTAL: c_uint = 0x10000;
+pub const RETRO_ENVIRONMENT_SET_ROTATION: c_uint = 1;
+pub const RETRO_ENVIRONMENT_GET_OVERSCAN: c_uint = 2;
 pub const RETRO_ENVIRONMENT_GET_CAN_DUPE: c_uint = 3;
+pub const RETRO_ENVIRONMENT_SET_MESSAGE: c_uint = 6;
+pub const RETRO_ENVIRONMENT_SHUTDOWN: c_uint = 7;
+pub const RETRO_ENVIRONMENT_SET_HW_RENDER: c_uint = 14;
+pub const RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME: c_uint = 18;
+pub const RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES: c_uint = 24;
+pub const RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO: c_uint = 32;
+pub const RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO: c_uint = 34;
+pub const RETRO_ENVIRONMENT_SET_CONTROLLER_INFO: c_uint = 35;
+pub const RETRO_ENVIRONMENT_SET_MEMORY_MAPS: c_uint = 36;
+pub const RETRO_ENVIRONMENT_SET_GEOMETRY: c_uint = 37;
+pub const RETRO_ENVIRONMENT_GET_USERNAME: c_uint = 38;
+pub const RETRO_ENVIRONMENT_GET_LANGUAGE: c_uint = 39;
+pub const RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS: c_uint = 44;
+pub const RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE: c_uint = 47;
+pub const RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION: c_uint = 59;
+pub const RETRO_ENVIRONMENT_SET_MESSAGE_EXT: c_uint = 60;
+pub const RETRO_ENVIRONMENT_GET_INPUT_MAX_USERS: c_uint = 61;
+pub const RETRO_ENVIRONMENT_SET_VARIABLE: c_uint = 70;
+/// Bit of the input-capabilities mask for `RETRO_DEVICE_JOYPAD`.
+pub const RETRO_DEVICE_JOYPAD_BIT: u64 = 1 << 1;
 pub const RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL: c_uint = 8;
 pub const RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: c_uint = 9;
 pub const RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: c_uint = 10;
@@ -151,4 +175,25 @@ pub struct retro_input_descriptor {
 pub struct retro_rumble_interface {
     pub set_rumble_state:
         Option<unsafe extern "C" fn(port: c_uint, effect: c_uint, strength: u16) -> bool>,
+}
+
+/// `SET_MESSAGE`: a short text the core wants shown for `frames` frames.
+#[repr(C)]
+pub struct retro_message {
+    pub msg: *const c_char,
+    pub frames: c_uint,
+}
+
+/// `SET_MESSAGE_EXT`: like [`retro_message`] with a duration in ms, priority and level
+/// (0 debug, 1 info, 2 warn, 3 error). The trailing fields are read as `c_uint`s because
+/// the C enums are 32 bits wide.
+#[repr(C)]
+pub struct retro_message_ext {
+    pub msg: *const c_char,
+    pub duration: c_uint,
+    pub priority: c_uint,
+    pub level: c_uint,
+    pub target: c_uint,
+    pub kind: c_uint,
+    pub progress: i8,
 }

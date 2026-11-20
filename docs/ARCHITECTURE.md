@@ -68,7 +68,15 @@ libretro callbacks carry no user-data pointer, so frontend state lives in `OnceL
 
 ## Supported environment calls
 
-`GET_CAN_DUPE`, `SET_PIXEL_FORMAT`, `GET_SYSTEM_DIRECTORY`, `GET_CORE_ASSETS_DIRECTORY`, `GET_SAVE_DIRECTORY`, `GET_VARIABLE` (values from the options file, otherwise the core default), `GET_VARIABLE_UPDATE`, `SET_VARIABLES` (recorded for `--list-options`), `SET_INPUT_DESCRIPTORS`, `SET_PERFORMANCE_LEVEL`. Other commands return `false` and are logged at `trace` level (`RUST_LOG=trace make dev`).
+Answered with data: `GET_CAN_DUPE`, `GET_OVERSCAN`, `SET_PIXEL_FORMAT`, `GET_SYSTEM_DIRECTORY`, `GET_CORE_ASSETS_DIRECTORY`, `GET_SAVE_DIRECTORY`, `GET_VARIABLE` (values from the options file, otherwise the core default), `GET_VARIABLE_UPDATE`, `GET_LOG_INTERFACE`, `GET_RUMBLE_INTERFACE`, `GET_LANGUAGE` (English), `GET_USERNAME`, `GET_INPUT_DEVICE_CAPABILITIES` (joypad), `GET_INPUT_MAX_USERS`, `GET_AUDIO_VIDEO_ENABLE`, `GET_MESSAGE_INTERFACE_VERSION`.
+
+Acted on: `SET_VARIABLES` (recorded for `--list-options`), `SET_VARIABLE` (a core changes one of its own options), `SET_ROTATION` (the picture is turned in `video_cb`, so vertical arcade games stand up), `SHUTDOWN` (the window closes), `SET_MESSAGE` and `SET_MESSAGE_EXT` (written to the log), `SET_DISK_CONTROL_INTERFACE`, `SET_INPUT_DESCRIPTORS`.
+
+Acknowledged, nothing to do: `SET_GEOMETRY` (the size comes with every frame), `SET_PERFORMANCE_LEVEL`, `SET_SUPPORT_NO_GAME`, `SET_CONTROLLER_INFO`, `SET_SUBSYSTEM_INFO`, `SET_MEMORY_MAPS`, `SET_SERIALIZATION_QUIRKS`.
+
+Refused on purpose, with a warning in the log: `SET_HW_RENDER` (no GPU renderer yet) and `SET_SYSTEM_AV_INFO` (the frame rate and sample rate are not changed while playing). Other commands return `false` and are logged at `trace` level (`RUST_LOG=trace make dev`).
+
+The `EXPERIMENTAL` flag (0x10000) some command numbers carry is removed before matching.
 
 ## System detection during ROM scan
 

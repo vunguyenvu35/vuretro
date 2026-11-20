@@ -193,7 +193,7 @@ impl Keyboard for MiniFbScreen {
 
 impl Screen for MiniFbScreen {
     fn is_open(&self) -> bool {
-        self.window.is_open()
+        self.window.is_open() && !crate::frontend::with(|fe| fe.shutdown)
     }
     fn key_pressed(&self, key: PlayKey) -> bool {
         self.window.is_key_pressed(to_minifb(key), KeyRepeat::No)

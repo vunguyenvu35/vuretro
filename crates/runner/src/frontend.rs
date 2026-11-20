@@ -29,6 +29,10 @@ pub struct Frontend {
     pub definitions: Vec<crate::options::OptionDef>,
     /// Disc control of a multi-disc core, if it announced one.
     pub disk: Option<retro_disk_control_callback>,
+    /// Screen rotation the core asked for, in quarter turns counter-clockwise (0..=3).
+    pub rotation: u8,
+    /// The core asked to quit (`SHUTDOWN`), for example from its own menu.
+    pub shutdown: bool,
 }
 
 static FRONTEND: OnceLock<Mutex<Frontend>> = OnceLock::new();
@@ -56,6 +60,8 @@ pub fn init(
             .collect(),
         definitions: Vec::new(),
         disk: None,
+        rotation: 0,
+        shutdown: false,
     };
     let _ = FRONTEND.set(Mutex::new(fe));
 }
@@ -91,6 +97,8 @@ unsafe fn cstr_lossy(p: *const c_char) -> String {
 }
 
 pub unsafe extern "C" fn environment_cb(cmd: c_uint, data: *mut c_void) -> bool {
+    // some commands carry a flag that only says "experimental"; it is not part of the number
+    let cmd = cmd & !RETRO_ENVIRONMENT_EXPERIMENTAL;
     match cmd {
         RETRO_ENVIRONMENT_GET_CAN_DUPE => {
             *(data as *mut bool) = true;
@@ -176,6 +184,99 @@ pub unsafe extern "C" fn environment_cb(cmd: c_uint, data: *mut c_void) -> bool 
             true
         }
         RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL => true,
+        RETRO_ENVIRONMENT_SET_ROTATION => {
+            let turns = *(data as *const c_uint);
+            if turns > 3 {
+                return false;
+            }
+            with(|fe| fe.rotation = turns as u8);
+            true
+        }
+        RETRO_ENVIRONMENT_GET_OVERSCAN => {
+            // we show the whole picture, overscan included
+            *(data as *mut bool) = true;
+            true
+        }
+        RETRO_ENVIRONMENT_SHUTDOWN => {
+            with(|fe| fe.shutdown = true);
+            true
+        }
+        RETRO_ENVIRONMENT_SET_MESSAGE => {
+            let m = &*(data as *const retro_message);
+            log::info!(target: "core", "message: {}", cstr_lossy(m.msg));
+            true
+        }
+        RETRO_ENVIRONMENT_SET_MESSAGE_EXT => {
+            let m = &*(data as *const retro_message_ext);
+            let text = cstr_lossy(m.msg);
+            match m.level {
+                0 => log::debug!(target: "core", "message: {text}"),
+                1 => log::info!(target: "core", "message: {text}"),
+                2 => log::warn!(target: "core", "message: {text}"),
+                _ => log::error!(target: "core", "message: {text}"),
+            }
+            true
+        }
+        RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION => {
+            *(data as *mut c_uint) = 1;
+            true
+        }
+        RETRO_ENVIRONMENT_GET_LANGUAGE => {
+            *(data as *mut c_uint) = 0; // RETRO_LANGUAGE_ENGLISH
+            true
+        }
+        RETRO_ENVIRONMENT_GET_USERNAME => {
+            *(data as *mut *const c_char) = c"vuretro".as_ptr();
+            true
+        }
+        RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES => {
+            *(data as *mut u64) = RETRO_DEVICE_JOYPAD_BIT;
+            true
+        }
+        RETRO_ENVIRONMENT_GET_INPUT_MAX_USERS => {
+            *(data as *mut c_uint) = MAX_PORTS as c_uint;
+            true
+        }
+        RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE => {
+            *(data as *mut i32) = 0b11; // video and audio both wanted
+            true
+        }
+        RETRO_ENVIRONMENT_SET_VARIABLE => {
+            // a core changes one of its own options; null data only asks "is this supported?"
+            if data.is_null() {
+                return true;
+            }
+            let var = &*(data as *const retro_variable);
+            if var.key.is_null() || var.value.is_null() {
+                return false;
+            }
+            let key = cstr_lossy(var.key);
+            let value = std::ffi::CStr::from_ptr(var.value).to_owned();
+            with(|fe| match fe.options.get_mut(&key) {
+                Some(slot) => {
+                    *slot = value;
+                    true
+                }
+                None => false,
+            })
+        }
+        // Acknowledged, nothing to do: the picture size comes with every frame, and we do not
+        // use the controller, subsystem, memory-map or quirk information.
+        RETRO_ENVIRONMENT_SET_GEOMETRY
+        | RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME
+        | RETRO_ENVIRONMENT_SET_CONTROLLER_INFO
+        | RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO
+        | RETRO_ENVIRONMENT_SET_MEMORY_MAPS
+        | RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS => true,
+        RETRO_ENVIRONMENT_SET_HW_RENDER => {
+            log::warn!("the core wants a GPU renderer, which vuretro does not offer yet");
+            false
+        }
+        RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO => {
+            // a new frame rate or sample rate would need the pacing and audio to follow
+            log::warn!("the core changed its video or audio timing; vuretro keeps the old one");
+            false
+        }
         _ => {
             log::trace!("unhandled environment cmd {cmd}");
             false
@@ -272,8 +373,43 @@ pub unsafe extern "C" fn video_cb(
                 }
             }
         }
+        if fe.rotation != 0 {
+            let (rotated, rw, rh) = rotate(&fe.frame, w, h, fe.rotation);
+            fe.frame = rotated;
+            fe.width = rw;
+            fe.height = rh;
+        }
         fe.frame_dirty = true;
     });
+}
+
+/// Turn a picture by `turns` quarter turns counter-clockwise (libretro's `SET_ROTATION`);
+/// returns the pixels and the new width and height.
+pub fn rotate(src: &[u32], w: usize, h: usize, turns: u8) -> (Vec<u32>, usize, usize) {
+    match turns % 4 {
+        0 => (src.to_vec(), w, h),
+        1 => {
+            // new (x, y) comes from old (w - 1 - y, x)
+            let mut out = vec![0; w * h];
+            for y in 0..w {
+                for x in 0..h {
+                    out[y * h + x] = src[x * w + (w - 1 - y)];
+                }
+            }
+            (out, h, w)
+        }
+        2 => (src.iter().rev().copied().collect(), w, h),
+        _ => {
+            // new (x, y) comes from old (y, h - 1 - x)
+            let mut out = vec![0; w * h];
+            for y in 0..w {
+                for x in 0..h {
+                    out[y * h + x] = src[(h - 1 - x) * w + y];
+                }
+            }
+            (out, h, w)
+        }
+    }
 }
 
 #[inline]
@@ -330,6 +466,102 @@ mod tests {
         assert_eq!(rgb565_to_rgb888(0xF800), 0x00FF_0000);
         assert_eq!(rgb1555_to_rgb888(0x7FFF), 0x00FF_FFFF);
         assert_eq!(rgb1555_to_rgb888(0x001F), 0x0000_00FF);
+    }
+}
+
+#[cfg(test)]
+mod env_tests {
+    use super::*;
+
+    fn call<T>(cmd: c_uint, value: &mut T) -> bool {
+        unsafe { environment_cb(cmd, value as *mut T as *mut c_void) }
+    }
+
+    #[test]
+    fn rotation_turns_counter_clockwise() {
+        // 3 wide, 2 tall:  1 2 3 / 4 5 6
+        let src = [1, 2, 3, 4, 5, 6];
+        assert_eq!(rotate(&src, 3, 2, 0), (src.to_vec(), 3, 2));
+        assert_eq!(rotate(&src, 3, 2, 1), (vec![3, 6, 2, 5, 1, 4], 2, 3));
+        assert_eq!(rotate(&src, 3, 2, 2), (vec![6, 5, 4, 3, 2, 1], 3, 2));
+        assert_eq!(rotate(&src, 3, 2, 3), (vec![4, 1, 5, 2, 6, 3], 2, 3));
+    }
+
+    #[test]
+    fn simple_questions_get_simple_answers() {
+        let mut language: c_uint = 99;
+        assert!(call(RETRO_ENVIRONMENT_GET_LANGUAGE, &mut language));
+        assert_eq!(language, 0);
+        let mut caps = 0u64;
+        assert!(call(
+            RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES,
+            &mut caps
+        ));
+        assert_eq!(caps, 1 << RETRO_DEVICE_JOYPAD);
+        let mut users: c_uint = 0;
+        assert!(call(RETRO_ENVIRONMENT_GET_INPUT_MAX_USERS, &mut users));
+        assert_eq!(users as usize, MAX_PORTS);
+        let mut name: *const c_char = std::ptr::null();
+        assert!(call(RETRO_ENVIRONMENT_GET_USERNAME, &mut name));
+        assert_eq!(unsafe { cstr_lossy(name) }, "vuretro");
+        let mut av = 0i32;
+        assert!(call(RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE, &mut av));
+        assert_eq!(av, 3);
+    }
+
+    #[test]
+    fn the_experimental_flag_is_not_part_of_the_command() {
+        let mut av = 0i32;
+        assert!(call(
+            RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE | RETRO_ENVIRONMENT_EXPERIMENTAL,
+            &mut av
+        ));
+        assert_eq!(av, 3);
+    }
+
+    #[test]
+    fn rotation_shutdown_and_set_variable_are_remembered() {
+        init(
+            "/s",
+            "/v",
+            Arc::new(Mutex::new(VecDeque::new())),
+            HashMap::new(),
+        );
+        // `init` only counts the first time in a test run, so put the option in directly
+        with(|fe| fe.options.insert("opt".into(), CString::new("a").unwrap()));
+        let mut turns: c_uint = 1;
+        assert!(call(RETRO_ENVIRONMENT_SET_ROTATION, &mut turns));
+        assert_eq!(with(|fe| fe.rotation), 1);
+        let mut bad: c_uint = 4;
+        assert!(!call(RETRO_ENVIRONMENT_SET_ROTATION, &mut bad));
+
+        let mut none = ();
+        assert!(call(RETRO_ENVIRONMENT_SHUTDOWN, &mut none));
+        assert!(with(|fe| fe.shutdown));
+        with(|fe| {
+            fe.shutdown = false; // the state is shared with other tests
+            fe.rotation = 0;
+        });
+
+        let (k, v, unknown) = (c"opt", c"b", c"nope");
+        let mut var = retro_variable {
+            key: k.as_ptr(),
+            value: v.as_ptr(),
+        };
+        assert!(call(RETRO_ENVIRONMENT_SET_VARIABLE, &mut var));
+        assert_eq!(
+            with(|fe| fe.options["opt"].to_str().unwrap().to_string()),
+            "b"
+        );
+        var.key = unknown.as_ptr();
+        assert!(!call(RETRO_ENVIRONMENT_SET_VARIABLE, &mut var));
+    }
+
+    #[test]
+    fn what_we_cannot_do_is_refused() {
+        let mut none = ();
+        assert!(!call(RETRO_ENVIRONMENT_SET_HW_RENDER, &mut none));
+        assert!(!call(RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO, &mut none));
     }
 }
 
