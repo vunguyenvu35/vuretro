@@ -1,9 +1,6 @@
 //! The real implementations of the session's ports.
 
-use crate::ports::{Controller, Emulator, Frame, FrameSource, Hotkeys, Screen, View};
 use crate::screen::MiniFbScreen;
-use crate::session::{Config, Parts, Session};
-use crate::window::clamp_scale;
 use crate::{appicon, audio, core, display, frontend, input};
 use anyhow::Result;
 use std::collections::VecDeque;
@@ -12,6 +9,9 @@ use std::sync::atomic::AtomicU32;
 use std::sync::{Arc, Mutex};
 use vuretro_controls::macros::Macro;
 use vuretro_controls::ControlsConfig;
+use vuretro_play::ports::{Controller, Emulator, Frame, FrameSource, Hotkeys, Screen, View};
+use vuretro_play::session::{Config, Parts, Session};
+use vuretro_play::window::clamp_scale;
 use vuretro_settings::GameSettings;
 
 impl Emulator for core::Core {
@@ -149,6 +149,7 @@ pub fn open(p: Params) -> Result<Session> {
                 .with_auto_coin(coin_op && p.settings.auto_coin),
         ),
         frames: Box::new(CoreFrames),
+        files: Box::new(crate::files::DiskFiles),
         gain,
         speed,
         keep_alive: Box::new(audio),

@@ -13,6 +13,7 @@ path = "src/main.rs"
 libretro-sys = { path = "../libretro-sys" }
 vuretro-controls = { path = "../controls" }
 vuretro-core = { path = "../core" }
+vuretro-play = { path = "../play" }
 vuretro-library = { path = "../library" }
 vuretro-settings = { path = "../settings" }
 anyhow.workspace = true

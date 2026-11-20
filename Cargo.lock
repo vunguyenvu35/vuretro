@@ -1710,6 +1710,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "vuretro-play"
+version = "0.1.7"
+dependencies = [
+ "anyhow",
+ "log",
+ "tempfile",
+ "vuretro-controls",
+ "vuretro-core",
+ "vuretro-settings",
+]
+
+[[package]]
 name = "vuretro-runner"
 version = "0.1.7"
 dependencies = [
@@ -1728,6 +1740,7 @@ dependencies = [
  "vuretro-controls",
  "vuretro-core",
  "vuretro-library",
+ "vuretro-play",
  "vuretro-settings",
 ]
 

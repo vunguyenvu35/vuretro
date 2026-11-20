@@ -1,8 +1,5 @@
 //! Game preview images ("covers"): the library shows a screenshot of each game.
 
-use anyhow::{Context, Result};
-use std::path::Path;
-
 /// A frame needs at least this many distinct colours to be worth showing (a black or
 /// single-colour boot screen has 1 to 3).
 pub const MIN_COLOURS: usize = 16;
@@ -65,23 +62,6 @@ pub fn same_share(a: &[u32], b: &[u32]) -> f64 {
 /// A frame is kept only if at least this much of it is still there on the next frame.
 pub const MIN_STABLE: f64 = 0.5;
 
-pub fn write_png(path: &Path, buf: &[u32], w: usize, h: usize) -> Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    let file = std::fs::File::create(path).with_context(|| path.display().to_string())?;
-    let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w as u32, h as u32);
-    enc.set_color(png::ColorType::Rgb);
-    enc.set_depth(png::BitDepth::Eight);
-    let mut writer = enc.write_header()?;
-    let rgb: Vec<u8> = buf
-        .iter()
-        .flat_map(|p| [(p >> 16) as u8, (p >> 8) as u8, *p as u8])
-        .collect();
-    writer.write_image_data(&rgb)?;
-    Ok(())
-}
-
 /// Keeps the most colourful frame seen.
 #[derive(Default)]
 pub struct Best {
@@ -105,12 +85,11 @@ impl Best {
         }
     }
 
-    /// Write the best frame, if there was one. Returns whether a file was written.
-    pub fn save(&self, path: &Path) -> Result<bool> {
-        match &self.frame {
-            Some((buf, w, h)) => write_png(path, buf, *w, *h).map(|_| true),
-            None => Ok(false),
-        }
+    /// The best frame seen (pixels, width, height), if there was one.
+    pub fn frame(&self) -> Option<(&[u32], usize, usize)> {
+        self.frame
+            .as_ref()
+            .map(|(buf, w, h)| (buf.as_slice(), *w, *h))
     }
 }
 
@@ -201,12 +180,10 @@ mod tests {
         assert!(best.frame.is_none(), "broken frames are not kept either");
         best.offer(&scene(), W, H);
         assert!(best.frame.is_some());
-
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("a/b.png");
-        assert!(best.save(&path).unwrap());
-        let bytes = std::fs::read(&path).unwrap();
-        assert_eq!(&bytes[1..4], b"PNG");
-        assert!(!Best::default().save(&dir.path().join("none.png")).unwrap());
+        assert_eq!(
+            best.frame().map(|(buf, w, h)| (buf.len(), w, h)),
+            Some((W * H, W, H))
+        );
+        assert!(Best::default().frame().is_none());
     }
 }

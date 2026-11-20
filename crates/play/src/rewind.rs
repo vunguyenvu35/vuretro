@@ -45,6 +45,11 @@ impl Rewind {
         self.states.len()
     }
 
+    #[cfg(test)]
+    pub fn is_empty(&self) -> bool {
+        self.states.is_empty()
+    }
+
     pub fn clear(&mut self) {
         self.states.clear();
         self.bytes = 0;

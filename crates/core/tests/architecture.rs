@@ -48,6 +48,21 @@ fn core_is_pure() {
 }
 
 #[test]
+fn play_is_pure() {
+    // The session's rules and frame loop: no window, audio, gamepad, FFI or image crates.
+    assert_only(
+        "play",
+        &[
+            "anyhow",
+            "log",
+            "vuretro-core",
+            "vuretro-controls",
+            "vuretro-settings",
+        ],
+    );
+}
+
+#[test]
 fn shared_config_crates_stay_leaf_crates() {
     assert_only("controls", &["serde", "serde_json"]);
     assert_only("settings", &["serde", "serde_json"]);

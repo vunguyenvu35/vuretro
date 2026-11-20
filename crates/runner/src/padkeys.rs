@@ -13,10 +13,10 @@
 //! | West (□) | screenshot |
 //! | South (✕) | sound on / off |
 
-use crate::ports::Hotkeys;
-use crate::window::Act;
 use gilrs::Button;
 use std::collections::HashSet;
+use vuretro_play::ports::Hotkeys;
+use vuretro_play::window::Act;
 
 /// The button that turns the others into hotkeys.
 pub const MODIFIER: Button = Button::Select;

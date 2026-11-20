@@ -1,10 +1,10 @@
 //! What a [`Session`](crate::session::Session) needs from the machine: a window, an
-//! emulator, a controller and a source of frames. The real ones are in `screen.rs` and
-//! `real.rs`; the session tests use fakes.
+//! emulator, a controller, a source of frames and somewhere to keep files. The real ones are
+//! adapters in `vuretro-runner`; the session tests use fakes.
 
+use crate::keys::Key;
 use crate::window::Act;
 use anyhow::Result;
-use minifb::Key;
 use std::path::Path;
 
 /// A decoded video frame: 0RGB pixels, width, height.
@@ -96,4 +96,12 @@ pub trait FrameSource {
     fn take_new(&mut self) -> Option<Frame>;
     /// The latest frame, whether or not it was seen before.
     fn current(&self) -> Frame;
+}
+
+/// Where the session keeps what it saves: save states and pictures.
+pub trait Files {
+    fn read(&self, path: &Path) -> std::io::Result<Vec<u8>>;
+    fn write(&self, path: &Path, data: &[u8]) -> std::io::Result<()>;
+    /// Write a picture of 0RGB pixels as a PNG file, creating its folder if needed.
+    fn write_png(&self, path: &Path, buf: &[u32], w: usize, h: usize) -> Result<()>;
 }

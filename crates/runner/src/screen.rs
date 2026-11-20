@@ -1,10 +1,11 @@
 //! The real window: a minifb window behind the [`Screen`] trait.
 
 use crate::display;
-use crate::ports::{Keyboard, Screen, View};
-use crate::window::{act_id, Act, SLOTS};
 use anyhow::Result;
 use minifb::{Key, KeyRepeat, Menu, Scale, ScaleMode, Window, WindowOptions};
+use vuretro_play::ports::{Keyboard, Screen, View};
+use vuretro_play::window::{act_id, Act, SLOTS};
+use vuretro_play::Key as PlayKey;
 
 const MENU_MOD: usize = if cfg!(target_os = "macos") {
     minifb::MENU_KEY_COMMAND
@@ -172,9 +173,21 @@ impl MiniFbScreen {
     }
 }
 
+/// The window library's key for one of the session's keys (same names, one list).
+fn to_minifb(key: PlayKey) -> Key {
+    macro_rules! convert {
+        ($($k:ident),* $(,)?) => {
+            match key {
+                $(PlayKey::$k => Key::$k),*
+            }
+        };
+    }
+    vuretro_play::with_keys!(convert)
+}
+
 impl Keyboard for MiniFbScreen {
-    fn key_down(&self, key: Key) -> bool {
-        self.window.is_key_down(key)
+    fn key_down(&self, key: PlayKey) -> bool {
+        self.window.is_key_down(to_minifb(key))
     }
 }
 
@@ -182,8 +195,8 @@ impl Screen for MiniFbScreen {
     fn is_open(&self) -> bool {
         self.window.is_open()
     }
-    fn key_pressed(&self, key: Key) -> bool {
-        self.window.is_key_pressed(key, KeyRepeat::No)
+    fn key_pressed(&self, key: PlayKey) -> bool {
+        self.window.is_key_pressed(to_minifb(key), KeyRepeat::No)
     }
     fn menu_pressed(&mut self) -> Option<usize> {
         self.window.is_menu_pressed()

@@ -1,9 +1,10 @@
 //! An interactive game session: the window, the frame loop and the player's actions.
-//! Built from ports (see `ports.rs`), so it runs against fakes in tests; `real::open`
-//! builds the real one. [`Session::run`] plays until the window closes.
+//! Built from ports (see `ports.rs`), so it runs against fakes in tests; the real ports are
+//! adapters in `vuretro-runner`. [`Session::run`] plays until the window closes.
 
+use crate::keys::Key;
 use crate::perf::{self, PerfMonitor, Status};
-use crate::ports::{Controller, Emulator, Frame, FrameSource, Screen, View};
+use crate::ports::{Controller, Emulator, Files, Frame, FrameSource, Screen, View};
 use crate::rewind::Rewind;
 use crate::speed::{self, Mode};
 use crate::window::{
@@ -11,7 +12,6 @@ use crate::window::{
 };
 use crate::{cover, crt, lcd, scale, scale2x};
 use anyhow::Result;
-use minifb::Key;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -30,6 +30,7 @@ pub struct Parts {
     pub emulator: Box<dyn Emulator>,
     pub controller: Box<dyn Controller>,
     pub frames: Box<dyn FrameSource>,
+    pub files: Box<dyn Files>,
     /// Output level in percent, read by the audio thread.
     pub gain: Arc<AtomicU32>,
     /// Game speed in percent (100 = normal), read by the audio thread.
@@ -73,6 +74,7 @@ pub struct Session {
     emulator: Box<dyn Emulator>,
     controller: Box<dyn Controller>,
     frames: Box<dyn FrameSource>,
+    files: Box<dyn Files>,
     gain: Arc<AtomicU32>,
     speed_percent: Arc<AtomicU32>,
     _keep_alive: Box<dyn std::any::Any>,
@@ -144,6 +146,7 @@ impl Session {
             emulator: parts.emulator,
             controller: parts.controller,
             frames: parts.frames,
+            files: parts.files,
             gain: parts.gain,
             speed_percent: parts.speed,
             _keep_alive: parts.keep_alive,
@@ -335,7 +338,7 @@ impl Session {
         let png = self
             .save_dir
             .join(format!("{}.state{}.png", self.rom_name, self.slot));
-        if let Err(e) = cover::write_png(&png, &buf, w, h) {
+        if let Err(e) = self.files.write_png(&png, &buf, w, h) {
             log::warn!("cannot save slot thumbnail: {e}");
         }
     }
@@ -346,7 +349,7 @@ impl Session {
         if let Some(r) = self.rewind.as_mut() {
             r.clear();
         }
-        match std::fs::read(path) {
+        match self.files.read(path) {
             Ok(data) if self.emulator.load_state(&data) => Loaded::Yes,
             Ok(_) => Loaded::Rejected,
             Err(_) => Loaded::Missing,
@@ -357,7 +360,7 @@ impl Session {
     fn apply(&mut self, act: Act) -> Result<Option<String>> {
         Ok(match act {
             Act::SaveState => Some(match self.emulator.save_state() {
-                Some(data) => match std::fs::write(self.state_path(self.slot), data) {
+                Some(data) => match self.files.write(&self.state_path(self.slot), &data) {
                     Ok(_) => {
                         self.save_thumbnail();
                         format!("saved to slot {}", self.slot)
@@ -563,7 +566,7 @@ impl Session {
                 let path = self
                     .shots_dir
                     .join(format!("{}-{stamp}.png", self.rom_name));
-                match cover::write_png(&path, buf, *w, *h) {
+                match self.files.write_png(&path, buf, *w, *h) {
                     Ok(_) => format!("screenshot saved ({})", self.shots_dir.display()),
                     Err(e) => format!("screenshot failed: {e}"),
                 }
@@ -772,8 +775,10 @@ impl Session {
             let mut best = cover::Best::default();
             let (buf, w, h) = self.frames.current();
             best.offer(&buf, w, h);
-            if let Err(e) = best.save(path) {
-                log::warn!("cannot save cover: {e}");
+            if let Some((buf, w, h)) = best.frame() {
+                if let Err(e) = self.files.write_png(path, buf, w, h) {
+                    log::warn!("cannot save cover: {e}");
+                }
             }
         }
         match self.emulator.save_sram(&self.sram_path) {
@@ -783,7 +788,7 @@ impl Session {
         }
         if self.settings.resume {
             match self.emulator.save_state() {
-                Some(state) => match std::fs::write(self.auto_state_path(), state) {
+                Some(state) => match self.files.write(&self.auto_state_path(), &state) {
                     Ok(_) => log::info!("saved the game to carry on from it next time"),
                     Err(e) => log::warn!("cannot save the resume state: {e}"),
                 },
@@ -969,6 +974,25 @@ mod tests {
         rig_in(dir, open_frames, settings, View::default())
     }
 
+    /// Files on the real disk. The PNG is a stub: encoding is the adapter's job.
+    struct DiskFiles;
+
+    impl Files for DiskFiles {
+        fn read(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+            std::fs::read(path)
+        }
+        fn write(&self, path: &Path, data: &[u8]) -> std::io::Result<()> {
+            std::fs::write(path, data)
+        }
+        fn write_png(&self, path: &Path, _: &[u32], _: usize, _: usize) -> Result<()> {
+            if let Some(dir) = path.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+            std::fs::write(path, b"\x89PNG stub")?;
+            Ok(())
+        }
+    }
+
     fn rig_in(
         dir: tempfile::TempDir,
         open_frames: u32,
@@ -990,6 +1014,7 @@ mod tests {
                 emulator: Box::new(FakeEmu(log.clone())),
                 controller: Box::new(FakePad(log.clone())),
                 frames: Box::new(FakeFrames(log.clone())),
+                files: Box::new(DiskFiles),
                 gain: gain.clone(),
                 speed: speed.clone(),
                 keep_alive: Box::new(()),

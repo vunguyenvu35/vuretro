@@ -1,7 +1,8 @@
 //! `--headless-frames N`: run without a window or audio (CI, previews, debugging).
 
-use crate::{core, cover, frontend};
+use crate::{core, frontend};
 use anyhow::Result;
+use vuretro_play::cover;
 
 pub fn run_headless(
     core: &core::Core,
@@ -26,7 +27,8 @@ pub fn run_headless(
         }
     }
     if let Some(path) = cover {
-        if best.save(path)? {
+        if let Some((buf, w, h)) = best.frame() {
+            crate::files::write_png(path, buf, w, h)?;
             log::info!("cover: {}", path.display());
         } else {
             log::warn!("cover: no colourful frame found");

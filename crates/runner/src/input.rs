@@ -1,19 +1,19 @@
-//! Keyboard (minifb) and gamepad (gilrs) mapped to the libretro RetroPad, driven by
+//! Keyboard and gamepad (gilrs) mapped to the libretro RetroPad, driven by
 //! `controls.json` (see the `vuretro-controls` crate). Defaults match the Controls
 //! screen: arrows = D-pad, Z/X/A/S = B/A/Y/X, Enter = Start, RShift = Select.
 
 use crate::autocoin::AutoCoin;
 use crate::frontend::{self, MAX_PORTS};
 use crate::padkeys::{self, PadKeys};
-use crate::ports::{Hotkeys, Keyboard};
-use crate::rumble;
 use gilrs::ff::{BaseEffect, BaseEffectType, EffectBuilder, Repeat, Replay, Ticks};
 use gilrs::{Button, GamepadId, Gilrs};
 use libretro_sys::*;
-use minifb::Key;
 use std::collections::HashMap;
 use vuretro_controls::macros::{Engine, Macro};
 use vuretro_controls::{assign, ControlsConfig, PadInfo, PortSource, ACTIONS, DIAGONALS};
+use vuretro_play::ports::{Hotkeys, Keyboard};
+use vuretro_play::rumble;
+use vuretro_play::Key;
 
 fn action_id(name: &str) -> Option<u32> {
     Some(match name {

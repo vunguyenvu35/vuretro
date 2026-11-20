@@ -1,0 +1,16 @@
+[package]
+name = "vuretro-play"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "vuretro play session: the rules and the frame loop of one game, behind ports (no window, audio or emulator code)"
+
+[dependencies]
+vuretro-core = { path = "../core" }
+vuretro-controls = { path = "../controls" }
+vuretro-settings = { path = "../settings" }
+anyhow.workspace = true
+log.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

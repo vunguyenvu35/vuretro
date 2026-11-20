@@ -41,7 +41,7 @@ pub fn parse_definition(key: &str, value: &str) -> OptionDef {
 pub fn frontend_defaults(core_stem: &str, system_dir: &std::path::Path) -> Vec<(String, String)> {
     if core_stem.starts_with("fbneo") {
         let mode = std::fs::read(system_dir.join("neogeo.zip"))
-            .map(|zip| crate::neogeo::default_mode(&zip))
+            .map(|zip| vuretro_play::neogeo::default_mode(&zip))
             .unwrap_or("AES_EUR");
         vec![("fbneo-neogeo-mode".to_string(), mode.to_string())]
     } else {
