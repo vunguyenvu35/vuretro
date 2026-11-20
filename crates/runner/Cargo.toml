@@ -31,7 +31,10 @@ glutin = "0.32"
 glutin-winit = "0.5"
 raw-window-handle = "0.6"
 glow = "0.18.0"
-muda = "0.21.2"
 
 [dev-dependencies]
 tempfile = "3"
+
+# native menus: only where there is a menu bar to put them in (on Linux muda needs GTK)
+[target.'cfg(any(target_os = "macos", windows))'.dependencies]
+muda = "0.21.2"
