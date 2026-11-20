@@ -98,6 +98,11 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
     if (app.selecting || e.metaKey || e.ctrlKey || e.shiftKey) pick(g, e);
     else app.selected = g.path;
   }
+  /** Put the details of the selected game away. */
+  function closeDetails() {
+    app.renaming = null;
+    app.selected = null;
+  }
   function stopSelecting() {
     autoSelect = false;
     app.selecting = false;
@@ -150,8 +155,14 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
     }
     if (e.key === 'Escape') {
       if (app.selecting) return stopSelecting();
-      app.query = '';
+      // one step at a time: first the search, then the game's details
+      if (app.query) {
+        app.query = '';
+        searchEl?.blur();
+        return;
+      }
       searchEl?.blur();
+      closeDetails();
       return;
     }
     if (mod && e.key.toLowerCase() === 'a' && removable.length) {
@@ -347,6 +358,11 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
 
 {#if selected && sel}
   <aside class="detail">
+    <div class="closerow">
+      <button type="button" class="closebtn" aria-label="Close details" title="Close (Esc)" onclick={closeDetails}>
+        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+      </button>
+    </div>
     <div class="crt scan big" style="--c:{colorOf(selected.system)}">{#if covers[selected.path]}<img src={covers[selected.path]} alt="" />{:else}<span>{selected.title}</span>{/if}</div>
     <GameTitle game={selected} />
     <p class="muted">{sel.name} · {formatSize(selected.size)}</p>
@@ -549,6 +565,16 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
     width: 290px; flex: none; background: var(--surface); border-left: 1px solid var(--border);
     padding: 16px; display: flex; flex-direction: column; gap: 8px; overflow: auto;
   }
+  /* the close button sits over the top right corner of the cover and stays there when the panel scrolls:
+     its row has no height of its own, so nothing moves down to make room for it */
+  .closerow { position: sticky; top: 8px; z-index: 3; height: 0; display: flex; justify-content: flex-end; flex: none; }
+  .closebtn {
+    display: grid; place-items: center; width: 26px; height: 26px; margin: 8px 8px 0 0; padding: 0; border-radius: 50%;
+    color: var(--text); background: rgb(9 11 16 / .68); border: 1px solid rgb(255 255 255 / .16);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); transition: background .12s, color .12s, border-color .12s;
+  }
+  .closebtn:hover { background: rgb(9 11 16 / .9); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+  .closebtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   dl { margin: 10px 0; display: grid; gap: 2px; }
   dt { margin-top: 10px; }
   dd { margin: 0; }
