@@ -84,7 +84,11 @@ The `EXPERIMENTAL` flag (0x10000) is part of the command number and is never str
 
 macOS gives only OpenGL 4.1 core (or a legacy 2.1), so a core that asks for a compatibility context gets a core one there.
 
-Checks that need a window and a GPU: `vuretro-runner --window-selftest` (colours reach the screen) and `vuretro-runner --hw-selftest <test core> <rom>` (a core draws with OpenGL, the picture comes back right way up).
+## CRT and LCD looks on the GPU
+
+A window can say it draws the looks itself (`Screen::gpu_look`). The OpenGL window does: the session then sends the picture as the game made it and tells the window which look to draw (`Screen::set_look`), and the fragment shader in `gl_screen.rs` darkens the last row (CRT, 150/256) or the last row and column (LCD, 190/256) of every cell of window pixels a picture pixel covers. With whole-number scaling the cell is the largest whole factor that fits the window; otherwise it is the factor the CPU looks used for a picture of that height. The minifb window, and Scale2x with a look, still use the CPU looks in `vuretro-play` (`crt.rs`, `lcd.rs`), which also keep the same levels.
+
+Checks that need a window and a GPU: `vuretro-runner --window-selftest` (colours reach the screen, and the CRT and LCD looks darken the right rows and columns) and `vuretro-runner --hw-selftest <test core> <rom>` (a core draws with OpenGL, the picture comes back right way up).
 
 ## System detection during ROM scan
 

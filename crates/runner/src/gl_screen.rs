@@ -5,7 +5,7 @@
 //! hand control to winit's event loop; it asks winit to deliver what is waiting
 //! (`pump_app_events`) each time the session presents a frame or idles, like minifb did.
 
-use crate::fit::{fit_rect, Rect};
+use crate::fit::{fit_rect, whole_fit, Rect};
 use crate::gl_keys::to_code;
 use crate::gl_menu::GameMenu;
 use crate::hw::{self, GlRequest};
@@ -25,7 +25,7 @@ use std::collections::HashSet;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::time::Duration;
-use vuretro_play::ports::{Keyboard, Screen, View};
+use vuretro_play::ports::{Keyboard, Look, Screen, View};
 use vuretro_play::Key as PlayKey;
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalPosition, LogicalSize};
@@ -44,12 +44,26 @@ void main() {
     gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }";
 
+/// The picture, and the CRT and LCD looks: `cells` is how many window pixels one picture pixel
+/// covers, and the last row (CRT) or last row and column (LCD) of every such cell is darker.
+/// The levels are the ones the CPU looks in `vuretro-play` use (150/256 and 190/256).
 const FRAGMENT: &str = "#version 330 core
 uniform sampler2D picture;
+uniform int look;        // 0 plain, 1 CRT, 2 LCD
+uniform vec2 tex_size;   // the picture in pixels
+uniform float cells;     // window pixels per picture pixel
 in vec2 uv;
 out vec4 colour;
 void main() {
-    colour = vec4(texture(picture, uv).rgb, 1.0);
+    vec3 c = texture(picture, uv).rgb;
+    if (look != 0 && cells >= 2.0) {
+        vec2 at = floor(fract(uv * tex_size) * cells);
+        bool row = at.y == cells - 1.0;
+        bool col = at.x == cells - 1.0;
+        if (look == 1 && row) c *= 150.0 / 256.0;
+        if (look == 2 && (row || col)) c *= 190.0 / 256.0;
+    }
+    colour = vec4(c, 1.0);
 }";
 
 /// What a window is asked to be.
@@ -78,6 +92,7 @@ struct Gfx {
     /// Size of the picture the texture holds now.
     tex_size: (usize, usize),
     view: View,
+    look: Look,
     _menu: GameMenu,
     context: PossiblyCurrentContext,
     surface: Surface<WindowSurface>,
@@ -215,6 +230,7 @@ impl Gfx {
             texture,
             tex_size: (0, 0),
             view,
+            look: Look::Plain,
             _menu: menu,
         })
     }
@@ -330,11 +346,21 @@ impl Gfx {
         }
         let (pw, ph) = self.pixels();
         let scale = self.window.scale_factor();
-        let dest = fit_rect(
-            (w, h),
-            (pw as usize, ph as usize),
-            self.view.integer.then_some(scale),
-        );
+        // With a look the picture comes as the game made it: a whole number of window pixels
+        // per picture pixel when asked, and the look is drawn in those cells. Without one the
+        // session has already enlarged it by whole numbers if it was asked to.
+        let (dest, cells) = if self.look == Look::Plain {
+            let whole = self.view.integer.then_some(scale);
+            (fit_rect((w, h), (pw as usize, ph as usize), whole), 1)
+        } else if self.view.integer {
+            whole_fit((w, h), (pw as usize, ph as usize))
+        } else {
+            // stretched: cells as many pixels as the CPU looks used for a picture this tall
+            (
+                fit_rect((w, h), (pw as usize, ph as usize), None),
+                vuretro_play::crt::factor_for(h),
+            )
+        };
         // SAFETY: the context is current on this thread (it never leaves it); `frame` has
         // at least w*h pixels, which is what the upload reads.
         unsafe {
@@ -389,6 +415,17 @@ impl Gfx {
             let Rect { x, y, w: rw, h: rh } = dest;
             gl.viewport(x, y, rw, rh);
             gl.use_program(Some(self.program));
+            let at = |name| gl.get_uniform_location(self.program, name);
+            gl.uniform_1_i32(
+                at("look").as_ref(),
+                match self.look {
+                    Look::Plain => 0,
+                    Look::Crt => 1,
+                    Look::Lcd => 2,
+                },
+            );
+            gl.uniform_2_f32(at("tex_size").as_ref(), w as f32, h as f32);
+            gl.uniform_1_f32(at("cells").as_ref(), cells as f32);
             gl.bind_vertex_array(Some(self.vao));
             gl.draw_arrays(glow::TRIANGLES, 0, 3);
         }
@@ -612,6 +649,14 @@ impl Screen for GlScreen {
     fn can_fullscreen(&self) -> bool {
         true
     }
+    fn gpu_look(&self) -> bool {
+        true
+    }
+    fn set_look(&mut self, look: Look) {
+        if let Some(g) = self.app.gfx.as_mut() {
+            g.look = look;
+        }
+    }
 }
 
 /// `vuretro-runner --window-selftest`: open a window, draw a red and a blue half, read the
@@ -653,6 +698,48 @@ pub fn selftest() -> Result<()> {
     if left != [255, 0, 0] || right != [0, 0, 255] {
         bail!("wrong colours: left {left:?} (want red), right {right:?} (want blue)");
     }
+
+    // the CRT and LCD looks: a white picture of 8x4 pixels, each covering 3 window pixels
+    let white = vec![0x00FF_FFFFu32; 8 * 4];
+    let line = |g: &mut Gfx, look: Look, x: i32, y: i32, w: i32, h: i32| -> Vec<u8> {
+        g.look = look;
+        g.render(&white, 8, 4);
+        let mut px = vec![0u8; (w * h * 4) as usize];
+        // SAFETY: the context is current; `px` holds w*h RGBA pixels.
+        unsafe {
+            g.gl.read_pixels(
+                x,
+                y,
+                w,
+                h,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelPackData::Slice(Some(&mut px)),
+            );
+        }
+        px.chunks(4).map(|p| p[0]).collect()
+    };
+    let (pw, ph) = (pw as i32, ph as i32);
+    // CRT: along a column, one row in three is darker (150/256 of white), the rest white
+    let column = line(g, Look::Crt, pw / 2, 0, 1, ph);
+    let dark = column.iter().filter(|&&v| v < 200).count() as f64 / column.len() as f64;
+    let dim = column
+        .iter()
+        .copied()
+        .filter(|&v| v < 200)
+        .max()
+        .unwrap_or(0);
+    if !(0.28..=0.38).contains(&dark) || !(145..=155).contains(&dim) {
+        bail!("CRT look: {dark:.2} of the rows dark (want about a third), dark level {dim} (want 149)");
+    }
+    // LCD: along a row that is not a grid row, one pixel in three is darker (190/256)
+    let row = line(g, Look::Lcd, 0, ph - 1, pw, 1);
+    let dark = row.iter().filter(|&&v| v < 220).count() as f64 / row.len() as f64;
+    let dim = row.iter().copied().filter(|&v| v < 220).max().unwrap_or(0);
+    if !(0.28..=0.38).contains(&dark) || !(186..=194).contains(&dim) {
+        bail!("LCD look: {dark:.2} of the columns dark (want about a third), dark level {dim} (want 189)");
+    }
+    g.look = Look::Plain;
     let renderer = unsafe { g.gl.get_parameter_string(glow::RENDERER) };
     let version = unsafe { g.gl.get_parameter_string(glow::VERSION) };
     println!(

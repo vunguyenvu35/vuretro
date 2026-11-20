@@ -36,6 +36,21 @@ pub fn fit_rect(picture: (usize, usize), window: (usize, usize), whole: Option<f
     }
 }
 
+/// Place a `picture` in a `window` at the largest whole number of window pixels per picture
+/// pixel that fits (at least 1), centred. Returns the rectangle and that number.
+pub fn whole_fit(picture: (usize, usize), window: (usize, usize)) -> (Rect, usize) {
+    let (pw, ph) = (picture.0.max(1), picture.1.max(1));
+    let k = (window.0 / pw).min(window.1 / ph).max(1);
+    let (w, h) = ((pw * k) as i32, (ph * k) as i32);
+    let rect = Rect {
+        x: (window.0 as i32 - w) / 2,
+        y: (window.1 as i32 - h) / 2,
+        w,
+        h,
+    };
+    (rect, k)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,6 +108,24 @@ mod tests {
                 h: 240
             }
         );
+    }
+
+    #[test]
+    fn whole_fit_takes_the_largest_whole_factor_and_centres() {
+        // 320x224 in 1920x1080: 6x wide, 4x tall: 4 is the most that fits both ways
+        let (r, k) = whole_fit((320, 224), (1920, 1080));
+        assert_eq!(k, 4);
+        assert_eq!(
+            r,
+            Rect {
+                x: 320,
+                y: 92,
+                w: 1280,
+                h: 896
+            }
+        );
+        // a window smaller than the picture still shows it at 1x (and clips)
+        assert_eq!(whole_fit((320, 224), (100, 100)).1, 1);
     }
 
     #[test]

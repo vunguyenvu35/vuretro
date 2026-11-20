@@ -4,7 +4,7 @@
 
 use crate::keys::Key;
 use crate::perf::{self, PerfMonitor, Status};
-use crate::ports::{Controller, Emulator, Files, Frame, FrameSource, Screen, View};
+use crate::ports::{Controller, Emulator, Files, Frame, FrameSource, Look, Screen, View};
 use crate::rewind::Rewind;
 use crate::speed::{self, Mode};
 use crate::window::{
@@ -627,6 +627,22 @@ impl Session {
     /// Put a picture on the screen: the CRT or LCD look when one is on, enlarged by whole
     /// numbers when the view asks for it.
     fn show(&mut self, buf: &[u32], w: usize, h: usize) -> Result<()> {
+        // A window that draws the look itself gets the picture as the game made it. Scale2x
+        // changes the picture first, so with it on the look stays in the picture.
+        if self.screen.gpu_look() && !self.scale2x {
+            let look = match (self.crt, self.lcd) {
+                (true, _) => Look::Crt,
+                (_, true) => Look::Lcd,
+                _ => Look::Plain,
+            };
+            if look != Look::Plain {
+                self.screen.set_look(look);
+                return self.screen.present(buf, w, h);
+            }
+        }
+        if self.screen.gpu_look() {
+            self.screen.set_look(Look::Plain);
+        }
         let (out, ow, oh) = self.compose(buf, w, h);
         self.screen.present(&out, ow, oh)
     }
@@ -821,6 +837,9 @@ mod tests {
         presented: usize,
         /// Size of each picture sent to the window.
         presented_dims: Vec<(usize, usize)>,
+        /// The fake window draws looks itself, and the looks it was asked for.
+        gpu_look: bool,
+        looks: Vec<Look>,
         /// The pixels of the last picture sent to the window.
         last_pixels: Vec<u32>,
         idled: usize,
@@ -895,6 +914,12 @@ mod tests {
         }
         fn can_fullscreen(&self) -> bool {
             !self.0.borrow().no_fullscreen
+        }
+        fn gpu_look(&self) -> bool {
+            self.0.borrow().gpu_look
+        }
+        fn set_look(&mut self, look: Look) {
+            self.0.borrow_mut().looks.push(look);
         }
     }
 
@@ -1262,6 +1287,43 @@ mod tests {
         assert!(vuretro_settings::load(&r.dir.path().join("game.json")).crt);
         assert_eq!(s.apply(Act::Crt).unwrap().unwrap(), "CRT effect off");
         assert!(!vuretro_settings::load(&r.dir.path().join("game.json")).crt);
+    }
+
+    #[test]
+    fn a_window_that_draws_the_look_gets_the_plain_picture_and_is_told_which_look() {
+        let (mut s, r) = rig(100);
+        r.log.borrow_mut().gpu_look = true;
+        s.apply(Act::Crt).unwrap();
+        r.log.borrow_mut().new_frame = Some((vec![0x00FF_FFFF; 4], 2, 2));
+        s.frame().unwrap();
+        // not enlarged and not darkened here: the window does that
+        assert_eq!(*r.log.borrow().presented_dims.last().unwrap(), (2, 2));
+        assert_eq!(r.log.borrow().last_pixels, vec![0x00FF_FFFF; 4]);
+        assert_eq!(r.log.borrow().looks.last(), Some(&Look::Crt));
+
+        s.apply(Act::Crt).unwrap();
+        s.apply(Act::Lcd).unwrap();
+        r.log.borrow_mut().new_frame = Some((vec![0x00FF_FFFF; 4], 2, 2));
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().looks.last(), Some(&Look::Lcd));
+
+        s.apply(Act::Lcd).unwrap();
+        r.log.borrow_mut().new_frame = Some((vec![0x00FF_FFFF; 4], 2, 2));
+        s.frame().unwrap();
+        assert_eq!(r.log.borrow().looks.last(), Some(&Look::Plain), "look off");
+    }
+
+    #[test]
+    fn a_window_that_cannot_draw_the_look_still_gets_it_in_the_picture() {
+        let (mut s, r) = rig(100);
+        s.apply(Act::Crt).unwrap();
+        r.log.borrow_mut().new_frame = Some((vec![0x00FF_FFFF; 4], 2, 2));
+        s.frame().unwrap();
+        assert_ne!(*r.log.borrow().presented_dims.last().unwrap(), (2, 2));
+        assert!(
+            r.log.borrow().looks.is_empty(),
+            "never asked to draw a look"
+        );
     }
 
     #[test]

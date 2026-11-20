@@ -24,6 +24,17 @@ pub struct View {
     pub integer: bool,
 }
 
+/// A look the window can draw itself, over the picture as the game made it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Look {
+    #[default]
+    Plain,
+    /// Scanlines: the last row of every enlarged pixel is darker.
+    Crt,
+    /// A handheld grid: the last row and column of every enlarged pixel are darker.
+    Lcd,
+}
+
 /// The game window.
 pub trait Screen: Keyboard {
     fn is_open(&self) -> bool;
@@ -54,6 +65,15 @@ pub trait Screen: Keyboard {
     fn can_fullscreen(&self) -> bool {
         true
     }
+    /// Whether the window draws the CRT and LCD looks itself (on the graphics card). When it
+    /// does, the session sends the picture as the game made it and says which look to draw
+    /// with [`set_look`](Screen::set_look); otherwise the session draws the look into the
+    /// picture it sends.
+    fn gpu_look(&self) -> bool {
+        false
+    }
+    /// The look to draw over the pictures that follow. Only called when `gpu_look` is true.
+    fn set_look(&mut self, _look: Look) {}
 }
 
 /// The libretro core.
