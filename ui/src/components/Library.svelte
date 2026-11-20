@@ -349,7 +349,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
                       : `Sort ${at + 1}, by ${name}: Shift+click to turn it round, then to remove it`}
                 onclick={(e) => setSort(k, { add: e.shiftKey })}
               >
-                {name}{#if at >= 0}<svg class="arrow" class:up={sortDirection(k, app.sorts[at].reverse) === 'asc'} viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M5 1.6v6.8M2.2 5.8L5 8.6l2.8-2.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>{#if many}<span class="rank">{at + 1}</span>{/if}{/if}
+                <span class="hlabel">{name.slice(0, name.lastIndexOf(' ') + 1)}<span class="tail">{name.slice(name.lastIndexOf(' ') + 1)}{#if at >= 0}<svg class="arrow" class:up={sortDirection(k, app.sorts[at].reverse) === 'asc'} viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M5 1.6v6.8M2.2 5.8L5 8.6l2.8-2.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>{#if many}<span class="rank">{at + 1}</span>{/if}{/if}</span></span>
               </button>
             {/each}
             <span></span>
@@ -541,6 +541,15 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
     user-select: none; -webkit-user-select: none;
   }
   .hsort.r { justify-content: flex-end; }
+  /* the word, its arrow and its place are one run of text: when the word does not fit on one line it
+     goes on to a second and the arrow stays after the last word, instead of being left at the far end */
+  .hlabel { min-width: 0; line-height: 1.2; }
+  /* the last word goes with the arrow and the place, never apart from them: a column too narrow for the whole
+     heading wraps before the last word, and what is too wide runs into the gap between columns */
+  .hlabel .tail { white-space: nowrap; }
+  .hsort.r .hlabel { text-align: right; }
+  .hlabel .arrow { display: inline-block; vertical-align: -1px; margin-left: 5px; }
+  .hlabel .rank { display: inline-block; vertical-align: 1px; margin-left: 4px; }
   /* the place of a sort among several: 1 is the main one */
   .rank { flex: none; min-width: 13px; padding: 1px 3px; border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 7px; font-size: 9px; line-height: 1.1; text-align: center; letter-spacing: 0; }
   .more { flex: none; padding: 2px 6px; border: 1px solid var(--border); border-radius: 7px; color: var(--muted); font-size: 11px; cursor: default; }
