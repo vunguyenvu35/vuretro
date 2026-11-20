@@ -515,7 +515,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
 
   /* one toolbar: title, search, selection tools, sort and view. It stays put while the
      list scrolls under it. */
-  .bar { display: flex; align-items: center; gap: 14px; flex: none; margin: 0 0 4px; padding: 8px 0; flex-wrap: wrap; row-gap: 8px; }
+  .bar { display: flex; align-items: center; gap: 14px; flex: none; margin: 0 0 4px; padding: 9px 0; flex-wrap: wrap; row-gap: 8px; }
   /* the space above the bar is there to set it apart from the "Continue playing" card: without the card there is nothing to set it apart from */
   .bar.afterhero { margin-top: 14px; }
   /* in a short window the card would leave too little room for the games */
@@ -645,11 +645,11 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
     width: 290px; flex: none; min-height: 0; background: var(--surface); border-left: 1px solid var(--border);
     display: flex; flex-direction: column; overflow: hidden;
   }
-  /* 55 px with its border: the same strip as the toolbar next to it (8 px, the 38 px search field,
-     8 px), so "Details" and the search field are on one line */
+  /* the height of the strip it shares with the toolbar next to it and the brand (--strip), the border
+     inside it, and 1 px more above the words to make up for it so that their centre is the strip's */
   .dhead {
-    flex: none; box-sizing: border-box; height: 55px; display: flex; align-items: center; justify-content: space-between;
-    padding: 0 9px 0 16px; border-bottom: 1px solid var(--border);
+    flex: none; box-sizing: border-box; height: var(--strip); display: flex; align-items: center; justify-content: space-between;
+    padding: 1px 9px 0 16px; border-bottom: 1px solid var(--border);
   }
   .dbody { flex: 1; min-height: 0; overflow: auto; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
   .closebtn {

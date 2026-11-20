@@ -1,4 +1,7 @@
 :root {
+  /* the height of the strip across the top of the window: the brand, the toolbar and the details header are all this tall,
+     with their centres and their lines under them level */
+  --strip: 56px;
   --bg: #090b10;
   --surface: #0f121a;
   --surface-2: #131724;

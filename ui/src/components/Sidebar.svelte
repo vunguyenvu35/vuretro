@@ -184,9 +184,9 @@
   aside {
     position: relative; min-width: 0; container: side / inline-size;
     /* a faint pink light from the mark at the top left, so the head of the sidebar has depth */
-    background: radial-gradient(260px 150px at 40px 30px, color-mix(in srgb, var(--brand-magenta) 8%, transparent), transparent 75%), var(--surface);
+    background: radial-gradient(260px 150px at 40px 28px, color-mix(in srgb, var(--brand-magenta) 8%, transparent), transparent 75%), var(--surface);
     border-right: 1px solid var(--border);
-    display: flex; flex-direction: column; padding: 14px 10px; gap: 8px; min-height: 0;
+    display: flex; flex-direction: column; padding: 0 10px 14px; gap: 8px; min-height: 0;
   }
   /* a thin strip on the sidebar's right edge: easy to grab, invisible until hovered */
   .grip { position: absolute; top: 0; right: -3px; bottom: 0; width: 7px; cursor: col-resize; z-index: 5; touch-action: none; }
@@ -198,7 +198,7 @@
   /* ---- the brand: the mark, the name, the tagline, over a soft light that comes from the mark ---- */
   .brand {
     position: relative; display: flex; align-items: center; gap: 12px; width: 100%;
-    margin: 0 0 8px; padding: 6px 8px 18px; background: none; border: 0; border-radius: 12px; text-align: left;
+    flex: none; box-sizing: border-box; height: var(--strip); margin: 0 0 8px; padding: 0 8px; background: none; border: 0; border-radius: 12px; text-align: left;
   }
   /* the foot line starts in the brand's magenta and fades out into the sidebar's own border colour */
   .brand::after {
