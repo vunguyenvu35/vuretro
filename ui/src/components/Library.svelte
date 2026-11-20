@@ -11,6 +11,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   import Cheats from './Cheats.svelte';
   import MacroProfile from './MacroProfile.svelte';
   import GameCore from './GameCore.svelte';
+  import GameTitle from './GameTitle.svelte';
   import ScopedSettingsEditor from './ScopedSettingsEditor.svelte';
   let newTag = $state('');
   async function setTags(game, tags) {
@@ -203,6 +204,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
     openMenu(e, [
       { label: g.blocked ? 'Play (unavailable)' : 'Play', hint: '⏎', disabled: !!g.blocked, action: () => play(g) },
       { label: g.favorite ? 'Remove from favorites' : 'Add to favorites', hint: 'F', action: () => fav(g) },
+      { label: 'Rename…', action: () => { app.selected = g.path; app.renaming = g.path; } },
       SEP,
       { label: 'Show in folder', action: () => api.reveal(g.path) },
       { label: 'Apply patch…', action: () => applyPatch(g) },
@@ -346,7 +348,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
 {#if selected && sel}
   <aside class="detail">
     <div class="crt scan big" style="--c:{colorOf(selected.system)}">{#if covers[selected.path]}<img src={covers[selected.path]} alt="" />{:else}<span>{selected.title}</span>{/if}</div>
-    <h2>{selected.title}</h2>
+    <GameTitle game={selected} />
     <p class="muted">{sel.name} · {formatSize(selected.size)}</p>
 
     <dl>
@@ -547,7 +549,6 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
     width: 290px; flex: none; background: var(--surface); border-left: 1px solid var(--border);
     padding: 16px; display: flex; flex-direction: column; gap: 8px; overflow: auto;
   }
-  .detail h2 { font-size: 20px; margin-top: 8px; }
   dl { margin: 10px 0; display: grid; gap: 2px; }
   dt { margin-top: 10px; }
   dd { margin: 0; }

@@ -294,10 +294,28 @@ mod tests {
                 name: Some("Official".into()),
                 tags: vec!["Favorites 2".into()],
                 core: Some("mame2003_libretro".into()),
+                custom_name: Some("Metal Slug \u{2014} my copy".into()),
             },
         );
         store.save_meta(&m);
         assert_eq!(store.load_meta(), m);
+    }
+
+    #[test]
+    fn a_library_file_from_before_games_could_be_renamed_still_loads() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::new(dir.path());
+        std::fs::create_dir_all(paths.library_file().parent().unwrap()).unwrap();
+        // what an older version wrote: no `custom_name`, nor the fields added before it
+        std::fs::write(
+            paths.library_file(),
+            r#"{"/a": {"last_played": 7, "play_secs": 90, "favorite": true}}"#,
+        )
+        .unwrap();
+        let meta = JsonStore::new(paths).load_meta();
+        let m = &meta["/a"];
+        assert_eq!((m.last_played, m.play_secs, m.favorite), (7, 90, true));
+        assert_eq!(m.custom_name, None);
     }
 
     #[test]

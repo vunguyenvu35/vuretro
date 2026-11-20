@@ -31,6 +31,7 @@ export const app = $state({
   sort: 'recent', // recent | az | size
   layout: readLayout(), // grid | list
   selected: null, // game path
+  renaming: null, // path of the game whose name is being edited in the detail panel
   busy: false,
   selecting: false, // choosing several games to remove at once
   picked: [], // paths of the chosen games
@@ -228,6 +229,15 @@ export async function applyPatch(game) {
 export async function toggleFavorite(game) {
   await api.toggleFavorite(game.path);
   refresh();
+}
+
+/**
+ * Give a game a name of its own in the library; an empty name or `null` gives its original
+ * one back. Throws when the name is refused (too long), so the dialog can say so.
+ */
+export async function renameGame(game, name) {
+  await api.renameGame(game.path, name);
+  await refresh();
 }
 
 /** Empty the Recent list. The games, their play time and saves stay. */

@@ -212,6 +212,8 @@ mod tests {
         GameView {
             system: "snes".into(),
             title: title.into(),
+            original_title: title.into(),
+            renamed: false,
             path: "/roms/snes/a.sfc".into(),
             size: 1000,
             last_played: 5,

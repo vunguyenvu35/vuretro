@@ -102,6 +102,17 @@ pub async fn identify_games(shell: State<'_, Shell>) -> Result<usize, String> {
     super::blocking(move || core_app.identify_games()).await
 }
 
+/// Give a game a name of the user's own (`None` or an empty name: its original one again).
+/// Returns the name now kept.
+#[tauri::command]
+pub fn rename_game(
+    shell: State<'_, Shell>,
+    path: String,
+    name: Option<String>,
+) -> Result<Option<String>, String> {
+    shell.app.rename_game(path, name)
+}
+
 /// Empty the Recent list; returns how many games were on it.
 #[tauri::command]
 pub fn clear_recent(shell: State<'_, Shell>) -> usize {

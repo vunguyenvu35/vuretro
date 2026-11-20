@@ -2074,7 +2074,7 @@ fn a_failed_start_shows_what_the_runner_said_not_a_log() {
     assert_eq!(err, "neogeo.zip is missing");
 }
 
-// ---------- emptying the Recent list ----------
+// ---------- renaming a game, and emptying the Recent list ----------
 
 fn world_with_games() -> Fake {
     let f = ready_world();
@@ -2086,6 +2086,109 @@ fn world_with_games() -> Fake {
         ],
     );
     f
+}
+
+fn title_of(a: &App, path: &str) -> (String, bool, String) {
+    let o = a.overview();
+    let g = o.games.iter().find(|g| g.path == path).expect("the game");
+    (g.title.clone(), g.renamed, g.original_title.clone())
+}
+
+#[test]
+fn a_game_can_be_given_a_name_of_its_own_and_get_its_old_one_back() {
+    let f = world_with_games();
+    let a = app(&f);
+    let path = "/data/roms/snes/zelda_v2.sfc";
+    assert_eq!(title_of(&a, path), ("g".into(), false, "g".into()));
+
+    assert_eq!(
+        a.rename_game(path.into(), Some("  The Legend of\tZelda\n ".into())),
+        Ok(Some("The Legend of Zelda".into())),
+        "trimmed, and white space made into single spaces"
+    );
+    assert_eq!(
+        title_of(&a, path),
+        ("The Legend of Zelda".into(), true, "g".into())
+    );
+    // kept with the library, and the file is not touched
+    assert_eq!(
+        f.0.lock().unwrap().meta[path].custom_name.as_deref(),
+        Some("The Legend of Zelda")
+    );
+
+    // an empty name, or none, gives the old name back
+    assert_eq!(a.rename_game(path.into(), Some("   ".into())), Ok(None));
+    assert_eq!(title_of(&a, path), ("g".into(), false, "g".into()));
+    a.rename_game(path.into(), Some("Zelda".into())).unwrap();
+    assert_eq!(a.rename_game(path.into(), None), Ok(None));
+    assert!(!title_of(&a, path).1);
+}
+
+#[test]
+fn a_name_that_is_the_original_one_is_not_a_rename() {
+    let f = world_with_games();
+    let a = app(&f);
+    let path = "/data/roms/snes/mario.sfc";
+    a.rename_game(path.into(), Some("g".into())).unwrap();
+    assert_eq!(title_of(&a, path), ("g".into(), false, "g".into()));
+}
+
+#[test]
+fn a_name_that_is_too_long_is_refused_and_nothing_changes() {
+    let f = world_with_games();
+    let a = app(&f);
+    let path = "/data/roms/snes/mario.sfc";
+    a.rename_game(path.into(), Some("Mario".into())).unwrap();
+    let too_long = "x".repeat(vuretro_core::service::MAX_GAME_NAME + 1);
+    let err = a.rename_game(path.into(), Some(too_long)).unwrap_err();
+    assert!(err.contains("at most"), "{err}");
+    assert_eq!(title_of(&a, path).0, "Mario");
+    // the longest allowed is fine
+    let longest = "x".repeat(vuretro_core::service::MAX_GAME_NAME);
+    assert!(a.rename_game(path.into(), Some(longest)).is_ok());
+}
+
+#[test]
+fn renaming_a_game_does_not_hide_that_it_is_a_duplicate() {
+    // two files with the same official title stay flagged, whatever the user calls them
+    let f = world_with_games();
+    {
+        let mut w = f.0.lock().unwrap();
+        for p in ["/data/roms/snes/zelda_v2.sfc", "/data/roms/snes/mario.sfc"] {
+            w.meta.entry(p.into()).or_default().name = Some("Same Dump".into());
+        }
+    }
+    let a = app(&f);
+    a.rename_game("/data/roms/snes/mario.sfc".into(), Some("Mine".into()))
+        .unwrap();
+    let o = a.overview();
+    assert!(o.games.iter().all(|g| g.duplicate), "both still flagged");
+    let mine = o.games.iter().find(|g| g.title == "Mine").unwrap();
+    assert_eq!(mine.original_title, "Same Dump");
+}
+
+#[test]
+fn a_game_renamed_over_its_official_name_shows_the_users_and_keeps_the_official() {
+    let f = world_with_games();
+    let path = "/data/roms/snes/zelda_v2.sfc";
+    f.0.lock()
+        .unwrap()
+        .meta
+        .entry(path.into())
+        .or_default()
+        .name = Some("Official Name".into());
+    let a = app(&f);
+    assert_eq!(
+        title_of(&a, path),
+        ("Official Name".into(), false, "Official Name".into())
+    );
+    a.rename_game(path.into(), Some("My Name".into())).unwrap();
+    assert_eq!(
+        title_of(&a, path),
+        ("My Name".into(), true, "Official Name".into())
+    );
+    a.rename_game(path.into(), None).unwrap();
+    assert_eq!(title_of(&a, path).0, "Official Name");
 }
 
 #[test]

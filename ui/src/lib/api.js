@@ -21,6 +21,7 @@ export const api = {
   importDats: (paths) => call('import_dats', { paths }),
   identifyGames: () => call('identify_games'),
   setTags: (path, tags) => call('set_tags', { path, tags }),
+  renameGame: (path, name) => call('rename_game', { path, name }),
   clearRecent: () => call('clear_recent'),
   setGameCore: (path, core) => call('set_game_core', { path, core }),
   setFetchArt: (enabled) => call('set_fetch_art', { enabled }),

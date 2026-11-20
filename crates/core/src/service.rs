@@ -30,6 +30,20 @@ const LAUNCH_POLL: Duration = Duration::from_millis(50);
 /// How often a running game is asked what it reports.
 const WATCH_POLL: Duration = Duration::from_millis(100);
 
+/// The longest name a game can be given, in characters.
+pub const MAX_GAME_NAME: usize = 120;
+
+/// A name as it is kept: line breaks, tabs and other control characters become spaces, and
+/// runs of white space become one.
+fn tidy_name(name: &str) -> String {
+    name.chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -548,6 +562,31 @@ impl App {
         };
         self.save_meta();
         fav
+    }
+
+    /// Give a game a name of the user's own in the library, or take it back (`None`, or a
+    /// name with nothing in it). The file on disk is not touched. Returns the name now kept.
+    pub fn rename_game(
+        &self,
+        path: String,
+        name: Option<String>,
+    ) -> Result<Option<String>, String> {
+        let name = name.map(|n| tidy_name(&n)).filter(|n| !n.is_empty());
+        if let Some(n) = &name {
+            if n.chars().count() > MAX_GAME_NAME {
+                return Err(format!(
+                    "a name can have at most {MAX_GAME_NAME} characters"
+                ));
+            }
+        }
+        self.meta
+            .lock()
+            .unwrap()
+            .entry(path)
+            .or_default()
+            .custom_name = name.clone();
+        self.save_meta();
+        Ok(name)
     }
 
     /// Empty the Recent list. The games stay in the library, with their play time; only the

@@ -59,6 +59,9 @@ pub struct GameMeta {
     /// The core this game runs on instead of its system's (stem, e.g. `mame2003_libretro`).
     #[serde(default)]
     pub core: Option<String>,
+    /// The name the user gave this game in the library. The file keeps its own name.
+    #[serde(default)]
+    pub custom_name: Option<String>,
 }
 
 /// A ROM found on disk.
@@ -412,6 +415,8 @@ impl SystemView {
 #[derive(Debug, Clone, Serialize)]
 pub struct GameView {
     pub system: String,
+    /// What the game is called in the library: the user's own name, else the official one
+    /// from a DAT file, else the file's.
     pub title: String,
     pub path: String,
     pub size: u64,
@@ -424,6 +429,10 @@ pub struct GameView {
     pub imported: bool,
     /// The title came from a DAT file, not from the file name.
     pub identified: bool,
+    /// The user gave the game this name (`title` is not the one it came with).
+    pub renamed: bool,
+    /// The name without the user's: the official one from a DAT file, else the file's.
+    pub original_title: String,
     /// Another file in the library has the same official title.
     pub duplicate: bool,
     pub tags: Vec<String>,
@@ -467,11 +476,16 @@ pub fn game_views(
             let sys = systems.iter().find(|s| s.id == g.system)?;
             let key = g.path.to_string_lossy().into_owned();
             let m = meta.get(&key).cloned().unwrap_or_default();
+            let original = m.name.clone().unwrap_or(g.title);
+            // a name that is the same as the original is no rename at all
+            let custom = m.custom_name.clone().filter(|n| *n != original);
             Some(GameView {
                 blocked: sys.blocked_reason(),
                 imported: g.path.starts_with(roms_dir),
                 system: g.system,
-                title: m.name.clone().unwrap_or(g.title),
+                renamed: custom.is_some(),
+                title: custom.unwrap_or_else(|| original.clone()),
+                original_title: original,
                 path: key,
                 size: g.size,
                 last_played: m.last_played,
@@ -484,13 +498,16 @@ pub fn game_views(
             })
         })
         .collect();
-    // Games with the same official title (in the same system) are probably the same dump.
+    // Games with the same official title (in the same system) are probably the same dump,
+    // whatever the user calls them.
     let mut seen: HashMap<(String, String), usize> = HashMap::new();
     for v in views.iter().filter(|v| v.identified) {
-        *seen.entry((v.system.clone(), v.title.clone())).or_default() += 1;
+        *seen
+            .entry((v.system.clone(), v.original_title.clone()))
+            .or_default() += 1;
     }
     for v in views.iter_mut().filter(|v| v.identified) {
-        v.duplicate = seen[&(v.system.clone(), v.title.clone())] > 1;
+        v.duplicate = seen[&(v.system.clone(), v.original_title.clone())] > 1;
     }
     views
 }

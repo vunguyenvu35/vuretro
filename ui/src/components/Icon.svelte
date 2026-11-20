@@ -40,6 +40,8 @@
     <circle cx="7" cy="5.5" r="1.8" /><path d="M3 5.5h2.2M8.8 5.5H17" />
     <circle cx="13" cy="10" r="1.8" /><path d="M3 10h8.2M14.8 10H17" />
     <circle cx="8.5" cy="14.5" r="1.8" /><path d="M3 14.5h3.7M10.3 14.5H17" />
+  {:else if name === 'edit'}
+    <path d="M12.5 4.3l3.2 3.2-8 8-3.9.7.7-3.9 8-8z" /><path d="M10.9 5.9l3.2 3.2" />
   {:else if name === 'file'}
     <path d="M5.2 2.8h6l3.6 3.6v10.8H5.2V2.8z" /><path d="M11.2 2.8v3.8h3.6" />
   {:else if name === 'folder'}

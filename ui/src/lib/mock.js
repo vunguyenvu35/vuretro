@@ -37,6 +37,7 @@ const mock = {
   import_dats: async (a) => a.paths.map((p) => ({ source: p, ok: true, message: "3 dumps added" })),
   identify_games: async () => 0,
   set_tags: async (a) => a.tags,
+  rename_game: async (a) => (a.name?.trim() ? a.name.trim() : null),
   clear_recent: async () => 0,
   set_game_core: async () => {},
   set_fetch_art: async () => {},
