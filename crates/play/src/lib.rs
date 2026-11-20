@@ -5,6 +5,7 @@
 //!
 //! Dependency rule: no window, audio, gamepad, FFI or image-encoding crates in here.
 
+pub mod badge;
 pub mod cover;
 pub mod crt;
 pub mod keys;

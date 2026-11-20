@@ -129,9 +129,9 @@ pub fn open(p: Params) -> Result<Session> {
     };
     // the icon first, so the Dock tile is made with it; once more after the window exists,
     // because the first window changes how the process presents itself
-    appicon::apply();
+    appicon::apply(&p.system);
     let screen = MiniFbScreen::open(&title, base_w, base_h, factor, view)?;
-    appicon::apply();
+    appicon::apply(&p.system);
 
     let coin_op = vuretro_core::registry::by_id(&p.system).is_some_and(|s| s.coin_op);
     if coin_op && p.settings.auto_coin {

@@ -116,7 +116,7 @@ fn main() -> Result<()> {
     // icon now means the Dock never shows the generic "exec" icon. Headless runs (previews,
     // CI) have no window and must not appear in the Dock at all.
     if args.headless_frames.is_none() && !args.list_options && !args.options_json {
-        appicon::apply();
+        appicon::apply(args.system.as_deref().unwrap_or(""));
     }
 
     let paths = vuretro_library::adapters::system_paths().context("no home directory")?;
