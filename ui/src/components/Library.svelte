@@ -2,7 +2,7 @@
   import { chooseCover, resetCover, regenerateCovers } from '../lib/store.svelte.js';
 import { gameScope } from '../lib/scope.js';
 import { lazyCover } from '../lib/lazyCovers.js';
-import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, applyPatch, covers, setLayout, pinCovers, pickRomFiles, pickRomFolder } from '../lib/store.svelte.js';
+import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, applyPatch, covers, setLayout, pinCovers, pickRomFiles, pickRomFolder, clearRecent } from '../lib/store.svelte.js';
   import { openMenu, confirmDialog } from '../lib/ui.svelte.js';
   import { visibleGames, heroFor, headingFor, pickRange, formatSize } from '../lib/library.js';
   import Welcome from "./Welcome.svelte";
@@ -265,6 +265,9 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
           {/if}
         </label>
         <div class="tools">
+          {#if app.filter === 'recent' && !app.query && !app.selecting && visible.length}
+            <button onclick={clearRecent} title="Empty the Recent list. Your games stay in the library.">Clear recent</button>
+          {/if}
           {#if app.selecting}
             <span class="selbar">
               <span class="count"><b>{pickedGames.length}</b> selected</span>

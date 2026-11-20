@@ -2073,3 +2073,55 @@ fn a_failed_start_shows_what_the_runner_said_not_a_log() {
         .unwrap();
     assert_eq!(err, "neogeo.zip is missing");
 }
+
+// ---------- emptying the Recent list ----------
+
+fn world_with_games() -> Fake {
+    let f = ready_world();
+    f.0.lock().unwrap().scans.insert(
+        "/data/roms".into(),
+        vec![
+            entry("snes", "/data/roms/snes/zelda_v2.sfc"),
+            entry("snes", "/data/roms/snes/mario.sfc"),
+        ],
+    );
+    f
+}
+
+#[test]
+fn clearing_recent_forgets_when_games_were_played_and_keeps_everything_else() {
+    let f = world_with_games();
+    {
+        let mut w = f.0.lock().unwrap();
+        let m = w
+            .meta
+            .entry("/data/roms/snes/zelda_v2.sfc".into())
+            .or_default();
+        (m.last_played, m.play_secs, m.favorite) = (500, 3600, true);
+        w.meta
+            .entry("/data/roms/snes/mario.sfc".into())
+            .or_default()
+            .last_played = 700;
+        w.meta
+            .entry("/data/roms/snes/never.sfc".into())
+            .or_default(); // never played
+    }
+    let a = app(&f);
+    assert_eq!(a.clear_recent(), 2, "two games were on the list");
+    let w = f.0.lock().unwrap();
+    assert_eq!(w.meta["/data/roms/snes/zelda_v2.sfc"].last_played, 0);
+    assert_eq!(w.meta["/data/roms/snes/mario.sfc"].last_played, 0);
+    // what the games were is not touched
+    let z = &w.meta["/data/roms/snes/zelda_v2.sfc"];
+    assert_eq!((z.play_secs, z.favorite), (3600, true));
+    drop(w);
+    assert_eq!(
+        a.overview()
+            .games
+            .iter()
+            .filter(|g| g.last_played != 0)
+            .count(),
+        0
+    );
+    assert_eq!(a.clear_recent(), 0, "nothing left to clear");
+}

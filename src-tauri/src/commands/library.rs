@@ -102,6 +102,12 @@ pub async fn identify_games(shell: State<'_, Shell>) -> Result<usize, String> {
     super::blocking(move || core_app.identify_games()).await
 }
 
+/// Empty the Recent list; returns how many games were on it.
+#[tauri::command]
+pub fn clear_recent(shell: State<'_, Shell>) -> usize {
+    shell.app.clear_recent()
+}
+
 /// Replace a game's collections; returns the cleaned list.
 #[tauri::command]
 pub fn set_tags(shell: State<'_, Shell>, path: String, tags: Vec<String>) -> Vec<String> {

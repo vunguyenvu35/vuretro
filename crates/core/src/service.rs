@@ -550,6 +550,24 @@ impl App {
         fav
     }
 
+    /// Empty the Recent list. The games stay in the library, with their play time; only the
+    /// time they were last played is forgotten. Returns how many games were on the list.
+    pub fn clear_recent(&self) -> usize {
+        let cleared = {
+            let mut meta = self.meta.lock().unwrap();
+            let mut n = 0;
+            for m in meta.values_mut().filter(|m| m.last_played != 0) {
+                m.last_played = 0;
+                n += 1;
+            }
+            n
+        };
+        if cleared > 0 {
+            self.save_meta();
+        }
+        cleared
+    }
+
     // ---------- controls, macros and game settings ----------
     // Saved as given after `sanitized()`; the sanitized value is returned so the UI shows
     // what was really stored.

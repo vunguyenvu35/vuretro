@@ -230,6 +230,17 @@ export async function toggleFavorite(game) {
   refresh();
 }
 
+/** Empty the Recent list. The games, their play time and saves stay. */
+export async function clearRecent() {
+  try {
+    await api.clearRecent();
+    toast('Recent list cleared');
+  } catch (e) {
+    toast(String(e), 'error');
+  }
+  await refresh();
+}
+
 export async function play(game, slot = null) {
   if (game.blocked) return toast(game.blocked, 'error');
   try {
