@@ -2,7 +2,7 @@
 
 # vuretro
 
-A cross-platform retro game frontend (macOS, Windows, Linux) that runs games through **libretro cores**.
+A cross-platform retro gaming app (macOS, Windows, Linux): one library for your classic console and arcade games, played through **libretro cores**.
 Supported systems: 26, from Neo Geo (FBNeo), PlayStation (PCSX ReARMed), SNES (snes9x) and Game Boy Advance (mGBA) to Genesis, Game Boy, Atari, arcade (MAME) and the 3D consoles up to PS2 and 3DS. Each game opens in its own window and its Dock icon carries the badge of its system.
 
 > vuretro does **not** ship ROMs or BIOS files. You provide them from copies you own.

@@ -1,6 +1,6 @@
 # vuretro plan
 
-Goal: a retro game frontend with a real UI, running on macOS, Windows and Linux.
+Goal: a retro gaming app with a real UI, running on macOS, Windows and Linux.
 Games run through libretro cores; the app handles the interface, library management and controls.
 
 Try the current state: `make dev` (see [DEVELOPMENT.md](DEVELOPMENT.md)). Architecture: [ARCHITECTURE.md](ARCHITECTURE.md). Screen designs: [UI.md](UI.md).

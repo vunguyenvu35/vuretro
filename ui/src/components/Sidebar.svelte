@@ -64,10 +64,13 @@
 </script>
 
 <aside>
-  <div class="brand">
-    <img src={logo} alt="" width="28" height="28" />
-    <span><b>Vu</b>retro</span>
-  </div>
+  <button class="brand" onclick={() => go('all')} title="Vuretro: back to the library" aria-label="Vuretro, back to the library">
+    <span class="mark"><img src={logo} alt="" width="40" height="40" /></span>
+    <span class="words">
+      <span class="name"><b>Vu</b><span class="re">retro</span></span>
+      <span class="tag">Play<em>·</em>Save<em>·</em>Resume</span>
+    </span>
+  </button>
 
   <nav>
     <div class="label">Library</div>
@@ -179,8 +182,10 @@
 
 <style>
   aside {
-    position: relative; min-width: 0;
-    background: var(--surface); border-right: 1px solid var(--border);
+    position: relative; min-width: 0; container: side / inline-size;
+    /* a faint pink light from the mark at the top left, so the head of the sidebar has depth */
+    background: radial-gradient(260px 150px at 40px 30px, color-mix(in srgb, var(--brand-magenta) 8%, transparent), transparent 75%), var(--surface);
+    border-right: 1px solid var(--border);
     display: flex; flex-direction: column; padding: 14px 10px; gap: 8px; min-height: 0;
   }
   /* a thin strip on the sidebar's right edge: easy to grab, invisible until hovered */
@@ -190,8 +195,34 @@
   .grip:focus-visible { outline: none; }
   /* while dragging, keep the cursor and ignore what is underneath */
   .dragshield { position: fixed; inset: 0; z-index: 100; cursor: col-resize; user-select: none; }
-  .brand { display: flex; align-items: center; gap: 10px; padding: 2px 8px 14px; font: 700 18px var(--font-head); }
-  .brand b { color: var(--brand-magenta); font-weight: 700; }
+  /* ---- the brand: the mark, the name, the tagline, over a soft light that comes from the mark ---- */
+  .brand {
+    position: relative; display: flex; align-items: center; gap: 12px; width: 100%;
+    margin: 0 0 8px; padding: 6px 8px 18px; background: none; border: 0; border-radius: 12px; text-align: left;
+  }
+  /* the foot line starts in the brand's magenta and fades out into the sidebar's own border colour */
+  .brand::after {
+    content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 1px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--brand-magenta) 50%, var(--border)), var(--border) 45%, transparent);
+  }
+  .brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* the tile is nearly the colour of the sidebar, so it gets a rim of light and a pink shadow to stand off it */
+  .mark img {
+    display: block; border-radius: 22%;
+    box-shadow: 0 0 0 1px rgb(255 255 255 / .1), 0 2px 6px rgb(0 0 0 / .5), 0 10px 22px -10px rgb(255 79 139 / .6);
+    transition: transform .18s ease, box-shadow .18s ease;
+  }
+  .brand:hover .mark img { transform: translateY(-1px); box-shadow: 0 0 0 1px rgb(255 255 255 / .16), 0 3px 8px rgb(0 0 0 / .5), 0 14px 26px -10px rgb(255 79 139 / .85); }
+  .brand:active .mark img { transform: translateY(0); }
+  .words { display: flex; flex-direction: column; min-width: 0; }
+  .name { font: 700 22px/1 var(--font-head); letter-spacing: -.025em; white-space: nowrap; }
+  .name b { color: var(--brand-magenta); font-weight: 700; }
+  .name .re { color: #f4f1ff; font-weight: 500; }
+  .tag { margin-top: 7px; font: 600 8.5px/1 var(--font-body); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  .tag em { font-style: normal; color: var(--accent); margin: 0 .5em; }
+  /* a narrow sidebar keeps the mark and the name and drops the tagline */
+  @container side (max-width: 190px) { .tag { display: none; } }
+  @media (prefers-reduced-motion: reduce) { .mark img { transition: none; } .brand:hover .mark img { transform: none; } }
   nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; overflow-x: hidden; flex: 1; min-height: 0; scrollbar-gutter: stable; }
   .label { padding: 0 8px; margin: 4px 0; }
   .gap { margin-top: 16px; }
