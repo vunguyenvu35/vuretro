@@ -64,6 +64,7 @@ make scan ROMS=~/Games/roms
 | `make app-build` | Build the installable app bundle |
 | `make play ROM=… [CORE=fbneo\|pcsx] [SCALE=2]` | Run a real game (release build); `CORE=fbneo|pcsx|snes|gba`; `CORE=fbneo|pcsx|snes|gba` |
 | `make cores` | Download cores from the libretro buildbot |
+| `make hooks` | Turn on the git hooks of `.githooks/`: a commit with unformatted Rust code is stopped (CI runs `cargo fmt --all --check` first); skip once with `--no-verify` |
 | `make cores-offline` | Save core zips in `cores/offline/` for installs with no internet |
 | `make options CORE=… ROM=…` | Print a core options template |
 | `make smoke` | Fake-core checks: video, save state, SRAM, options |
