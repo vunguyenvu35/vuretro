@@ -598,26 +598,6 @@ flowchart TB
 - Layer 1 returns the room list and the information needed to connect (address, room code).
 - Layer 2 handles the real connection between each pair of machines, including NAT traversal.
 
-**Two options for the Internet**
-
-| | Steam (Lobby, Sockets, Relay) | WebRTC and a self-run signaling server |
-|---|---|---|
-| NAT traversal, relay | Built in (Valve's relay) | Yes (STUN). A relay needs TURN and your own operation. |
-| Finding friends, invites | Steam friends list, Lobby | Room code or link, built by us |
-| Operation | Almost none | Must run and pay for a small server |
-| Constraints | Needs a Steam AppID (a real release needs a registered app, under Valve's terms). Users must have Steam installed. | Not tied to any platform |
-| Latency | A direct path if NAT traversal works. Through the relay it adds a few ms. | Similar |
-| Risk | Depends on Valve. I have not rechecked the release conditions. | You own the operation and security |
-
-The direction is not chosen yet. A LAN needs nothing in layers 2 and 3 beyond direct UDP, so it is built first. The Internet decision comes after real measurements.
-
-**Internet specifics to plan for**
-
-- With a ping of 30 to 150 ms, rollbacks happen often. The CPU cost of long re-runs needs measuring (see section 7), and the input delay could be raised automatically with the ping.
-- A 4-player room over the Internet needs NAT traversal for 3 links per machine. One broken link affects the whole room, so the quality of each link must be shown.
-- IP addresses are exposed to people in the room. A relay or a room code can reduce this, and it must be stated clearly to users.
-- Security: a PIN or a short-lived invite code, packet size limits, and never trusting data from another machine.
-
 ### Two problems specific to the Internet
 
 1. **NAT traversal.** A machine at home sits behind a router and has no public address. The two machines must "punch a hole" (hole punching) with help from a signaling server and STUN. Some kinds of NAT (and carrier-grade NAT, CGNAT) make hole punching fail. In that case traffic has to go around through a relay (TURN or Steam's relay). There are no figures yet on how often it fails, so this needs measuring in real tests.
@@ -629,19 +609,28 @@ The direction is not chosen yet. A LAN needs nothing in layers 2 and 3 beyond di
 | about 60 to 100 ms | Playable, with slight stutter during rollbacks |
 | over about 120 ms | No longer comfortable for fighting games |
 
-The prediction limit of 8 frames is about 133 ms. Beyond it the faster machine has to wait (Stalled). The UI must show the ping of each link and warn when a threshold is crossed, so players know whom to invite.
+The prediction limit of 8 frames is about 133 ms. Beyond it the faster machine has to wait (Stalled). The UI must show the ping of each link and warn when a threshold is crossed, so players know whom to invite. The CPU cost of long re-runs needs measuring (see section 7), and the input delay could be raised automatically with the ping.
 
 **Relay cost is low:** game traffic is only a few KB per second per link. The only heavy part is the initial state (about 415 KB with FBNeo), sent once. So running a relay does not use much bandwidth, and the main cost is the effort of operating it.
 
-### Three options for the Internet
+### Options for the Internet
 
-| | Pros | Cons |
-|---|---|---|
-| **WebRTC with the matchbox library** | Built to work with ggrs. NAT traversal, and a TURN server can be plugged in as a relay. Not tied to a platform. | You must run a small signaling server (and TURN if you want a relay). I have not checked the library's current maintenance status. |
-| **Steam** (Lobby, Sockets, Relay) | Almost nothing to operate. Friends and invites already exist. | Needs an AppID and users must install Steam. Depends on Valve. |
-| **Open a port yourself, type an IP** | No server needed | Hard to use. Many networks (CGNAT) cannot open ports. |
+| | WebRTC with the matchbox library and a self-run signaling server | Steam (Lobby, Sockets, Relay) | Open a port yourself, type an IP |
+|---|---|---|---|
+| NAT traversal, relay | Yes (STUN). A relay needs TURN and your own operation. | Built in (Valve's relay) | None. Many networks (CGNAT) cannot open ports. |
+| Finding friends, invites | Room code or link, built by us | Steam friends list, Lobby | Typing an IP by hand |
+| Operation | Must run and pay for a small server (and TURN if you want a relay) | Almost none | None |
+| Constraints | Not tied to any platform | Needs a Steam AppID (a real release needs a registered app, under Valve's terms). Users must have Steam installed. | None, but hard to use |
+| Latency | Direct if NAT traversal works, a little more through a relay | Direct if NAT traversal works, a few ms more through the relay | Direct |
+| Risk | You own the operation and security. Built to work with ggrs, but I have not checked the library's current maintenance status. | Depends on Valve. I have not rechecked the release conditions. | Works for few users |
 
-**Recommendation:** WebRTC with matchbox, because it is not tied to a platform and is aimed squarely at ggrs. Steam is the alternative if putting Vuretro on Steam is acceptable. Both plug into the `Transport` layer above, so choosing later does not mean redoing the rollback part.
+**Other things to plan for**
+
+- A 4-player room over the Internet needs NAT traversal for 3 links per machine. One broken link affects the whole room, so the quality of each link must be shown.
+- IP addresses are exposed to people in the room. A relay or a room code can reduce this, and it must be stated clearly to users.
+- Security: a PIN or a short-lived invite code, packet size limits, and never trusting data from another machine.
+
+**Recommendation:** WebRTC with matchbox, because it is not tied to a platform and is aimed squarely at ggrs. Steam is the alternative if putting Vuretro on Steam is acceptable. Both plug into the `Transport` layer above, so choosing later does not mean redoing the rollback part. The direction is not chosen yet: a LAN needs nothing in layers 2 and 3 beyond direct UDP, so it is built first.
 
 **Precondition before starting the Internet work:** the LAN (P0 to P3) must run well, because determinism bugs show up much harder on the Internet.
 
