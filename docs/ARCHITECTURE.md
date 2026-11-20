@@ -13,17 +13,20 @@ Try the runner now: `make dev` (see [DEVELOPMENT.md](DEVELOPMENT.md)).
 Dependencies point inward only; `crates/core/tests/architecture.rs` fails the build if that breaks.
 
 ```
-src-tauri (Tauri shell: commands, menu, gamepad)      vuretro-runner (window, audio, core)
+src-tauri (Tauri shell: commands, menu, gamepad)      vuretro-runner (window, audio, pads, core loading)
         │                                                   │
         ▼                                                   ▼
-vuretro-library (adapters: disk, processes)   ──►  vuretro-core (domain, use cases, ports)
-                                                   vuretro-controls / vuretro-settings (shared config files)
+vuretro-library (adapters: disk, processes)           vuretro-play (game session, pure rules, ports)
+        │                                                   │
+        └──────────────►  vuretro-core (domain, use cases, ports)  ◄──┘
+                          vuretro-controls / vuretro-settings (shared config files)
 ```
 
 - **`vuretro-core`**: systems registry, ROM detection by path, `Settings`/`GameMeta`, the "why is this game blocked" rule, and `service::App` with every use case (overview, import, remove, favorites, launch, covers). It reaches the outside only through the traits in `ports.rs` (`Store`, `Catalog`, `Locator`, `Launcher`), so `crates/core/tests/service.rs` tests the use cases with in-memory fakes.
 - **`vuretro-library::adapters`**: the real implementations of those ports (`JsonStore`, `FsCatalog`, `FsLocator`, `ProcessLauncher`).
 - **`src-tauri`**: `main.rs` only wires adapters into `App`. `commands/` are thin Tauri commands, plus `menu.rs`, `gamepad.rs`, `platform.rs`.
-- **`vuretro-runner`**: `main.rs` loads the core. `session.rs` runs the game loop (`Session`) against the traits in `ports.rs` (`Screen`, `Emulator`, `Controller`, `FrameSource`), so its tests use fakes. `screen.rs` (minifb window) and `real.rs` (core, gamepad, frames, `open()`) are the real implementations. `window.rs` holds the pure rules (actions, title, pacing, pause picture), `headless.rs` the windowless mode.
+- **`vuretro-play`**: `session.rs` runs the game loop (`Session`) against the traits in `ports.rs` (`Screen`, `Emulator`, `Controller`, `FrameSource`, `Files`), so its tests use fakes. `window.rs` holds the pure rules (actions, title, pacing, pause picture), next to `rewind`, `speed`, `perf`, `rumble`, the picture filters (`crt`, `lcd`, `scale`, `scale2x`), `cover` (which frame makes a good preview), `badge` (the system badge drawn on the Dock icon) and its own `Key` type. It has no window, audio, gamepad, FFI or image-encoding dependency (`play_is_pure` in `architecture.rs`).
+- **`vuretro-runner`**: the adapters of `vuretro-play`. `main.rs` loads the core; `screen.rs` (minifb window), `real.rs` (core, gamepad, frames, `open()`), `audio.rs` (cpal), `input.rs` and `padkeys.rs` (keyboard and gilrs), `files.rs` (disk and PNG encoding), `appicon.rs` (Dock icon with the system badge) are the real implementations. `headless.rs` is the windowless mode.
 - **UI (`ui/src`)**: `lib/api.js` is the only door to the backend (`lib/mock.js` answers in a browser). `lib/library.js` holds the pure rules of the library screen (filter, sort, summaries; tested with `npm test`). `lib/store.svelte.js` is app state and actions, `lib/ui.svelte.js` the dialog, menu and toasts. Components only render and call these.
 
 ## The app
@@ -39,7 +42,8 @@ vuretro-library (adapters: disk, processes)   ──►  vuretro-core (domain, u
 | `vuretro-library` | Adapters for the ports, plus `scan` (walk a folder), `bios` (check and import), `roms` (import and remove). The `vuretro-scan` binary prints JSON. |
 | `vuretro-controls` | Controls and macros config shared by runner and app, and the logic that assigns pads to players. |
 | `vuretro-settings` | Game settings file shared by runner and app. |
-| `vuretro-runner` | Binary that runs one game: `core.rs` loads symbols, `frontend.rs` holds the C callbacks, plus `audio.rs`, `input.rs`, `options.rs`, `session.rs`, `window.rs`. |
+| `vuretro-play` | The game session and its pure rules, behind ports. No window, audio or gamepad code. |
+| `vuretro-runner` | Binary that runs one game, the adapters of `vuretro-play`: `core.rs` loads symbols, `frontend.rs` holds the C callbacks, plus `screen.rs`, `audio.rs`, `input.rs`, `options.rs`, `files.rs`, `appicon.rs`. |
 | `vuretro-app` (`src-tauri/`) | Tauri shell. Separate workspace. |
 | `vuretro-test-core` | Fake core (cdylib) for tests and CI, with fake save RAM and one core option. `make dev` and `make smoke` use it. |
 
