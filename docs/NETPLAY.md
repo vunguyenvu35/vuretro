@@ -1,6 +1,6 @@
 # Plan: playing together on two or more machines (netplay)
 
-Status: **plan only, no code yet**. A hand-drawn diagram version is here: https://claude.ai/artifact/PJMnQXxrTagH6yeijVCFkW (private). The diagrams below use Mermaid, which GitHub renders when you view the file.
+Status: **plan only, no code yet**.
 
 Two machines on the same LAN play the same game, each player with their own pad or keyboard. Each machine runs the game itself and only the button presses cross the network. When the guess about the other player's buttons turns out wrong, the machine loads an older state and re-runs a few frames (rollback).
 
