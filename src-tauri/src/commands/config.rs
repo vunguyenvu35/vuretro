@@ -2,7 +2,7 @@
 
 use crate::state::Shell;
 use serde::Serialize;
-use tauri::State;
+use tauri::{Emitter, State};
 use vuretro_controls::macros::MacroConfig;
 use vuretro_controls::{ControlsConfig, PadInfo};
 use vuretro_settings::GameSettings;
@@ -17,7 +17,7 @@ pub struct ControlsView {
 pub fn get_controls(shell: State<'_, Shell>) -> ControlsView {
     ControlsView {
         config: shell.app.controls(),
-        pads: shell.pads.lock().unwrap().clone(),
+        pads: shell.named_pads(),
     }
 }
 
@@ -88,7 +88,7 @@ fn scoped_view(shell: &Shell, v: vuretro_core::model::ScopedControls) -> ScopedC
     ScopedControlsView {
         config: v.config,
         custom: v.custom,
-        pads: shell.pads.lock().unwrap().clone(),
+        pads: shell.named_pads(),
     }
 }
 
@@ -184,4 +184,23 @@ pub fn reset_controls_for_game(
 ) -> Result<ScopedControlsView, String> {
     let v = shell.app.reset_controls_for_game(&path)?;
     Ok(scoped_view(&shell, v))
+}
+
+/// Give a pad a name of the user's own (an empty one goes back to the system's name).
+/// Returns the pad list as it should now be shown.
+#[tauri::command]
+pub fn rename_pad(
+    app: tauri::AppHandle,
+    shell: State<'_, Shell>,
+    id: String,
+    name: String,
+) -> Result<Vec<PadInfo>, String> {
+    {
+        let mut names = shell.pad_names.lock().unwrap();
+        vuretro_controls::padnames::set(&mut names, &id, &name);
+        vuretro_controls::padnames::save(&shell.pad_names_file, &names)?;
+    }
+    let list = shell.named_pads();
+    let _ = app.emit("pads-changed", list.clone());
+    Ok(list)
 }

@@ -79,6 +79,8 @@ export const api = {
 
   // controls and macros
   controls: () => call('get_controls'),
+  /** Give a pad a name of the user's own (empty = the system's name); returns the pads as shown. */
+  renamePad: (id, name) => call('rename_pad', { id, name }),
   defaultControls: () => call('default_controls'),
   setControls: (config) => call('set_controls', { config }),
   controlsFor: (system) => call('get_controls_for', { system: system || null }),

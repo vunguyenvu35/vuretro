@@ -64,6 +64,8 @@ const mock = {
 };
 
 // ---- controls ----
+const mockPads = [{ id: 'mock-xbox', name: 'Xbox Wireless Controller' }, { id: 'mock-dual', name: 'DualSense Wireless Controller' }];
+const mockPadNames = {};
 const mockControls = () => ({
   config: {
     players: [
@@ -80,8 +82,14 @@ const mockControls = () => ({
         gamepad: { up: ['DPadUp'], down: ['DPadDown'], left: ['DPadLeft'], right: ['DPadRight'], b: ['South'], a: ['East'], y: ['West'], x: ['North'], l: ['LeftTrigger'], r: ['RightTrigger'], l2: ['LeftTrigger2'], r2: ['RightTrigger2'], l3: ['LeftThumb'], r3: ['RightThumb'], select: ['Select'], start: ['Start'] } },
     ],
   },
-  pads: [{ id: 'mock-xbox', name: 'Xbox Wireless Controller' }, { id: 'mock-dual', name: 'DualSense Wireless Controller' }],
+  pads: mockPads.map((p) => ({ id: p.id, name: mockPadNames[p.id] ?? p.name })),
 });
+mock.rename_pad = async ({ id, name }) => {
+  const n = name.split(/\s+/).filter(Boolean).join(' ').slice(0, 40);
+  if (n) mockPadNames[id] = n;
+  else delete mockPadNames[id];
+  return mockControls().pads;
+};
 mock.get_controls = async () => mockControls();
 mock.default_controls = async () => mockControls().config;
 mock.set_controls = async ({ config }) => config;

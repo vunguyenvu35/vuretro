@@ -8,6 +8,7 @@
 
 pub mod macros;
 pub mod moves;
+pub mod padnames;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

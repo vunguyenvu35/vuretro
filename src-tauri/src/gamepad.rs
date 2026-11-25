@@ -5,6 +5,7 @@ use serde::Serialize;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::Emitter;
+use vuretro_controls::padnames::{self, PadNames};
 use vuretro_controls::PadInfo;
 use vuretro_procon::ProCons;
 
@@ -20,7 +21,7 @@ fn uuid_hex(u: [u8; 16]) -> String {
 }
 
 /// Runs on its own thread (gilrs must live where it was created).
-pub fn spawn(app: tauri::AppHandle, pads: Arc<Mutex<Vec<PadInfo>>>) {
+pub fn spawn(app: tauri::AppHandle, pads: Arc<Mutex<Vec<PadInfo>>>, names: Arc<Mutex<PadNames>>) {
     std::thread::spawn(move || {
         let Ok(mut g) = gilrs::Gilrs::new() else {
             return;
@@ -93,7 +94,11 @@ pub fn spawn(app: tauri::AppHandle, pads: Arc<Mutex<Vec<PadInfo>>>) {
             if changed {
                 let list = snapshot(&g, &pro_pads);
                 *pads.lock().unwrap() = list.clone();
-                let _ = app.emit("pads-changed", list);
+                // the UI is told the pads by the names the user gave them
+                let _ = app.emit(
+                    "pads-changed",
+                    padnames::apply(&list, &names.lock().unwrap()),
+                );
             }
             std::thread::sleep(Duration::from_millis(8));
         }

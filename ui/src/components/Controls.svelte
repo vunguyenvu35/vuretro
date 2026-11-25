@@ -8,6 +8,7 @@
   import ScopeBar from './ScopeBar.svelte';
   import { parseScope } from '../lib/scope.js';
   import PsGlyph from './PsGlyph.svelte';
+  import Icon from './Icon.svelte';
   import { ACTIONS, DIAGONALS, HOTKEYS, PAD_HOTKEYS, RESERVED, PLAYSTATION_NAMES, nameOf, swapButtons, useArcadeKeys, keyName, keyLabel, padLabel, deviceValue, parseDevice } from '../lib/controls.js';
 
   let cfg = $state(null);
@@ -26,6 +27,46 @@
   });
 
   const shortId = (id) => id.slice(0, 8);
+
+  // naming a pad: the pencil turns its name into a field; Enter or leaving it keeps the name,
+  // Esc drops it, and an empty name gives the system's one back
+  let renamingPad = $state(null);
+  let padDraft = $state('');
+  let padRenameDone = false;
+  const PAD_NAME_MAX = 40;
+
+  function startPadRename(pad) {
+    renamingPad = pad.id;
+    padDraft = pad.name;
+    padRenameDone = false;
+  }
+  function focusSelect(node) {
+    node.focus();
+    node.select();
+  }
+  async function commitPadRename(pad) {
+    if (padRenameDone) return;
+    padRenameDone = true;
+    renamingPad = null;
+    const name = padDraft.trim();
+    if (name === pad.name) return;
+    try {
+      pads = await api.renamePad(pad.id, name);
+    } catch (e) {
+      toast(String(e));
+    }
+  }
+  function padRenameKey(e, pad) {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitPadRename(pad);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      padRenameDone = true;
+      renamingPad = null;
+    }
+  }
 
   const scope = $derived(parseScope(app.scope));
 
@@ -246,9 +287,29 @@
         {#each pads as pad, n (pad.id + n)}
           <div class="pad" class:active={lastPress[pad.id]}>
             <span class="dot"></span>
-            <div>
-              <div class="pname">{pad.name}</div>
-              <div class="muted mono">{shortId(pad.id)}</div>
+            <div class="pinfo">
+              {#if renamingPad === pad.id}
+                <input
+                  class="pfield"
+                  use:focusSelect
+                  bind:value={padDraft}
+                  maxlength={PAD_NAME_MAX}
+                  onkeydown={(e) => padRenameKey(e, pad)}
+                  onblur={() => commitPadRename(pad)}
+                  autocomplete="off"
+                  spellcheck="false"
+                  aria-label="Name of this gamepad"
+                />
+                <div class="muted">Enter to keep · Esc to cancel · empty for the original name</div>
+              {:else}
+                <div class="pnamerow">
+                  <span class="pname">{pad.name}</span>
+                  <button type="button" class="iconbtn" aria-label="Rename {pad.name}" title="Rename" onclick={() => startPadRename(pad)}>
+                    <Icon name="edit" size={14} />
+                  </button>
+                </div>
+                <div class="muted mono">{shortId(pad.id)}</div>
+              {/if}
             </div>
             <span class="press mono">{lastPress[pad.id] ? padLabel(lastPress[pad.id]) : 'press a button to identify'}</span>
           </div>
@@ -371,7 +432,13 @@
   .pad { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; transition: border-color .15s; }
   .pad.active { border-color: var(--accent); }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ok); }
-  .pname { font-weight: 600; }
+  .pinfo { min-width: 0; }
+  .pnamerow { display: flex; align-items: center; gap: 4px; min-width: 0; }
+  .pname { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+  .iconbtn { flex: none; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; background: none; border: 1px solid transparent; border-radius: 7px; color: var(--muted); }
+  .iconbtn:hover { color: var(--text); background: var(--surface-2); border-color: var(--border); }
+  .pfield { width: 100%; padding: 3px 8px; font-family: inherit; font-weight: 600; font-size: 14px; line-height: 1.3; color: var(--text); background: var(--surface-2); border: 1px solid color-mix(in srgb, var(--accent) 70%, var(--border)); border-radius: 8px; }
+  .pfield:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 1px; }
   .press { color: var(--faint); font-size: 11px; text-align: right; }
   .pad.active .press { color: var(--accent); }
 

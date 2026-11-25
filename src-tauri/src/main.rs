@@ -21,9 +21,13 @@ use vuretro_library::adapters::{
     ScreenScraperArt, SysMachine, ThumbnailsArt, ZipBackup,
 };
 
+fn app_paths() -> Paths {
+    vuretro_library::adapters::system_paths()
+        .unwrap_or_else(|| Paths::new(PathBuf::from("vuretro-data")))
+}
+
 fn build_app() -> App {
-    let paths =
-        vuretro_library::adapters::system_paths().unwrap_or_else(|| Paths::new(PathBuf::from("vuretro-data")));
+    let paths = app_paths();
     let app = App::new(
         paths.clone(),
         Box::new(JsonStore::new(paths.clone())),
@@ -43,11 +47,17 @@ fn build_app() -> App {
 }
 
 fn main() {
+    let pad_names_file = app_paths().config_dir().join("pad_names.json");
     let shell = Shell {
         app: Arc::new(build_app()),
         pads: Arc::new(Mutex::new(Vec::new())),
+        pad_names: Arc::new(Mutex::new(vuretro_controls::padnames::load(
+            &pad_names_file,
+        ))),
+        pad_names_file,
     };
     let pads = shell.pads.clone();
+    let pad_names = shell.pad_names.clone();
 
     use commands::{backup::*, config::*, cores::*, covers::*, launch::*, library::*, update::*};
     tauri::Builder::default()
@@ -57,7 +67,7 @@ fn main() {
         .menu(menu::build)
         .on_menu_event(|app, event| menu::handle(app, event.id().as_ref()))
         .setup(move |app| {
-            gamepad::spawn(app.handle().clone(), pads.clone());
+            gamepad::spawn(app.handle().clone(), pads.clone(), pad_names.clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -78,6 +88,7 @@ fn main() {
             identify_games,
             set_tags,
             rename_game,
+            rename_pad,
             clear_recent,
             set_game_core,
             get_cheats,
