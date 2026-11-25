@@ -66,6 +66,8 @@ fn play_is_pure() {
 fn shared_config_crates_stay_leaf_crates() {
     assert_only("controls", &["serde", "serde_json"]);
     assert_only("settings", &["serde", "serde_json"]);
+    // reads a pad: knows `gilrs` button names and nothing of the app
+    assert_only("procon", &["gilrs", "log"]);
 }
 
 #[test]

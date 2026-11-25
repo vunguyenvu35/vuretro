@@ -1,0 +1,15 @@
+[package]
+name = "vuretro-procon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Reads the Nintendo Switch Pro Controller (and clones such as 8BitDo's Switch mode) on macOS, which gilrs cannot"
+
+[dependencies]
+gilrs = "0.10"
+log.workspace = true
+
+# macOS gives gilrs no buttons for this pad: its reports are vendor-defined there. We read the
+# raw reports ourselves. Other systems have a native driver, so nothing is built for them.
+[target.'cfg(target_os = "macos")'.dependencies]
+hidapi = { version = "2", features = ["macos-shared-device"] }

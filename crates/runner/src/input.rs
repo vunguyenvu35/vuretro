@@ -14,6 +14,7 @@ use vuretro_controls::{assign, ControlsConfig, PadInfo, PortSource, ACTIONS, DIA
 use vuretro_play::ports::{Hotkeys, Keyboard};
 use vuretro_play::rumble;
 use vuretro_play::Key;
+use vuretro_procon::{ProCons, ProPad};
 
 fn action_id(name: &str) -> Option<u32> {
     Some(match name {
@@ -199,8 +200,19 @@ fn uuid_hex(u: [u8; 16]) -> String {
     u.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// A gamepad of either kind: one `gilrs` knows, or a Pro Controller we read ourselves (macOS
+/// gives `gilrs` no buttons for it).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum PadId {
+    Gilrs(GamepadId),
+    /// Index in this poll's list of Pro Controllers.
+    Pro(usize),
+}
+
 pub struct Input {
     gilrs: Option<Gilrs>,
+    /// Pro Controllers read straight from the hardware (macOS only, empty elsewhere).
+    pro: ProCons,
     bindings: Vec<Bindings>,
     cfg: ControlsConfig,
     /// Macro buttons for this game and the triggers they listen to.
@@ -210,7 +222,7 @@ pub struct Input {
     /// Puts a coin in before Start on arcade systems, per port; `None` when it is off.
     auto_coin: Option<[AutoCoin; MAX_PORTS]>,
     /// Frontend hotkeys (Select + button), told apart per gamepad.
-    pad_keys: HashMap<GamepadId, PadKeys>,
+    pad_keys: HashMap<PadId, PadKeys>,
     /// Vibrate gamepads when the game asks for it.
     rumble_on: bool,
     rumble: rumble::Tracker,
@@ -235,6 +247,7 @@ impl Input {
         let bindings = resolve(&cfg);
         Input {
             gilrs,
+            pro: ProCons::new(),
             bindings,
             cfg,
             triggers: macros
@@ -270,24 +283,17 @@ impl Input {
 
     /// Gamepad hotkeys: Select held together with another button (see `padkeys`).
     pub fn hotkeys(&mut self) -> Hotkeys {
-        let Some(g) = self.gilrs.as_mut() else {
-            return Hotkeys::default();
-        };
-        while g.next_event().is_some() {} // keep cached state fresh
-        let mut out = Hotkeys::default();
-        let ids: Vec<GamepadId> = g
-            .gamepads()
-            .filter(|(_, p)| p.is_connected())
-            .map(|(id, _)| id)
-            .collect();
+        if let Some(g) = self.gilrs.as_mut() {
+            while g.next_event().is_some() {} // keep cached state fresh
+        }
+        let pro = self.pro.pads();
+        let ids: Vec<PadId> = self.pad_list(&pro).into_iter().map(|(id, _)| id).collect();
         self.pad_keys.retain(|id, _| ids.contains(id));
+        let mut out = Hotkeys::default();
         for id in ids {
-            let pad = g.gamepad(id);
-            let hk = self
-                .pad_keys
-                .entry(id)
-                .or_default()
-                .read(|b| pad.is_pressed(b));
+            let mut keys = self.pad_keys.remove(&id).unwrap_or_default();
+            let hk = keys.read(|b| self.pad_pressed(&pro, id, b));
+            self.pad_keys.insert(id, keys);
             out.acts.extend(hk.acts);
             out.fast_forward |= hk.fast_forward;
             out.rewind |= hk.rewind;
@@ -295,9 +301,34 @@ impl Input {
         out
     }
 
+    /// Whether a button of a pad is down.
+    fn pad_pressed(&self, pro: &[ProPad], id: PadId, b: Button) -> bool {
+        match id {
+            PadId::Gilrs(g) => self
+                .gilrs
+                .as_ref()
+                .is_some_and(|gl| gl.gamepad(g).is_pressed(b)),
+            PadId::Pro(i) => pro.get(i).is_some_and(|p| p.state.is_pressed(b)),
+        }
+    }
+
+    /// The left stick of a pad, Y positive upwards.
+    fn pad_stick(&self, pro: &[ProPad], id: PadId) -> (f32, f32) {
+        match id {
+            PadId::Gilrs(g) => self.gilrs.as_ref().map_or((0.0, 0.0), |gl| {
+                let pad = gl.gamepad(g);
+                (
+                    pad.value(gilrs::Axis::LeftStickX),
+                    pad.value(gilrs::Axis::LeftStickY),
+                )
+            }),
+            PadId::Pro(i) => pro.get(i).map_or((0.0, 0.0), |p| p.state.left),
+        }
+    }
+
     /// Pass the core's rumble requests on to the gamepad of each port. Does nothing on
     /// systems or pads without force feedback.
-    fn drive_rumble(&mut self, pads: &[(GamepadId, PadInfo)], sources: &[PortSource; MAX_PORTS]) {
+    fn drive_rumble(&mut self, pads: &[(PadId, PadInfo)], sources: &[PortSource; MAX_PORTS]) {
         let wanted = if self.rumble_on {
             frontend::with(|fe| fe.rumble)
         } else {
@@ -312,7 +343,9 @@ impl Input {
                 self.rumble.forget(port); // no pad now: try again when there is one
                 continue;
             };
-            let id = pads[idx].0;
+            let PadId::Gilrs(id) = pads[idx].0 else {
+                continue; // a Pro Controller we read ourselves has no vibration here
+            };
             if !g.gamepad(id).is_ff_supported() {
                 continue;
             }
@@ -345,14 +378,18 @@ impl Input {
         }
     }
 
-    fn pads(&self) -> Vec<(gilrs::GamepadId, PadInfo)> {
-        self.gilrs
+    /// Every pad, `gilrs`' first. On macOS `gilrs` also lists the Pro Controller, but it never
+    /// gets a button from it, so that copy is left out when we read the pad ourselves.
+    fn pad_list(&self, pro: &[ProPad]) -> Vec<(PadId, PadInfo)> {
+        let mut out: Vec<(PadId, PadInfo)> = self
+            .gilrs
             .as_ref()
             .map(|g| {
                 g.gamepads()
+                    .filter(|(_, p)| pro.is_empty() || !vuretro_procon::is_procon_uuid(p.uuid()))
                     .map(|(id, p)| {
                         (
-                            id,
+                            PadId::Gilrs(id),
                             PadInfo {
                                 id: uuid_hex(p.uuid()),
                                 name: p.name().to_string(),
@@ -361,7 +398,17 @@ impl Input {
                     })
                     .collect()
             })
-            .unwrap_or_default()
+            .unwrap_or_default();
+        out.extend(pro.iter().enumerate().map(|(i, p)| {
+            (
+                PadId::Pro(i),
+                PadInfo {
+                    id: p.id.clone(),
+                    name: p.name.clone(),
+                },
+            )
+        }));
+        out
     }
 
     /// Whether an enabled macro of this player is started by `key`.
@@ -378,17 +425,14 @@ impl Input {
         if let Some(g) = self.gilrs.as_mut() {
             while g.next_event().is_some() {} // keep cached state fresh
         }
-        let pads = self.pads();
+        let pro = self.pro.pads();
+        let pads = self.pad_list(&pro);
         let infos: Vec<PadInfo> = pads.iter().map(|(_, i)| i.clone()).collect();
         let sources: [PortSource; MAX_PORTS] = assign(&self.cfg, &infos);
         // a pad whose Select is held with a hotkey button is talking to the frontend
         let chording: Vec<bool> = pads
             .iter()
-            .map(|(id, _)| {
-                self.gilrs
-                    .as_ref()
-                    .is_some_and(|g| padkeys::chord_active(|b| g.gamepad(*id).is_pressed(b)))
-            })
+            .map(|(id, _)| padkeys::chord_active(|b| self.pad_pressed(&pro, *id, b)))
             .collect();
 
         for (port, src) in sources.iter().enumerate() {
@@ -407,16 +451,15 @@ impl Input {
                     }
                 }
             }
-            if let (Some(idx), Some(g)) = (src.pad.filter(|i| !chording[*i]), self.gilrs.as_ref()) {
-                let pad = g.gamepad(pads[idx].0);
-                for &(btn, id) in &b.buttons {
-                    if pad.is_pressed(btn) {
-                        state[port][id as usize] = true;
+            if let Some(idx) = src.pad.filter(|i| !chording[*i]) {
+                let id = pads[idx].0;
+                for &(btn, bid) in &b.buttons {
+                    if self.pad_pressed(&pro, id, btn) {
+                        state[port][bid as usize] = true;
                     }
                 }
                 if b.stick_as_dpad {
-                    let x = pad.value(gilrs::Axis::LeftStickX);
-                    let y = pad.value(gilrs::Axis::LeftStickY);
+                    let (x, y) = self.pad_stick(&pro, id);
                     let p = &mut state[port];
                     p[RETRO_DEVICE_ID_JOYPAD_LEFT as usize] |= x < -b.deadzone;
                     p[RETRO_DEVICE_ID_JOYPAD_RIGHT as usize] |= x > b.deadzone;
@@ -435,10 +478,7 @@ impl Input {
                 .map(|((key, button), m)| {
                     let key_down = key.is_some_and(|k| window.key_down(k));
                     let pad_down = match (button, sources.get(m.player).and_then(|s| s.pad)) {
-                        (Some(b), Some(idx)) => self
-                            .gilrs
-                            .as_ref()
-                            .is_some_and(|g| g.gamepad(pads[idx].0).is_pressed(*b)),
+                        (Some(b), Some(idx)) => self.pad_pressed(&pro, pads[idx].0, *b),
                         _ => false,
                     };
                     key_down || pad_down

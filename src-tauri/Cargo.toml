@@ -29,3 +29,4 @@ vuretro-controls = { path = "../crates/controls" }
 vuretro-settings = { path = "../crates/settings" }
 gilrs = "0.10"
 tauri-plugin-updater = "2"
+vuretro-procon = { path = "../crates/procon" }
