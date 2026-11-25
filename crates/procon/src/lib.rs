@@ -12,6 +12,16 @@ use gilrs::Button;
 
 pub const VENDOR_ID: u16 = 0x057e;
 pub const PRODUCT_ID: u16 = 0x2009;
+/// 8BitDo's USB vendor id. Its 2.4G receiver shows up under this id while no pad is paired with
+/// it (a keyboard and mouse to the system), and as a Pro Controller once one is.
+pub const BITDO_VENDOR_ID: u16 = 0x2dc8;
+
+/// Whether a USB device is an 8BitDo receiver with nothing paired to it: a pad that is asleep or
+/// off and only needs a button pressed.
+pub fn is_idle_receiver(vendor_id: u16, product: Option<&str>) -> bool {
+    vendor_id == BITDO_VENDOR_ID && product.is_some_and(|p| p.to_lowercase().contains("receiver"))
+}
+
 /// The id `gilrs` gives this pad (`03000000 7e05 0000 0920 0000 01000000`). Using the same text
 /// keeps a "this player uses this pad" choice that was saved earlier working.
 pub const PAD_ID: &str = "030000007e0500000920000001000000";
@@ -162,6 +172,10 @@ impl ProCons {
     pub fn pads(&self) -> Vec<ProPad> {
         Vec::new()
     }
+    /// No receiver to look for here.
+    pub fn dongle_waiting(&self) -> bool {
+        false
+    }
     /// Nothing to vibrate here.
     pub fn rumble(&self, _index: usize, _strong: bool, _weak: bool) {}
 }
@@ -226,6 +240,17 @@ mod tests {
         r[0] = 0x3f;
         assert!(parse(&r).is_none());
         assert!(parse(&A_AND_STICK_RIGHT[..8]).is_none());
+    }
+
+    #[test]
+    fn an_8bitdo_receiver_is_recognised_by_vendor_and_name() {
+        assert!(is_idle_receiver(0x2dc8, Some("8BitDo UM 2 Receiver")));
+        assert!(
+            !is_idle_receiver(0x2dc8, Some("8BitDo Pro 2")),
+            "a pad is not a receiver"
+        );
+        assert!(!is_idle_receiver(0x057e, Some("Pro Controller")));
+        assert!(!is_idle_receiver(0x2dc8, None));
     }
 
     #[test]

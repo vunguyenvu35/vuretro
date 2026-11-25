@@ -1,6 +1,8 @@
 //! The hardware side (macOS): one watcher thread that finds pads and one reader thread per pad.
 
-use crate::{parse, rumble_report, ProPad, ProState, NAME, PAD_ID, PRODUCT_ID, VENDOR_ID};
+use crate::{
+    is_idle_receiver, parse, rumble_report, ProPad, ProState, NAME, PAD_ID, PRODUCT_ID, VENDOR_ID,
+};
 use hidapi::{BusType, HidApi, HidDevice};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -20,6 +22,8 @@ type Slots = Arc<Mutex<HashMap<String, Slot>>>;
 /// Every Pro Controller that is connected right now, kept up to date in the background.
 pub struct ProCons {
     slots: Slots,
+    /// An 8BitDo receiver is plugged in but no pad is paired with it.
+    dongle: Arc<AtomicBool>,
 }
 
 impl Default for ProCons {
@@ -31,14 +35,21 @@ impl Default for ProCons {
 impl ProCons {
     pub fn new() -> Self {
         let slots: Slots = Arc::default();
-        let watch = slots.clone();
+        let dongle = Arc::new(AtomicBool::new(false));
+        let (watch, flag) = (slots.clone(), dongle.clone());
         let spawned = std::thread::Builder::new()
             .name("procon-watch".into())
-            .spawn(move || watch_loop(watch));
+            .spawn(move || watch_loop(watch, flag));
         if let Err(e) = spawned {
             log::warn!("procon: cannot start the watcher: {e}");
         }
-        ProCons { slots }
+        ProCons { slots, dongle }
+    }
+
+    /// A 2.4G receiver is plugged in and no pad answers through it: the pad is off or asleep and
+    /// pressing its Home button brings it back.
+    pub fn dongle_waiting(&self) -> bool {
+        self.dongle.load(Ordering::Relaxed)
     }
 
     /// Vibrate the pad at `index` of [`ProCons::pads`] (both motors off stops it).
@@ -84,7 +95,7 @@ impl Drop for ProCons {
     }
 }
 
-fn watch_loop(slots: Slots) {
+fn watch_loop(slots: Slots, dongle: Arc<AtomicBool>) {
     let mut api = match HidApi::new() {
         Ok(a) => a,
         Err(e) => {
@@ -94,6 +105,11 @@ fn watch_loop(slots: Slots) {
     };
     loop {
         if api.refresh_devices().is_ok() {
+            dongle.store(
+                api.device_list()
+                    .any(|d| is_idle_receiver(d.vendor_id(), d.product_string())),
+                Ordering::Relaxed,
+            );
             let found: Vec<(String, std::ffi::CString, bool)> = api
                 .device_list()
                 .filter(|d| d.vendor_id() == VENDOR_ID && d.product_id() == PRODUCT_ID)

@@ -1,6 +1,7 @@
 //! What Tauri manages for the commands: the use-case layer plus the live pad list.
 
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use vuretro_controls::padnames::PadNames;
 use vuretro_controls::PadInfo;
@@ -10,6 +11,8 @@ pub struct Shell {
     pub app: Arc<App>,
     /// The connected pads, with the names the system gives them.
     pub pads: Arc<Mutex<Vec<PadInfo>>>,
+    /// A 2.4G receiver is plugged in with no pad awake behind it.
+    pub dongle_waiting: Arc<AtomicBool>,
     /// The names the user gave to pads, and the file they are kept in.
     pub pad_names: Arc<Mutex<PadNames>>,
     pub pad_names_file: PathBuf,

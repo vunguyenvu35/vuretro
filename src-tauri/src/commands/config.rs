@@ -82,6 +82,8 @@ pub struct ScopedControlsView {
     config: ControlsConfig,
     custom: bool,
     pads: Vec<PadInfo>,
+    /// A 2.4G receiver is plugged in but its pad is asleep: the screen can say so.
+    dongle_waiting: bool,
 }
 
 fn scoped_view(shell: &Shell, v: vuretro_core::model::ScopedControls) -> ScopedControlsView {
@@ -89,6 +91,7 @@ fn scoped_view(shell: &Shell, v: vuretro_core::model::ScopedControls) -> ScopedC
         config: v.config,
         custom: v.custom,
         pads: shell.named_pads(),
+        dongle_waiting: shell.dongle_waiting.load(std::sync::atomic::Ordering::Relaxed),
     }
 }
 

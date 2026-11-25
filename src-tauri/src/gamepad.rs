@@ -2,6 +2,7 @@
 //! and button presses so it can identify pads and capture bindings.
 
 use serde::Serialize;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::Emitter;
@@ -21,7 +22,12 @@ fn uuid_hex(u: [u8; 16]) -> String {
 }
 
 /// Runs on its own thread (gilrs must live where it was created).
-pub fn spawn(app: tauri::AppHandle, pads: Arc<Mutex<Vec<PadInfo>>>, names: Arc<Mutex<PadNames>>) {
+pub fn spawn(
+    app: tauri::AppHandle,
+    pads: Arc<Mutex<Vec<PadInfo>>>,
+    names: Arc<Mutex<PadNames>>,
+    dongle_waiting: Arc<AtomicBool>,
+) {
     std::thread::spawn(move || {
         let Ok(mut g) = gilrs::Gilrs::new() else {
             return;
@@ -49,6 +55,7 @@ pub fn spawn(app: tauri::AppHandle, pads: Arc<Mutex<Vec<PadInfo>>>, names: Arc<M
         *pads.lock().unwrap() = snapshot(&g, &pro_pads);
         // what each Pro Controller had down at the last look, to report new presses only
         let mut was_down: Vec<Vec<gilrs::Button>> = Vec::new();
+        let mut dongle_was = false;
         loop {
             let mut changed = false;
             while let Some(ev) = g.next_event() {
@@ -91,6 +98,13 @@ pub fn spawn(app: tauri::AppHandle, pads: Arc<Mutex<Vec<PadInfo>>>, names: Arc<M
             }
             was_down = now.iter().map(|p| p.state.pressed()).collect();
             pro_pads = now;
+            // a receiver with no awake pad behind it: the screen says to press Home
+            let dongle = pro.dongle_waiting();
+            if dongle != dongle_was {
+                dongle_was = dongle;
+                dongle_waiting.store(dongle, Ordering::Relaxed);
+                let _ = app.emit("dongle-waiting", dongle);
+            }
             if changed {
                 let list = snapshot(&g, &pro_pads);
                 *pads.lock().unwrap() = list.clone();

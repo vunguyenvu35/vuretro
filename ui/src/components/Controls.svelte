@@ -15,6 +15,8 @@
   /** this system has key bindings of its own (otherwise it uses the general ones) */
   let custom = $state(false);
   let pads = $state([]);
+  /** a 2.4G receiver is plugged in but its pad is asleep */
+  let dongleWaiting = $state(false);
   let tab = $state(0);
   let capture = $state(null); // { player, kind: 'keyboard'|'gamepad', action }
   let saved = $state(false);
@@ -74,6 +76,7 @@
     const v = scope.kind === 'game' ? await api.controlsForGame(scope.id) : await api.controlsFor(app.scope);
     cfg = v.config;
     pads = v.pads;
+    dongleWaiting = !!v.dongle_waiting;
     custom = !!v.custom;
   }
 
@@ -198,6 +201,7 @@
   onMount(() => {
     const offs = [];
     api.onPadsChanged((list) => (pads = list)).then((f) => offs.push(f));
+    api.onDongleWaiting((on) => (dongleWaiting = !!on)).then((f) => offs.push(f));
     api
       .onPadButton((p) => {
         lastPress[p.id] = p.button;
@@ -280,6 +284,9 @@
     {#if pads.length === 0}
       <div class="card empty">
         <strong>No gamepad detected</strong>
+        {#if dongleWaiting}
+          <span class="hint">An 8BitDo 2.4G receiver is plugged in, but its gamepad is asleep or off. Press the Home button on the gamepad to wake it; it joins by itself within a second or two.</span>
+        {/if}
         <span class="muted">Plug one in or pair it over Bluetooth, then press a button. Xbox, DualSense and Switch Pro pads work.</span>
       </div>
     {:else}
@@ -428,6 +435,7 @@
   .swap:hover { border-color: var(--accent); }
 
   .empty { display: flex; flex-direction: column; gap: 4px; }
+  .empty .hint { color: var(--accent); }
   .pads { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .pad { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; transition: border-color .15s; }
   .pad.active { border-color: var(--accent); }

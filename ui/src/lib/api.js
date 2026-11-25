@@ -125,6 +125,8 @@ export const api = {
   onGameEvent: (fn) => on('game-event', fn),
   onUpdateProgress: (fn) => on('update-progress', fn),
   onPadsChanged: (fn) => on('pads-changed', fn),
+  /** a 2.4G receiver is plugged in but its pad is asleep (true) or awake / gone (false) */
+  onDongleWaiting: (fn) => on('dongle-waiting', fn),
   onCoreProgress: (fn) => on('core-progress', fn),
   onCoreDownloading: (fn) => on('core-downloading', fn),
   onPadButton: (fn) => on('pad-button', fn),

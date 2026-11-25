@@ -51,6 +51,7 @@ fn main() {
     let shell = Shell {
         app: Arc::new(build_app()),
         pads: Arc::new(Mutex::new(Vec::new())),
+        dongle_waiting: Arc::default(),
         pad_names: Arc::new(Mutex::new(vuretro_controls::padnames::load(
             &pad_names_file,
         ))),
@@ -58,6 +59,7 @@ fn main() {
     };
     let pads = shell.pads.clone();
     let pad_names = shell.pad_names.clone();
+    let dongle_waiting = shell.dongle_waiting.clone();
 
     use commands::{backup::*, config::*, cores::*, covers::*, launch::*, library::*, update::*};
     tauri::Builder::default()
@@ -67,7 +69,12 @@ fn main() {
         .menu(menu::build)
         .on_menu_event(|app, event| menu::handle(app, event.id().as_ref()))
         .setup(move |app| {
-            gamepad::spawn(app.handle().clone(), pads.clone(), pad_names.clone());
+            gamepad::spawn(
+                app.handle().clone(),
+                pads.clone(),
+                pad_names.clone(),
+                dongle_waiting.clone(),
+            );
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
