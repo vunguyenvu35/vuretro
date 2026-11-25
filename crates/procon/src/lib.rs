@@ -98,6 +98,44 @@ pub fn parse(report: &[u8]) -> Option<ProState> {
     Some(s)
 }
 
+/// The four bytes that make one motor buzz (or stay still), as the pad takes them in an output
+/// report. The pad treats any non-zero rumble as "on", so this is on or off, not a strength.
+/// The values are the ones SDL uses (`rumble_data_table.md` in the Switch reverse-engineering
+/// notes explains the encoding).
+pub fn motor_bytes(on: bool) -> [u8; 4] {
+    const HIGH_FREQ: u16 = 0x0074;
+    const HIGH_FREQ_AMP: u8 = 0xBE;
+    const LOW_FREQ: u8 = 0x3D;
+    const LOW_FREQ_AMP: u16 = 0x806F;
+    if on {
+        [
+            (HIGH_FREQ & 0xff) as u8,
+            HIGH_FREQ_AMP | ((HIGH_FREQ >> 8) & 0x01) as u8,
+            LOW_FREQ | ((LOW_FREQ_AMP >> 8) & 0x80) as u8,
+            (LOW_FREQ_AMP & 0xff) as u8,
+        ]
+    } else {
+        [0x00, 0x01, 0x40, 0x40]
+    }
+}
+
+/// An output report `0x10` that sets only the rumble: the strong (left) and weak (right) motor.
+pub fn rumble_report(counter: u8, strong: bool, weak: bool) -> [u8; 10] {
+    let (l, r) = (motor_bytes(strong), motor_bytes(weak));
+    [
+        0x10,
+        counter & 0x0f,
+        l[0],
+        l[1],
+        l[2],
+        l[3],
+        r[0],
+        r[1],
+        r[2],
+        r[3],
+    ]
+}
+
 /// A connected pad as the rest of the app sees it.
 #[derive(Clone, Debug)]
 pub struct ProPad {
@@ -124,6 +162,8 @@ impl ProCons {
     pub fn pads(&self) -> Vec<ProPad> {
         Vec::new()
     }
+    /// Nothing to vibrate here.
+    pub fn rumble(&self, _index: usize, _strong: bool, _weak: bool) {}
 }
 
 #[cfg(test)]
@@ -186,6 +226,16 @@ mod tests {
         r[0] = 0x3f;
         assert!(parse(&r).is_none());
         assert!(parse(&A_AND_STICK_RIGHT[..8]).is_none());
+    }
+
+    #[test]
+    fn rumble_report_is_on_or_neutral_per_motor() {
+        let r = rumble_report(0x13, true, false);
+        assert_eq!(r[0], 0x10);
+        assert_eq!(r[1], 0x03, "the counter is four bits");
+        assert_eq!(&r[2..6], &[0x74, 0xBE, 0xBD, 0x6F], "left motor on");
+        assert_eq!(&r[6..10], &[0x00, 0x01, 0x40, 0x40], "right motor still");
+        assert_eq!(&rumble_report(0, false, false)[2..6], &motor_bytes(false));
     }
 
     #[test]

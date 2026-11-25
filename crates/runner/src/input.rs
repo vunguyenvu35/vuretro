@@ -336,6 +336,13 @@ impl Input {
         };
         for (port, r) in self.rumble.changes(wanted) {
             self.effects[port] = None; // stops the old one
+                                       // a Pro Controller we read ourselves: its own on/off rumble (also to switch it off)
+            if let Some(idx) = sources[port].pad {
+                if let PadId::Pro(i) = pads[idx].0 {
+                    self.pro.rumble(i, r[0] > 0, r[1] > 0);
+                    continue;
+                }
+            }
             if !rumble::is_on(r) {
                 continue;
             }
@@ -344,7 +351,7 @@ impl Input {
                 continue;
             };
             let PadId::Gilrs(id) = pads[idx].0 else {
-                continue; // a Pro Controller we read ourselves has no vibration here
+                continue; // handled above
             };
             if !g.gamepad(id).is_ff_supported() {
                 continue;

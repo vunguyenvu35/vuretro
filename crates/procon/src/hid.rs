@@ -1,15 +1,18 @@
 //! The hardware side (macOS): one watcher thread that finds pads and one reader thread per pad.
 
-use crate::{parse, ProPad, ProState, NAME, PAD_ID, PRODUCT_ID, VENDOR_ID};
+use crate::{parse, rumble_report, ProPad, ProState, NAME, PAD_ID, PRODUCT_ID, VENDOR_ID};
 use hidapi::{BusType, HidApi, HidDevice};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 struct Slot {
     state: Arc<Mutex<ProState>>,
     alive: Arc<AtomicBool>,
+    /// Tells the reader thread to vibrate: (strong motor, weak motor).
+    rumble: Sender<(bool, bool)>,
 }
 
 type Slots = Arc<Mutex<HashMap<String, Slot>>>;
@@ -38,6 +41,20 @@ impl ProCons {
         ProCons { slots }
     }
 
+    /// Vibrate the pad at `index` of [`ProCons::pads`] (both motors off stops it).
+    pub fn rumble(&self, index: usize, strong: bool, weak: bool) {
+        let slots = self.slots.lock().unwrap();
+        let mut paths: Vec<&String> = slots.keys().collect();
+        paths.sort();
+        let alive: Vec<&&String> = paths
+            .iter()
+            .filter(|p| slots[**p].alive.load(Ordering::Relaxed))
+            .collect();
+        if let Some(p) = alive.get(index) {
+            let _ = slots[**p].rumble.send((strong, weak));
+        }
+    }
+
     pub fn pads(&self) -> Vec<ProPad> {
         let slots = self.slots.lock().unwrap();
         let mut paths: Vec<&String> = slots.keys().collect();
@@ -51,6 +68,19 @@ impl ProCons {
                 state: *slots[p].state.lock().unwrap(),
             })
             .collect()
+    }
+}
+
+/// Stops every pad's vibration when this goes away (a game closing must not leave one buzzing).
+impl Drop for ProCons {
+    fn drop(&mut self) {
+        let slots = self.slots.lock().unwrap();
+        for s in slots.values() {
+            let _ = s.rumble.send((false, false));
+        }
+        if !slots.is_empty() {
+            std::thread::sleep(Duration::from_millis(60)); // let the reader send it
+        }
     }
 }
 
@@ -129,6 +159,7 @@ fn say_hello(dev: &HidDevice) {
 fn start_reader(dev: HidDevice, usb: bool) -> Slot {
     let state = Arc::new(Mutex::new(ProState::default()));
     let alive = Arc::new(AtomicBool::new(true));
+    let (tx, rx) = channel::<(bool, bool)>();
     let (st, al) = (state.clone(), alive.clone());
     let spawned = std::thread::Builder::new()
         .name("procon-read".into())
@@ -138,21 +169,21 @@ fn start_reader(dev: HidDevice, usb: bool) -> Slot {
             }
             say_hello(&dev);
             let mut buf = [0u8; 128];
-            let mut silent = 0;
+            let mut quiet = Instant::now();
+            let (mut motors, mut counter, mut sent) = ((false, false), 0u8, Instant::now());
             loop {
-                match dev.read_timeout(&mut buf, 200) {
+                match dev.read_timeout(&mut buf, 10) {
                     Ok(0) => {
-                        silent += 1;
-                        if silent == 10 {
+                        if quiet.elapsed() > Duration::from_secs(2) {
                             if usb {
                                 usb_handshake(&dev);
                             }
                             say_hello(&dev); // 2 s of nothing: ask again
-                            silent = 0;
+                            quiet = Instant::now();
                         }
                     }
                     Ok(n) => {
-                        silent = 0;
+                        quiet = Instant::now();
                         if let Some(s) = parse(&buf[..n]) {
                             *st.lock().unwrap() = s;
                         }
@@ -162,11 +193,30 @@ fn start_reader(dev: HidDevice, usb: bool) -> Slot {
                         break;
                     }
                 }
+                // rumble: send a change at once, and keep sending while it is on (the pad lets
+                // go of a vibration it is not reminded of)
+                let mut changed = false;
+                while let Ok(m) = rx.try_recv() {
+                    changed |= m != motors;
+                    motors = m;
+                }
+                let on = motors.0 || motors.1;
+                if changed || (on && sent.elapsed() > Duration::from_millis(50)) {
+                    counter = counter.wrapping_add(1);
+                    if let Err(e) = dev.write(&rumble_report(counter, motors.0, motors.1)) {
+                        log::debug!("procon: rumble not sent: {e}");
+                    }
+                    sent = Instant::now();
+                }
             }
             al.store(false, Ordering::Relaxed);
         });
     if spawned.is_err() {
         alive.store(false, Ordering::Relaxed);
     }
-    Slot { state, alive }
+    Slot {
+        state,
+        alive,
+        rumble: tx,
+    }
 }
