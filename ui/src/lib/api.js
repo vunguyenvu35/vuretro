@@ -24,6 +24,7 @@ export const api = {
   renameGame: (path, name) => call('rename_game', { path, name }),
   clearRecent: () => call('clear_recent'),
   setGameCore: (path, core) => call('set_game_core', { path, core }),
+  resetMameInputs: (path) => call('reset_mame_inputs', { path }),
   setFetchArt: (enabled) => call('set_fetch_art', { enabled }),
   cheats: (path) => call('get_cheats', { path }),
   setCheats: (path, text) => call('set_cheats', { path, text }),

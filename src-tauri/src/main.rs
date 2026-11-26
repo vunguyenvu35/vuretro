@@ -98,6 +98,7 @@ fn main() {
             rename_pad,
             clear_recent,
             set_game_core,
+            reset_mame_inputs,
             get_cheats,
             set_cheats,
             get_controls_for,

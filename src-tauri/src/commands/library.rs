@@ -135,6 +135,38 @@ pub fn set_game_core(
     shell.app.set_game_core(path, core)
 }
 
+/// Drop the key remaps MAME saved for one game (it keeps them in `saves/<core>/cfg/<rom>.cfg`
+/// and they win over the app's buttons). The coin counters and sound settings in the file stay,
+/// and the old file is kept next to it as `.bak-before-reset`. Returns how many files changed.
+#[tauri::command]
+pub fn reset_mame_inputs(shell: State<'_, Shell>, path: String) -> Result<usize, String> {
+    let stem = std::path::Path::new(&path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or("this file has no name")?
+        .to_string();
+    let saves = shell.app.paths().saves_dir();
+    let Ok(cores) = std::fs::read_dir(&saves) else {
+        return Ok(0);
+    };
+    let mut changed = 0;
+    for core in cores.flatten() {
+        let cfg = core.path().join("cfg").join(format!("{stem}.cfg"));
+        let Ok(text) = std::fs::read_to_string(&cfg) else {
+            continue;
+        };
+        let Some(clean) = vuretro_core::mamecfg::without_input(&text) else {
+            continue;
+        };
+        let mut backup = cfg.clone().into_os_string();
+        backup.push(".bak-before-reset");
+        std::fs::copy(&cfg, &backup).map_err(|e| format!("cannot back up {}: {e}", cfg.display()))?;
+        std::fs::write(&cfg, clean).map_err(|e| format!("cannot write {}: {e}", cfg.display()))?;
+        changed += 1;
+    }
+    Ok(changed)
+}
+
 /// A game's cheat codes as text.
 #[tauri::command]
 pub fn get_cheats(shell: State<'_, Shell>, path: String) -> String {

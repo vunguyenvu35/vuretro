@@ -3,7 +3,7 @@
 import { gameScope } from '../lib/scope.js';
 import { lazyCover } from '../lib/lazyCovers.js';
 import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, applyPatch, covers, setLayout, pinCovers, pickRomFiles, pickRomFolder, clearRecent, setSort } from '../lib/store.svelte.js';
-  import { openMenu, confirmDialog } from '../lib/ui.svelte.js';
+  import { openMenu, confirmDialog, toast } from '../lib/ui.svelte.js';
   import { visibleGames, heroFor, headingFor, pickRange, formatSize, sortDirection, STATUSES } from '../lib/library.js';
   import Select from './Select.svelte';
   import SortMenu from './SortMenu.svelte';
@@ -18,6 +18,22 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   let newTag = $state('');
   /** How wide the games' own area is: the list drops columns by it (a script, not a container query: WebKit left the cells showing when the width changed) */
   let gw = $state(1000);
+  /** Drop the key changes MAME saved for a game (they win over the app's bindings). */
+  async function resetMameInputs(game) {
+    const yes = await confirmDialog({
+      title: 'Reset MAME key changes?',
+      message: `Keys changed in MAME's own menu for ${game.title} go back to the app's bindings.`,
+      note: 'Close the game first, or MAME writes them back when it quits. Coins and sound settings are kept.',
+      confirmLabel: 'Reset',
+    });
+    if (!yes) return;
+    try {
+      const n = await api.resetMameInputs(game.path);
+      toast(n ? 'MAME key changes removed. They apply the next time the game starts.' : 'MAME has no key changes saved for this game.');
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  }
   async function setTags(game, tags) {
     await api.setTags(game.path, tags);
     await refresh();
@@ -415,6 +431,10 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
     <MacroProfile game={selected} />
 
     <button class="btn wide" onclick={() => { app.scope = gameScope(selected.path); app.view = 'controls'; }}>Key bindings for this game…</button>
+
+    {#if sel?.coin_op}
+      <button class="btn wide" title="MAME saves keys changed in its own menu and they win over the ones above. Close the game first." onclick={() => resetMameInputs(selected)}>Reset MAME key changes</button>
+    {/if}
 
     <details class="gset">
       <summary class="label">Settings for this game</summary>
