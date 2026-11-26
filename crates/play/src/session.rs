@@ -22,6 +22,10 @@ use vuretro_settings::scoped::{load_overrides, save_overrides, Change, Scope};
 use vuretro_settings::GameSettings;
 
 /// Rewind keeps a state every this many frames, up to this much memory.
+/// Scale2x is for small pictures: above this many pixels (640x480, the biggest the console
+/// makes) it is skipped.
+const SCALE2X_MAX_PIXELS: usize = 640 * 480;
+
 const REWIND_EVERY: u64 = 2;
 const REWIND_BYTES: usize = 64 * 1024 * 1024;
 const SRAM_AUTOSAVE: Duration = Duration::from_secs(30);
@@ -720,12 +724,19 @@ impl Session {
         }
     }
 
+    /// Whether Scale2x applies to a picture of this size. It smooths the stairs of a small
+    /// picture; on one the graphics card already drew large (a GPU core at 4x) it would only
+    /// double a big picture on the processor and bring every frame back from the card.
+    fn scale2x_for(&self, w: usize, h: usize) -> bool {
+        self.scale2x && w * h <= SCALE2X_MAX_PIXELS
+    }
+
     /// Put a picture on the screen: the CRT or LCD look when one is on, enlarged by whole
     /// numbers when the view asks for it.
     fn show(&mut self, buf: &[u32], w: usize, h: usize) -> Result<()> {
         // A window that draws the look itself gets the picture as the game made it. Scale2x
         // changes the picture first, so with it on the look stays in the picture.
-        if self.screen.gpu_look() && !self.scale2x {
+        if self.screen.gpu_look() && !self.scale2x_for(w, h) {
             let look = self.wanted_look();
             if look != Look::Plain {
                 self.screen.set_look(look);
@@ -752,7 +763,7 @@ impl Session {
     /// window cannot, or the picture has to be changed first (Scale2x), read it back instead.
     fn show_gpu(&mut self, w: usize, h: usize) -> Result<()> {
         let look = self.wanted_look();
-        let can = !self.scale2x && (look == Look::Plain || self.screen.gpu_look());
+        let can = !self.scale2x_for(w, h) && (look == Look::Plain || self.screen.gpu_look());
         if can {
             if self.screen.gpu_look() {
                 self.screen.set_look(look);
@@ -785,7 +796,7 @@ impl Session {
             // enlarged pixels look like.
             let (win_w, win_h) = self.screen.size();
             let k = scale::integer_factor(w, h, win_w, win_h);
-            if self.scale2x && k >= 2 {
+            if self.scale2x_for(w, h) && k >= 2 {
                 let (big, bw, bh) = scale2x::apply(buf, w, h);
                 if bw != w {
                     // The smoothed picture is twice the size; bring it to k times the original.
@@ -807,7 +818,7 @@ impl Session {
             return self.enlarge_with_look(buf, w, h, k);
         }
         // In a window that stretches the picture, Scale2x first, then the look
-        if self.scale2x {
+        if self.scale2x_for(w, h) {
             let (big, bw, bh) = scale2x::apply(buf, w, h);
             if bw != w {
                 return self.look_without_whole_numbers(&big, bw, bh);
@@ -2194,5 +2205,24 @@ mod tests {
         s.crt = true;
         let (_, cw, ch) = s.compose(&pic, 6, 4);
         assert!(cw >= 12 && ch >= 8, "{cw}x{ch}");
+    }
+
+    #[test]
+    fn scale2x_is_skipped_for_a_picture_that_is_already_large() {
+        let (mut s, _r) = rig(100);
+        s.scale2x = true;
+        let small = vec![0x00ff_0000u32; 320 * 240];
+        assert_eq!(
+            s.compose(&small, 320, 240).1,
+            640,
+            "a small picture is doubled"
+        );
+        let big = vec![0x0000_ff00u32; 1024 * 956];
+        let (out, w, h) = s.compose(&big, 1024, 956);
+        assert_eq!(
+            (w, h, out.len()),
+            (1024, 956, 1024 * 956),
+            "a large one is left as it is"
+        );
     }
 }
