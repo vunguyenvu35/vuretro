@@ -15,9 +15,13 @@ use std::sync::Arc;
 
 /// Buffer level the rate controller steers towards, in seconds of core audio.
 pub const TARGET_BUFFER_SECS: f64 = 0.06;
-/// Above this much buffered audio the sound card's side skips ahead to the target, so the
-/// delay cannot grow (fast-forward, or a video clock that ran away).
-const MAX_BUFFER_SECS: f64 = 0.25;
+/// The same for a core that draws with the graphics card: its frames arrive less evenly (the
+/// card sometimes holds one back for a few frames), and a buffer this size rides that out
+/// instead of leaving gaps in the sound, at the price of about 0.1 s more delay.
+pub const GPU_BUFFER_SECS: f64 = 0.16;
+/// How much more than the target may be buffered before the sound card's side skips ahead to
+/// the target, so the delay cannot grow (fast-forward, or a video clock that ran away).
+const BUFFER_HEADROOM_SECS: f64 = 0.19;
 /// Max resampling speed change (0.5 %, inaudible).
 const MAX_RATE_ADJUST: f64 = 0.005;
 /// What the queue holds, in samples (two per frame): 1.4 s at 96 kHz.
@@ -125,7 +129,7 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn new(sink: AudioSink, core_rate: f64, device_rate: f64) -> Self {
+    pub fn new(sink: AudioSink, core_rate: f64, device_rate: f64, target_secs: f64) -> Self {
         let step = core_rate / device_rate;
         Player {
             source: Source {
@@ -134,8 +138,8 @@ impl Player {
             },
             resampler: Resampler::new(step),
             step,
-            target_frames: (core_rate * TARGET_BUFFER_SECS) as usize,
-            max_frames: (core_rate * MAX_BUFFER_SECS) as usize,
+            target_frames: (core_rate * target_secs) as usize,
+            max_frames: (core_rate * (target_secs + BUFFER_HEADROOM_SECS)) as usize,
             level: 0.0,
             level_rate: (1.0 - (-1.0 / (GAIN_SECS * device_rate)).exp()) as f32,
         }
@@ -188,6 +192,7 @@ pub fn start(
     core_rate: f64,
     gain: Arc<AtomicU32>,
     speed: Arc<AtomicU32>,
+    target_secs: f64,
 ) -> Result<AudioOut> {
     let host = cpal::default_host();
     let device = host
@@ -199,7 +204,7 @@ pub fn start(
     let config: cpal::StreamConfig = supported.into();
     log::info!("audio: core {core_rate:.0} Hz -> device {device_rate:.0} Hz, {channels} ch");
 
-    let mut player = Player::new(sink, core_rate, device_rate);
+    let mut player = Player::new(sink, core_rate, device_rate, target_secs);
     let stream = device.build_output_stream(
         &config,
         move |out: &mut [f32], _| {
@@ -235,7 +240,10 @@ mod tests {
     fn player(frames_queued: usize) -> (Player, AudioFeed) {
         let (mut feed, sink) = channel();
         assert_eq!(feed.push(&tone(frames_queued)), frames_queued * 2);
-        (Player::new(sink, 44_100.0, 48_000.0), feed)
+        (
+            Player::new(sink, 44_100.0, 48_000.0, TARGET_BUFFER_SECS),
+            feed,
+        )
     }
 
     #[test]
@@ -245,6 +253,22 @@ mod tests {
         assert!(drc_ratio(0.0, 100.0) < 1.0);
         assert!((drc_ratio(1e9, 100.0) - (1.0 + MAX_RATE_ADJUST)).abs() < 1e-12);
         assert!((drc_ratio(0.0, 100.0) - (1.0 - MAX_RATE_ADJUST)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn a_core_that_draws_with_the_gpu_gets_a_bigger_buffer_and_room_above_it() {
+        let (_feed, sink) = channel();
+        let normal = Player::new(sink, 44_100.0, 48_000.0, TARGET_BUFFER_SECS);
+        let (_feed, sink) = channel();
+        let gpu = Player::new(sink, 44_100.0, 48_000.0, GPU_BUFFER_SECS);
+        assert!(gpu.target_frames > normal.target_frames * 2);
+        // the sound is cut back to the target only well above it: the delay still cannot grow
+        assert!(gpu.max_frames > gpu.target_frames);
+        assert!(
+            gpu.max_frames as f64 / 44_100.0 < 0.4,
+            "{} frames",
+            gpu.max_frames
+        );
     }
 
     #[test]
@@ -368,7 +392,7 @@ mod tests {
         // grows with the error: about 60 % of it for 0.3 %. That is what is checked for.)
         for error in [-0.003, 0.0, 0.003] {
             let (mut feed, sink) = channel();
-            let mut p = Player::new(sink, 44_100.0, 48_000.0);
+            let mut p = Player::new(sink, 44_100.0, 48_000.0, TARGET_BUFFER_SECS);
             let target = p.target_frames;
             feed.push(&tone(target)); // the game is a little ahead of the sound when it starts
             let mut owed = 0.0f64;
@@ -403,7 +427,7 @@ mod tests {
     fn mono_devices_get_both_channels_mixed_and_wider_ones_alternate() {
         let (mut feed, sink) = channel();
         feed.push(&[8000i16, -8000].repeat(4_000)); // left up, right down: cancels in mono
-        let mut p = Player::new(sink, 48_000.0, 48_000.0);
+        let mut p = Player::new(sink, 48_000.0, 48_000.0, TARGET_BUFFER_SECS);
         let mut mono = vec![0f32; 2_000];
         p.render(&mut mono, 1, 100, 100);
         assert!(mono[1_999].abs() < 1e-3, "{}", mono[1_999]);

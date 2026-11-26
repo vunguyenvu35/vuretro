@@ -122,6 +122,11 @@ pub fn open(p: Params) -> Result<Session> {
         av.timing.sample_rate * fps / core_fps,
         gain.clone(),
         speed.clone(),
+        if crate::frontend::with(|fe| fe.hw).is_some() {
+            audio::GPU_BUFFER_SECS
+        } else {
+            audio::TARGET_BUFFER_SECS
+        },
     ) {
         Ok(a) => Some(a),
         Err(e) => {
