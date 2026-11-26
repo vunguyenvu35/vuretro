@@ -218,4 +218,16 @@ mod tests {
         assert!(!by_id("snes").unwrap().coin_op);
         assert!(!by_id("psx").unwrap().coin_op);
     }
+
+    #[test]
+    fn playstation_offers_gpu_cores_beside_the_software_one() {
+        let psx = by_id("psx").unwrap();
+        assert_eq!(
+            psx.core, "pcsx_rearmed_libretro",
+            "the default stays the light one"
+        );
+        let all: Vec<_> = psx.all_cores().collect();
+        assert!(all.contains(&"swanstation_libretro"), "{all:?}");
+        assert!(all.contains(&"mednafen_psx_hw_libretro"), "{all:?}");
+    }
 }

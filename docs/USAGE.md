@@ -117,6 +117,8 @@ On Windows and Linux use `Ctrl` in place of `⌘`.
 
 **Carry on where I left off.** Switch it on in Settings and vuretro saves the game when you close it, and loads it again the next time you start that game. Press `F2` to start over, or start from a save slot in the game's details. It needs a core with save states.
 
+**Sharper PlayStation (GPU).** PlayStation games are drawn by `pcsx_rearmed` on the processor, at the console's own 320×240. Two other cores draw with the graphics card and can render at 2× to 8× that size, which is much sharper and still fast: **SwanStation** (`swanstation`) and **Beetle PSX HW** (`mednafen_psx_hw`). In **Cores & BIOS** choose the core of PlayStation (or, in a game's details, **Runs on**) and install it, then open its **Options** and raise **Internal Resolution Scale** (SwanStation: try 4). Turn **Scale2x** off for PlayStation: it works on the processor and would make every frame travel back from the graphics card. A save state belongs to the core that made it, so states made with one PlayStation core do not load in another. SwanStation started Road Rash here without any BIOS file; a BIOS from your own console (see the table above) is still the safer choice for other games.
+
 **Full screen** is a borderless window the size of your display. It is available on macOS and Windows; on Linux the game stays in a window for now. **Whole-number scaling** (Settings) enlarges the picture by 2×, 3× … only, with black borders, so pixels stay sharp. **Smooth when enlarged (bilinear)** (Settings, general or per system) does the opposite: it softens the picture instead of showing big square pixels, which suits 3D and video games such as PlayStation. It applies the next time a game starts.
 
 ### Gamepad shortcuts
