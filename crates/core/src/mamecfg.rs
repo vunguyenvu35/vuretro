@@ -24,7 +24,7 @@ pub fn without_input(cfg: &str) -> Option<String> {
         };
         found = true;
         // take the whole line the block started on, with its indentation
-        let line_start = rest[..start].rfind('\n').map_or(0, |i| i);
+        let line_start = rest[..start].rfind('\n').unwrap_or(0);
         out.push_str(&rest[..line_start]);
         rest = &rest[start + len + "</input>".len()..];
     }
