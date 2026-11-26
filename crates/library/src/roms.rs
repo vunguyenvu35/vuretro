@@ -64,10 +64,16 @@ fn copy_into(src: &Path, dir: &Path, moving: bool) -> Result<(PathBuf, bool), St
 pub fn import_file(src: &Path, library: &Path, hint: Option<&str>) -> Result<Imported, String> {
     // A disc that comes in an archive is unpacked first: no one has to do it by hand.
     if unpack::is_archive(src) {
-        if let Ok(list) = unpack::names(src) {
-            if unpack::holds_disc(&list) {
+        let is_rar = src
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("rar"));
+        match unpack::names(src) {
+            Ok(list) if unpack::holds_disc(&list) || is_rar => {
                 return import_disc_archive(src, library, hint);
             }
+            // a rar cannot be played as it is: say why it failed, not "unknown system"
+            Err(e) if is_rar => return Err(e),
+            _ => {}
         }
     }
     import_inner(src, library, hint, false)
@@ -83,7 +89,12 @@ fn import_disc_archive(src: &Path, library: &Path, hint: Option<&str>) -> Result
         unpack::mend_cues(&tmp);
         let mut first: Option<Imported> = None;
         let mut error = None;
-        for entry in unpack::entry_points(&tmp) {
+        let mut entries = unpack::entry_points(&tmp);
+        if entries.is_empty() {
+            // no disc inside (a rar with a cartridge ROM): try every file, what is no game is refused
+            entries = unpack::files_under(&tmp);
+        }
+        for entry in entries {
             match import_inner(&entry, library, hint, true) {
                 Ok(i) => {
                     first.get_or_insert(i);
@@ -91,7 +102,7 @@ fn import_disc_archive(src: &Path, library: &Path, hint: Option<&str>) -> Result
                 Err(e) => error = error.or(Some(e)),
             }
         }
-        first.ok_or_else(|| error.unwrap_or_else(|| "no disc image found in the archive".into()))
+        first.ok_or_else(|| error.unwrap_or_else(|| "no game found in the archive".into()))
     })();
     let _ = std::fs::remove_dir_all(&tmp);
     result

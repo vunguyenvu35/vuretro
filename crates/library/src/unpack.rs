@@ -23,12 +23,65 @@ pub fn is_archive(path: &Path) -> bool {
             .and_then(|e| e.to_str())
             .map(str::to_ascii_lowercase)
             .as_deref(),
-        Some("zip" | "7z")
+        Some("zip" | "7z" | "rar")
     )
 }
 
-/// The names of the files in a `.zip` or `.7z`, without unpacking anything.
+/// A name inside an archive that stays under the folder it is unpacked into.
+fn is_safe(name: &str) -> bool {
+    use std::path::Component;
+    Path::new(name)
+        .components()
+        .all(|c| matches!(c, Component::Normal(_) | Component::CurDir))
+        && !name.contains('\\')
+}
+
+/// The names of the files in a `.rar`, without unpacking anything.
+fn rar_names(archive: &Path) -> Result<Vec<String>, String> {
+    let list = unrar::Archive::new(archive)
+        .open_for_listing()
+        .map_err(|e| format!("cannot read the rar: {e}"))?;
+    let mut out = Vec::new();
+    for entry in list {
+        let entry = entry.map_err(|e| format!("cannot read the rar: {e}"))?;
+        if !entry.is_directory() {
+            out.push(entry.filename.to_string_lossy().into_owned());
+        }
+    }
+    Ok(out)
+}
+
+/// Unpack a `.rar` into `dest`, refusing names that would leave it.
+fn rar_extract(archive: &Path, dest: &Path) -> Result<(), String> {
+    let mut open = unrar::Archive::new(archive)
+        .open_for_processing()
+        .map_err(|e| format!("cannot read the rar: {e}"))?;
+    while let Some(header) = open
+        .read_header()
+        .map_err(|e| format!("cannot unpack it: {e}"))?
+    {
+        let name = header.entry().filename.to_string_lossy().into_owned();
+        if !is_safe(&name) {
+            return Err(format!("unsafe file name in the archive: {name}"));
+        }
+        open = if header.entry().is_file() {
+            header
+                .extract_with_base(dest)
+                .map_err(|e| format!("cannot unpack {name}: {e}"))?
+        } else {
+            header
+                .skip()
+                .map_err(|e| format!("cannot unpack it: {e}"))?
+        };
+    }
+    Ok(())
+}
+
+/// The names of the files in a `.zip`, `.7z` or `.rar`, without unpacking anything.
 pub fn names(archive: &Path) -> Result<Vec<String>, String> {
+    if ext_of(&archive.to_string_lossy()) == "rar" {
+        return rar_names(archive);
+    }
     let file = std::fs::File::open(archive).map_err(|e| format!("cannot open it: {e}"))?;
     if ext_of(&archive.to_string_lossy()) == "7z" {
         let reader = sevenz_rust2::ArchiveReader::new(file, sevenz_rust2::Password::empty())
@@ -59,6 +112,9 @@ pub fn holds_disc(names: &[String]) -> bool {
 /// Unpack everything into `dest`. Names that would leave `dest` are refused.
 pub fn extract(archive: &Path, dest: &Path) -> Result<(), String> {
     std::fs::create_dir_all(dest).map_err(|e| e.to_string())?;
+    if ext_of(&archive.to_string_lossy()) == "rar" {
+        return rar_extract(archive, dest);
+    }
     if ext_of(&archive.to_string_lossy()) == "7z" {
         return sevenz_rust2::decompress_file(archive, dest)
             .map_err(|e| format!("cannot unpack it: {e}"));
@@ -88,7 +144,7 @@ pub fn extract(archive: &Path, dest: &Path) -> Result<(), String> {
 }
 
 /// Every file under `dir`, in a stable order.
-fn files_under(dir: &Path) -> Vec<PathBuf> {
+pub fn files_under(dir: &Path) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = walkdir::WalkDir::new(dir)
         .into_iter()
         .flatten()
@@ -320,5 +376,21 @@ mod tests {
         // not beside the folder, nor anywhere above it
         assert!(!out.parent().unwrap().join("evil.txt").exists());
         assert!(!dir.path().join("evil.txt").exists());
+    }
+
+    #[test]
+    fn a_rar_is_an_archive_and_a_broken_one_says_so() {
+        assert!(is_archive(Path::new("g.rar")) && is_archive(Path::new("G.RAR")));
+        let dir = tempfile::tempdir().unwrap();
+        let bad = dir.path().join("bad.rar");
+        std::fs::write(&bad, "this is not a rar").unwrap();
+        assert!(names(&bad).is_err());
+        assert!(extract(&bad, &dir.path().join("out")).is_err());
+    }
+
+    #[test]
+    fn names_that_leave_the_folder_are_unsafe() {
+        assert!(is_safe("game.cue") && is_safe("disc/game.cue"));
+        assert!(!is_safe("../evil.bin") && !is_safe("/etc/passwd") && !is_safe("a/../../b"));
     }
 }
