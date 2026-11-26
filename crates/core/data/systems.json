@@ -10,7 +10,7 @@
   },
   {
     "id": "psx", "name": "PlayStation", "core": "pcsx_rearmed_libretro",
-    "alt_cores": ["swanstation_libretro", "mednafen_psx_hw_libretro"],
+    "alt_cores": ["mednafen_psx_hw_libretro", "swanstation_libretro"],
     "thumbnails": "Sony - PlayStation",
     "screenscraper": 57,
     "look": "crt",
