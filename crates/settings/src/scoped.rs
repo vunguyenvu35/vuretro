@@ -5,7 +5,8 @@
 //! Only the settings that differ in a useful way between systems can be overridden: window
 //! size (a Game Boy needs a bigger window than a PlayStation), the picture look (CRT, LCD,
 //! whole-number scaling), rewind, fast-forward speed and resuming.
-//! Sound and focus behaviour are habits of the player, not of a system, so they stay general.
+//! The volume and focus behaviour are habits of the player, not of a system, so they stay
+//! general. Sound on or off can be set for one system or game (a game that is always silent).
 
 use crate::GameSettings;
 use serde::{Deserialize, Serialize};
@@ -24,6 +25,8 @@ pub struct Override {
     pub scale2x: Option<bool>,
     pub integer_scale: Option<bool>,
     pub smooth: Option<bool>,
+    /// Sound on or off for this system or game (the volume stays general).
+    pub sound: Option<bool>,
     pub resume: Option<bool>,
     pub auto_coin: Option<bool>,
 }
@@ -58,6 +61,9 @@ impl Override {
         }
         if let Some(v) = self.smooth {
             base.smooth = v;
+        }
+        if let Some(v) = self.sound {
+            base.sound = v;
         }
         if let Some(v) = self.resume {
             base.resume = v;
@@ -390,5 +396,42 @@ mod tests {
             },
         );
         assert!(on.smooth && !off.smooth);
+    }
+
+    #[test]
+    fn one_game_can_be_silent_while_the_others_keep_their_sound() {
+        let mut o = Overrides::default();
+        o.games.insert(
+            "quiet".into(),
+            Override {
+                sound: Some(false),
+                ..Override::default()
+            },
+        );
+        let base = GameSettings::default();
+        assert!(base.sound);
+        let sc = |game| Scope {
+            system: "psx",
+            game,
+        };
+        assert!(!o.resolve(&base, sc("quiet")).sound);
+        assert!(o.resolve(&base, sc("loud")).sound);
+        // a silent system, with one game of it turned back on
+        o.systems.insert(
+            "psx".into(),
+            Override {
+                sound: Some(false),
+                ..Override::default()
+            },
+        );
+        o.games.insert(
+            "loud".into(),
+            Override {
+                sound: Some(true),
+                ..Override::default()
+            },
+        );
+        assert!(!o.resolve(&base, sc("other")).sound);
+        assert!(o.resolve(&base, sc("loud")).sound);
     }
 }

@@ -13,6 +13,7 @@
   const SPEEDS = [2, 3, 4, 8];
   /** The yes/no settings a system or game can change, in the order shown. */
   const SWITCHES = [
+    { f: 'sound', title: 'Sound', d: 'Turn it off to keep this one silent. The volume stays the same everywhere.' },
     { f: 'crt', title: 'CRT scanlines', d: 'Looks best on low-resolution systems.' },
     { f: 'lcd', title: 'LCD pixel grid', d: 'A handheld look, for Game Boy and similar systems. CRT wins if both are on.' },
     { f: 'scale2x', title: 'Smooth pixels (Scale2x)', d: 'Doubles the picture and rounds the stairs on diagonal edges without blurring. Suits 2D pixel art.' },
