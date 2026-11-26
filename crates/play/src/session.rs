@@ -2028,6 +2028,7 @@ mod tests {
         let view = View {
             integer: true,
             fullscreen: false,
+            ..View::default()
         };
         let (mut s, r) = rig_in(
             tempfile::tempdir().unwrap(),
@@ -2052,6 +2053,7 @@ mod tests {
         let view = View {
             integer: true,
             fullscreen: false,
+            ..View::default()
         };
         let (mut s, r) = rig_in(
             tempfile::tempdir().unwrap(),
@@ -2069,6 +2071,7 @@ mod tests {
         let view = View {
             integer: true,
             fullscreen: false,
+            ..View::default()
         };
         let (s, r) = rig_in(tempfile::tempdir().unwrap(), 100, settings_with(f), view);
         r.log.borrow_mut().win_size = win;

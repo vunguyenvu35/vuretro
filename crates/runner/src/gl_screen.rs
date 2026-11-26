@@ -220,7 +220,7 @@ impl Gfx {
         let gl = Rc::new(unsafe {
             glow::Context::from_loader_function_cstr(|name| display.get_proc_address(name))
         });
-        let (program, vao, texture) = unsafe { Self::init_gl(&gl)? };
+        let (program, vao, texture) = unsafe { Self::init_gl(&gl, spec.view.smooth)? };
         let menu = GameMenu::new(&window);
         Ok(Gfx {
             display,
@@ -291,6 +291,7 @@ impl Gfx {
     /// A context must be current on this thread.
     unsafe fn init_gl(
         gl: &glow::Context,
+        smooth: bool,
     ) -> Result<(glow::Program, glow::VertexArray, glow::Texture)> {
         let program = gl.create_program().map_err(|e| anyhow!(e))?;
         let mut shaders = Vec::new();
@@ -318,9 +319,11 @@ impl Gfx {
         let vao = gl.create_vertex_array().map_err(|e| anyhow!(e))?;
         let texture = gl.create_texture().map_err(|e| anyhow!(e))?;
         gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+        // each pixel a square, or smoothed when the window enlarges the picture
+        let filter = if smooth { glow::LINEAR } else { glow::NEAREST };
         for (p, v) in [
-            (glow::TEXTURE_MIN_FILTER, glow::NEAREST),
-            (glow::TEXTURE_MAG_FILTER, glow::NEAREST),
+            (glow::TEXTURE_MIN_FILTER, filter),
+            (glow::TEXTURE_MAG_FILTER, filter),
             (glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE),
             (glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE),
         ] {

@@ -139,6 +139,7 @@ pub fn open(p: Params) -> Result<Session> {
     let view = View {
         fullscreen: p.settings.fullscreen,
         integer: p.settings.integer_scale,
+        smooth: p.settings.smooth,
     };
     // the icon first, so the Dock tile is made with it; once more after the window exists,
     // because the first window changes how the process presents itself

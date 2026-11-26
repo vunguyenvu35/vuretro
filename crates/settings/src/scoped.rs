@@ -23,6 +23,7 @@ pub struct Override {
     pub lcd: Option<bool>,
     pub scale2x: Option<bool>,
     pub integer_scale: Option<bool>,
+    pub smooth: Option<bool>,
     pub resume: Option<bool>,
     pub auto_coin: Option<bool>,
 }
@@ -54,6 +55,9 @@ impl Override {
         }
         if let Some(v) = self.integer_scale {
             base.integer_scale = v;
+        }
+        if let Some(v) = self.smooth {
+            base.smooth = v;
         }
         if let Some(v) = self.resume {
             base.resume = v;
@@ -357,5 +361,34 @@ mod tests {
         assert_eq!(load_overrides(&path), Overrides::default());
         save_overrides(&path, &Overrides::default()).unwrap();
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn smoothing_can_be_set_for_one_system_only() {
+        let mut o = Overrides::default();
+        o.systems.insert(
+            "psx".into(),
+            Override {
+                smooth: Some(true),
+                ..Override::default()
+            },
+        );
+        let base = GameSettings::default();
+        assert!(!base.smooth, "off unless asked for");
+        let on = o.resolve(
+            &base,
+            Scope {
+                system: "psx",
+                game: "g",
+            },
+        );
+        let off = o.resolve(
+            &base,
+            Scope {
+                system: "snes",
+                game: "g",
+            },
+        );
+        assert!(on.smooth && !off.smooth);
     }
 }

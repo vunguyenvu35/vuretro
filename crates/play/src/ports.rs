@@ -26,6 +26,8 @@ pub struct View {
     pub fullscreen: bool,
     /// Whole-number scaling with black borders; the session prepares the enlarged picture.
     pub integer: bool,
+    /// Enlarge with smoothing (bilinear) instead of showing each pixel as a square.
+    pub smooth: bool,
 }
 
 /// A look the window can draw itself, over the picture as the game made it.

@@ -29,7 +29,7 @@
   // Whatever the backend sends, fill in anything missing so a switch never gets stuck.
   const DEFAULTS = {
     window_scale: 2, sound: true, volume: 100, sync_display: true, pause_on_blur: false, crt: false, rewind: false,
-    fast_forward: 4, ff_sound: false, resume: false, lcd: false, scale2x: false, integer_scale: false, fullscreen: false, rumble: true, auto_coin: false,
+    fast_forward: 4, ff_sound: false, resume: false, lcd: false, scale2x: false, integer_scale: false, smooth: false, fullscreen: false, rumble: true, auto_coin: false,
   };
   const SPEEDS = [2, 3, 4, 8];
   const withDefaults = (v) => ({ ...DEFAULTS, ...v });
@@ -198,6 +198,17 @@
             <div class="d">Enlarges the picture by 2×, 3×, 4× … only, with black borders instead of a blurry stretch. Pixels stay sharp.</div>
           </div>
           <button class="switch" role="switch" aria-checked={s.integer_scale} aria-label="Whole-number scaling" class:on={s.integer_scale} onclick={() => flip('integer_scale')}><span></span></button>
+        </div>
+
+        <div class="row">
+          <span class="tile blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 16c4-8 12-8 16 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+          </span>
+          <div class="txt">
+            <div class="t">Smooth when enlarged (bilinear)</div>
+            <div class="d">Softens the picture instead of showing big square pixels. Suits 3D and video games such as PlayStation; pixel art looks best without it. Applies the next time a game starts.</div>
+          </div>
+          <button class="switch" role="switch" aria-checked={s.smooth} aria-label="Smooth when enlarged" class:on={s.smooth} onclick={() => flip('smooth')}><span></span></button>
         </div>
 
         <div class="sizes">

@@ -55,6 +55,9 @@ pub struct GameSettings {
     pub scale2x: bool,
     /// Scale the picture by whole numbers only, with black borders instead of blur.
     pub integer_scale: bool,
+    /// Smooth the picture when the window enlarges it (bilinear), instead of showing each
+    /// pixel as a square. Softer, like the plugins of old PlayStation emulators.
+    pub smooth: bool,
     /// Start in a full-screen window.
     pub fullscreen: bool,
     /// Make the gamepad rumble when the game asks for it (not supported on every OS).
@@ -81,6 +84,7 @@ impl Default for GameSettings {
             lcd: false,
             scale2x: false,
             integer_scale: false,
+            smooth: false,
             fullscreen: false,
             rumble: true,
             auto_coin: false,
@@ -193,6 +197,7 @@ mod tests {
             lcd: true,
             scale2x: true,
             integer_scale: true,
+            smooth: true,
             fullscreen: true,
             rumble: false,
             auto_coin: true,

@@ -117,7 +117,7 @@ On Windows and Linux use `Ctrl` in place of `⌘`.
 
 **Carry on where I left off.** Switch it on in Settings and vuretro saves the game when you close it, and loads it again the next time you start that game. Press `F2` to start over, or start from a save slot in the game's details. It needs a core with save states.
 
-**Full screen** is a borderless window the size of your display. It is available on macOS and Windows; on Linux the game stays in a window for now. **Whole-number scaling** (Settings) enlarges the picture by 2×, 3× … only, with black borders, so pixels stay sharp.
+**Full screen** is a borderless window the size of your display. It is available on macOS and Windows; on Linux the game stays in a window for now. **Whole-number scaling** (Settings) enlarges the picture by 2×, 3× … only, with black borders, so pixels stay sharp. **Smooth when enlarged (bilinear)** (Settings, general or per system) does the opposite: it softens the picture instead of showing big square pixels, which suits 3D and video games such as PlayStation. It applies the next time a game starts.
 
 ### Gamepad shortcuts
 
@@ -171,7 +171,7 @@ Settings apply the next time a game starts.
 
 - **Window size**: a multiple of the game's own resolution (1× to 8×).
 - **Smooth motion**: match your screen's refresh rate. This removes the small periodic stutter on 60 Hz displays; the game may run up to 5% faster than the original.
-- **Start in full screen**, **Whole-number scaling**, **CRT scanlines**, **LCD pixel grid**, **Smooth pixels (Scale2x)**.
+- **Start in full screen**, **Whole-number scaling**, **CRT scanlines**, **LCD pixel grid**, **Smooth pixels (Scale2x)**, **Smooth when enlarged (bilinear)**.
 - **Pause when the window loses focus**: stops the game while you are in another app.
 - **Rewind**, **Fast-forward speed**, **Sound while fast-forwarding**, **Carry on where I left off**, **Insert a coin when Start is pressed** (arcade games), **Gamepad vibration**.
 - **Game sound** and **Volume**.
