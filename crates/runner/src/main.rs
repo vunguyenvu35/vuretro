@@ -86,7 +86,7 @@ struct Args {
     /// Print the core's options as a config template and exit
     #[arg(long)]
     list_options: bool,
-    /// Load this save slot (1..=4) right after the game starts
+    /// Load this save slot (1..=10) right after the game starts
     #[arg(long, value_name = "N")]
     load_slot: Option<u8>,
     /// Print the core's options as JSON (key, description, values) and exit; needs no ROM

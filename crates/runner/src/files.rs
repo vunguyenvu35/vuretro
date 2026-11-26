@@ -13,6 +13,9 @@ impl Files for DiskFiles {
     fn write(&self, path: &Path, data: &[u8]) -> std::io::Result<()> {
         std::fs::write(path, data)
     }
+    fn modified(&self, path: &Path) -> Option<std::time::SystemTime> {
+        std::fs::metadata(path).ok()?.modified().ok()
+    }
     fn write_png(&self, path: &Path, buf: &[u32], w: usize, h: usize) -> Result<()> {
         write_png(path, buf, w, h)
     }

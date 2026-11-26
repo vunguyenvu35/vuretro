@@ -118,6 +118,25 @@ pub enum Act {
     Quit,
 }
 
+/// How long ago, in the words the State menu uses.
+fn ago(age: std::time::Duration) -> String {
+    let s = age.as_secs();
+    match s {
+        0..=59 => "just now".to_string(),
+        60..=3599 => format!("{} min ago", s / 60),
+        3600..=86399 => format!("{} h ago", s / 3600),
+        _ => format!("{} d ago", s / 86400),
+    }
+}
+
+/// The menu text of one save slot: its number and what it holds.
+pub fn slot_label(slot: u8, age: Option<std::time::Duration>) -> String {
+    match age {
+        Some(a) => format!("Use Slot {slot}  ·  saved {}", ago(a)),
+        None => format!("Use Slot {slot}  ·  empty"),
+    }
+}
+
 /// Menu item ids are plain numbers: map them to actions and back.
 pub fn act_id(a: Act) -> usize {
     match a {
@@ -296,5 +315,17 @@ mod pause_tests {
         assert_eq!(out.len(), buf.len());
         assert_eq!(out[0], 0x007F_7F7F); // half brightness
         assert!(out.contains(&0x00FF_FFFF)); // the bars
+    }
+
+    #[test]
+    fn a_slot_says_whether_it_holds_a_save_and_how_old_it_is() {
+        use std::time::Duration;
+        let at = |s| slot_label(2, Some(Duration::from_secs(s)));
+        assert_eq!(slot_label(3, None), "Use Slot 3  ·  empty");
+        assert_eq!(at(5), "Use Slot 2  ·  saved just now");
+        assert_eq!(at(60), "Use Slot 2  ·  saved 1 min ago");
+        assert_eq!(at(59 * 60 + 59), "Use Slot 2  ·  saved 59 min ago");
+        assert_eq!(at(3600), "Use Slot 2  ·  saved 1 h ago");
+        assert_eq!(at(86400 * 3), "Use Slot 2  ·  saved 3 d ago");
     }
 }

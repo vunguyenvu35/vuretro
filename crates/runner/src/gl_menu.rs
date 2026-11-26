@@ -8,13 +8,16 @@
 #[cfg(any(target_os = "macos", windows))]
 mod native {
     use muda::accelerator::{Accelerator, Code, Modifiers};
-    use muda::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem, Submenu};
+    use muda::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem, Submenu};
+    use std::cell::RefCell;
     use vuretro_play::window::{act_id, Act, SLOTS};
     use winit::window::Window;
 
     /// The menu bar of one window. Keep it alive as long as the window.
     pub struct GameMenu {
         _menu: Menu,
+        /// The "Use Slot n" items, to say which holds a save and which is current.
+        slots: Vec<CheckMenuItem>,
     }
 
     /// Command on macOS, Control elsewhere.
@@ -38,6 +41,18 @@ mod native {
             );
             let _ = self.menu.append(&it);
         }
+        /// A slot item: it carries a check mark for the current slot.
+        fn slot(&self, n: u8) -> CheckMenuItem {
+            let it = CheckMenuItem::with_id(
+                MenuId::new(act_id(Act::Slot(n)).to_string()),
+                format!("Use Slot {n}"),
+                true,
+                false,
+                None,
+            );
+            let _ = self.menu.append(&it);
+            it
+        }
         fn note(&self, label: &str) {
             let _ = self
                 .menu
@@ -55,8 +70,9 @@ mod native {
     }
 
     /// Every menu of the game window.
-    fn build() -> Menu {
+    fn build() -> (Menu, Vec<CheckMenuItem>) {
         let menu = Menu::new();
+        let slots = RefCell::new(Vec::new());
         #[cfg(target_os = "macos")]
         submenu(&menu, "Vuretro", |m| {
             let _ = m.menu.append(&PredefinedMenuItem::hide(None));
@@ -92,7 +108,7 @@ mod native {
             m.line();
             m.item("Next Slot (F6)", Act::NextSlot, None);
             for n in 1..=SLOTS {
-                m.item(&format!("Use Slot {n}"), Act::Slot(n), None);
+                slots.borrow_mut().push(m.slot(n));
             }
         });
         submenu(&menu, "Size", |m| {
@@ -107,7 +123,7 @@ mod native {
                 m.item(&format!("{n}×"), Act::Size(n), None);
             }
         });
-        menu
+        (menu, slots.into_inner())
     }
 
     impl GameMenu {
@@ -116,21 +132,31 @@ mod native {
             let _ = window; // used on Windows only
             #[cfg(target_os = "macos")]
             {
-                let menu = build();
+                let (menu, slots) = build();
                 menu.init_for_nsapp();
-                GameMenu { _menu: menu }
+                GameMenu { _menu: menu, slots }
             }
             #[cfg(windows)]
             {
                 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-                let menu = build();
+                let (menu, slots) = build();
                 if let Ok(h) = window.window_handle() {
                     if let RawWindowHandle::Win32(w) = h.as_raw() {
                         // SAFETY: the handle is the live window this menu belongs to.
                         let _ = unsafe { menu.init_for_hwnd(w.hwnd.get()) };
                     }
                 }
-                GameMenu { _menu: menu }
+                GameMenu { _menu: menu, slots }
+            }
+        }
+
+        /// What each slot holds (one text per slot), with a check mark on `current` (from 1).
+        pub fn set_slots(&self, labels: &[String], current: u8) {
+            for (i, item) in self.slots.iter().enumerate() {
+                if let Some(text) = labels.get(i) {
+                    item.set_text(text);
+                }
+                item.set_checked(i + 1 == current as usize);
             }
         }
 
@@ -174,6 +200,8 @@ mod native {
         pub fn next_choice() -> Option<usize> {
             None
         }
+
+        pub fn set_slots(&self, _labels: &[String], _current: u8) {}
     }
 }
 

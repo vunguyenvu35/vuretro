@@ -8,7 +8,8 @@ use crate::ports::{Controller, Emulator, Events, Files, Frame, FrameSource, Look
 use crate::rewind::Rewind;
 use crate::speed::{self, Mode};
 use crate::window::{
-    self, clamp_scale, gain_for, pace, paused_overlay, quit_overlay, window_title, Act, SLOTS,
+    self, clamp_scale, gain_for, pace, paused_overlay, quit_overlay, slot_label, window_title, Act,
+    SLOTS,
 };
 use crate::{cover, crt, lcd, scale, scale2x};
 use anyhow::Result;
@@ -100,6 +101,9 @@ pub struct Session {
 
     title: String,
     shown_title: String,
+    /// What the State menu says about each slot now, to send it only when it changes.
+    shown_slots: Vec<String>,
+    slot_check: Instant,
     base_w: usize,
     base_h: usize,
     factor: usize,
@@ -177,6 +181,8 @@ impl Session {
             shots_dir: cfg.shots_dir,
             cover: cfg.cover,
             shown_title: title.clone(),
+            shown_slots: Vec::new(),
+            slot_check: Instant::now(),
             title,
             base_w: cfg.base_w,
             base_h: cfg.base_h,
@@ -263,12 +269,19 @@ impl Session {
                 log::info!("{msg}");
                 self.notice = Some((msg, Instant::now()));
             }
+            if matches!(
+                act,
+                Act::SaveState | Act::LoadState | Act::NextSlot | Act::PrevSlot | Act::Slot(_)
+            ) {
+                self.update_slot_menu(true);
+            }
         }
         self.ff_held = self.screen.key_down(Key::Tab) || hotkeys.fast_forward;
         self.rewind_held = self.screen.key_down(Key::Backspace) || hotkeys.rewind;
         self.update_speed();
         self.update_hold();
         self.update_title();
+        self.update_slot_menu(false);
 
         if self.holding {
             match (&self.dimmed, &self.last_frame) {
@@ -579,6 +592,7 @@ impl Session {
             .reopen(&self.title, self.base_w, self.base_h, wanted, self.view)?;
         self.view = self.screen.view();
         self.shown_title.clear();
+        self.shown_slots.clear(); // the new window has a new menu
         self.factor = wanted;
         self.settings.window_scale = wanted as u8;
         self.persist(Change::WindowScale(wanted as u8));
@@ -668,6 +682,32 @@ impl Session {
         if wanted != self.shown_title {
             self.screen.set_title(&wanted);
             self.shown_title = wanted;
+        }
+    }
+
+    /// Tell the State menu which slot is current and which ones hold a save. Looks at the disk
+    /// once a second at most (the ages move on), or at once when `now` is set.
+    fn update_slot_menu(&mut self, now: bool) {
+        if !now && self.slot_check.elapsed() < Duration::from_secs(1) {
+            return;
+        }
+        self.slot_check = Instant::now();
+        let labels: Vec<String> = (1..=SLOTS)
+            .map(|n| {
+                let age = self
+                    .files
+                    .modified(&self.state_path(n))
+                    .map(|t| t.elapsed().unwrap_or_default());
+                let mut l = slot_label(n, age);
+                if n == self.slot {
+                    l.push_str("  (current)");
+                }
+                l
+            })
+            .collect();
+        if labels != self.shown_slots {
+            self.screen.set_slot_menu(&labels, self.slot);
+            self.shown_slots = labels;
         }
     }
 
@@ -929,6 +969,8 @@ mod tests {
         open_frames: u32,
         active: bool,
         titles: Vec<String>,
+        /// What the State menu was told: the slot labels and the current slot.
+        slot_menus: Vec<(Vec<String>, u8)>,
         presented: usize,
         /// Size of each picture sent to the window.
         presented_dims: Vec<(usize, usize)>,
@@ -1000,6 +1042,12 @@ mod tests {
         }
         fn set_title(&mut self, t: &str) {
             self.0.borrow_mut().titles.push(t.to_string());
+        }
+        fn set_slot_menu(&mut self, labels: &[String], current: u8) {
+            self.0
+                .borrow_mut()
+                .slot_menus
+                .push((labels.to_vec(), current));
         }
         fn reopen(&mut self, _: &str, _: usize, _: usize, factor: usize, view: View) -> Result<()> {
             let mut l = self.0.borrow_mut();
@@ -1125,6 +1173,9 @@ mod tests {
         }
         fn write(&self, path: &Path, data: &[u8]) -> std::io::Result<()> {
             std::fs::write(path, data)
+        }
+        fn modified(&self, path: &Path) -> Option<std::time::SystemTime> {
+            std::fs::metadata(path).ok()?.modified().ok()
         }
         fn write_png(&self, path: &Path, _: &[u32], _: usize, _: usize) -> Result<()> {
             if let Some(dir) = path.parent() {
@@ -1342,6 +1393,24 @@ mod tests {
         r.log.borrow_mut().pressed.insert(Key::F7);
         s.frame().unwrap();
         assert_eq!(r.log.borrow().state, Some(vec![7, 7]));
+    }
+
+    #[test]
+    fn the_state_menu_says_which_slots_hold_a_save_and_which_is_current() {
+        let (mut s, r) = rig(100);
+        r.log.borrow_mut().pressed.insert(Key::F6); // slot 2
+        s.frame().unwrap();
+        r.log.borrow_mut().pressed.insert(Key::F5); // save in it
+        s.frame().unwrap();
+        let log = r.log.borrow();
+        let (labels, current) = log.slot_menus.last().unwrap();
+        assert_eq!(*current, 2);
+        assert_eq!(labels.len(), SLOTS as usize);
+        assert!(labels[0].contains("empty"), "{labels:?}");
+        assert!(
+            labels[1].contains("saved just now") && labels[1].contains("(current)"),
+            "{labels:?}"
+        );
     }
 
     #[test]

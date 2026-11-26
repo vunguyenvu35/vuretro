@@ -679,6 +679,11 @@ impl Screen for GlScreen {
             g.window.set_title(title);
         }
     }
+    fn set_slot_menu(&mut self, labels: &[String], current: u8) {
+        if let Some(g) = self.app.gfx.as_ref() {
+            g._menu.set_slots(labels, current);
+        }
+    }
     fn reopen(
         &mut self,
         title: &str,

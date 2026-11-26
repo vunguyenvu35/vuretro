@@ -144,7 +144,7 @@ impl Outcome {
 }
 
 /// Number of save-state slots per game (the runner uses the same).
-pub const SAVE_SLOTS: u8 = 4;
+pub const SAVE_SLOTS: u8 = 10;
 
 /// A save-state slot that holds a save.
 #[derive(Debug, Clone, PartialEq, Serialize)]

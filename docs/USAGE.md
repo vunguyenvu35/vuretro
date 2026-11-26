@@ -97,7 +97,7 @@ On Windows and Linux use `Ctrl` in place of `⌘`.
 | `Esc` | Ask "Quit the game?": the game waits; `Esc` again quits, `Enter`, `Space` or `N` go on playing |
 | `P` or `F3` | Pause / resume (dims the picture and mutes the sound) |
 | `F5` / `F7` | Save state / load state, in the current slot |
-| `F6` | Next save slot (there are 4) |
+| `F6` | Next save slot (there are 10) |
 | `F2` | Reset |
 | Hold `Tab` | Fast-forward (2×, 3×, 4× or 8×, set in Settings) |
 | `F1` | Fast-forward on / off: it stays on until you press it again |

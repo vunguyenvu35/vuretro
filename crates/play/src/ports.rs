@@ -51,6 +51,9 @@ pub trait Screen: Keyboard {
     /// Keep the window alive without a new picture.
     fn idle(&mut self);
     fn set_title(&mut self, title: &str);
+    /// Say in the State menu which save slot is the current one (`current`, from 1) and what
+    /// each holds: one label per slot. Windows without a menu do nothing.
+    fn set_slot_menu(&mut self, _labels: &[String], _current: u8) {}
     /// Replace the window by one of another size or view, at the same place (a full-screen
     /// window covers the display instead).
     fn reopen(
@@ -146,6 +149,11 @@ impl Events for NoEvents {
 pub trait Files {
     fn read(&self, path: &Path) -> std::io::Result<Vec<u8>>;
     fn write(&self, path: &Path, data: &[u8]) -> std::io::Result<()>;
+    /// When the file was last written, `None` when it does not exist (or the adapter cannot
+    /// tell). The State menu shows which slots hold a save with it.
+    fn modified(&self, _path: &Path) -> Option<std::time::SystemTime> {
+        None
+    }
     /// Write a picture of 0RGB pixels as a PNG file, creating its folder if needed.
     fn write_png(&self, path: &Path, buf: &[u32], w: usize, h: usize) -> Result<()>;
 }
