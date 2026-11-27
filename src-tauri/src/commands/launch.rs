@@ -1,6 +1,7 @@
 use super::blocking;
 use crate::state::Shell;
 use tauri::{AppHandle, Emitter, State};
+use vuretro_core::model::NativeGame;
 use vuretro_core::service::Running;
 
 /// Watch the game on its own thread, passing on what it reports, then tell the page it ended.
@@ -53,6 +54,38 @@ pub async fn launch_game(
 pub async fn launch_demo(app: AppHandle, shell: State<'_, Shell>) -> Result<(), String> {
     let core = shell.app.clone();
     let running = blocking(move || core.launch_demo()).await??;
+    watch(&app, &shell, running);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_native_games(shell: State<'_, Shell>) -> Vec<NativeGame> {
+    shell.app.native_games()
+}
+
+#[tauri::command]
+pub fn add_native_game(
+    shell: State<'_, Shell>,
+    name: String,
+    exe: String,
+    args: Vec<String>,
+) -> Result<NativeGame, String> {
+    shell.app.add_native_game(&name, &exe, args)
+}
+
+#[tauri::command]
+pub fn remove_native_game(shell: State<'_, Shell>, id: String) {
+    shell.app.remove_native_game(&id);
+}
+
+#[tauri::command]
+pub async fn launch_native(
+    app: AppHandle,
+    shell: State<'_, Shell>,
+    id: String,
+) -> Result<(), String> {
+    let core = shell.app.clone();
+    let running = blocking(move || core.launch_native(&id)).await??;
     watch(&app, &shell, running);
     Ok(())
 }

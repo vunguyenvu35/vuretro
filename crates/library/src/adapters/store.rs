@@ -280,6 +280,12 @@ mod tests {
                 user: "me".into(),
                 password: "pw".into(),
             }),
+            native_games: vec![vuretro_core::model::NativeGame {
+                id: "rr".into(),
+                name: "Road Rash".into(),
+                exe: "/games/rr-game".into(),
+                args: vec!["--assets".into(), "/games/ROADRASH".into()],
+            }],
         };
         store.save_settings(&s);
         assert_eq!(store.load_settings(), s);

@@ -6,7 +6,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::JoinHandle;
 use vuretro_core::model::CoreOptionDef;
 use vuretro_core::paths::Paths;
-use vuretro_core::ports::{CoverJob, Exit, GameProcess, LaunchSpec, Launcher};
+use vuretro_core::ports::{CoverJob, Exit, GameProcess, LaunchSpec, Launcher, NativeSpec};
 use vuretro_core::protocol::{self, Event};
 
 /// Starts `vuretro-runner` as a child process, so a crashing core never takes the UI down.
@@ -151,6 +151,34 @@ impl Launcher for ProcessLauncher {
             log: log_path,
             reports,
             reader,
+        }))
+    }
+
+    fn spawn_native(&self, spec: &NativeSpec) -> Result<Box<dyn GameProcess>, String> {
+        let log_path = self.paths.native_log();
+        if let Some(dir) = log_path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        let log = std::fs::File::create(&log_path).map_err(|e| e.to_string())?;
+        // Start it from its own folder: games of this kind look for their data next to them.
+        let mut cmd = Command::new(&spec.exe);
+        if let Some(dir) = spec.exe.parent().filter(|d| !d.as_os_str().is_empty()) {
+            cmd.current_dir(dir);
+        }
+        let child = cmd
+            .args(&spec.args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::from(log.try_clone().map_err(|e| e.to_string())?))
+            .stderr(log)
+            .spawn()
+            .map_err(|e| format!("cannot start {}: {e}", spec.exe.display()))?;
+        // it speaks no protocol: nothing to read, and the log explains a failure
+        let (_to, reports) = channel();
+        Ok(Box::new(Runner {
+            child,
+            log: log_path,
+            reports,
+            reader: None,
         }))
     }
 

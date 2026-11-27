@@ -77,6 +77,15 @@ export const api = {
   saveSlots: (path) => call('get_save_slots', { path }),
   slotThumbnail: (path, slot) => call('get_slot_thumbnail', { path, slot }),
   launchDemo: () => call('launch_demo'),
+  // native games: programs of their own, started as they are (no core, no ROM)
+  nativeGames: () => call('list_native_games'),
+  addNativeGame: (name, exe, args = []) => call('add_native_game', { name, exe, args }),
+  removeNativeGame: (id) => call('remove_native_game', { id }),
+  launchNative: (id) => call('launch_native', { id }),
+  async pickProgram(title = 'Choose the game program') {
+    if (!inTauri) return null;
+    return (await open({ multiple: false, title })) || null;
+  },
 
   // controls and macros
   controls: () => call('get_controls'),

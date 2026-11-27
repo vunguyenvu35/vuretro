@@ -25,6 +25,23 @@ pub struct Settings {
     /// Core the user picked per system id (only values listed by the registry count).
     #[serde(default)]
     pub cores: BTreeMap<String, String>,
+    /// Games that are programs of their own (not run by a libretro core).
+    #[serde(default)]
+    pub native_games: Vec<NativeGame>,
+}
+
+/// A game that is a program of its own, started as it is: no core, no ROM. The library only
+/// remembers where it is; the program keeps its own saves, settings and key bindings.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct NativeGame {
+    /// Stable id, made from the name when the game is added.
+    pub id: String,
+    pub name: String,
+    /// The program to start.
+    pub exe: String,
+    /// Arguments to start it with (e.g. `--assets <folder>`).
+    #[serde(default)]
+    pub args: Vec<String>,
 }
 
 impl Settings {

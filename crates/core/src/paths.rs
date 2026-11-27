@@ -116,6 +116,9 @@ impl Paths {
     pub fn runner_log(&self) -> PathBuf {
         self.data_dir.join("logs/runner.log")
     }
+    pub fn native_log(&self) -> PathBuf {
+        self.data_dir.join("logs/native.log")
+    }
     pub fn demo_rom(&self) -> PathBuf {
         self.data_dir.join("demo.test")
     }

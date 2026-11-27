@@ -79,6 +79,11 @@
     <button class:active={libActive('recent')} onclick={() => go('recent')}><Icon name="recent" /><span class="nm">Recent</span> <small>{recent}</small></button>
     <button class:active={libActive('favorites')} onclick={() => go('favorites')}><Icon name="favorites" /><span class="nm">Favorites</span> <small>{favs}</small></button>
 
+    <div class="label gap">Native games</div>
+    <button class:active={app.view === 'native'} aria-current={app.view === 'native' ? 'page' : undefined} onclick={() => (app.view = 'native')}>
+      <Icon name="all" /><span class="nm" title="Games that are programs of their own">Programs</span> <small>{app.native.length}</small>
+    </button>
+
     <div class="label gap">Systems</div>
     {#each app.overview?.systems ?? [] as s (s.id)}
       <button

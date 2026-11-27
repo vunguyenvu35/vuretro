@@ -4,13 +4,14 @@
 use crate::backup::{self, BackupManifest, BackupOptions, BackupSummary};
 use crate::detect;
 use crate::model::{
-    assess, CoreChoice, CoreOptionView, MachineInfo, ScopedControls, ScopedSettings, SlotInfo,
+    assess, CoreChoice, CoreOptionView, MachineInfo, NativeGame, ScopedControls, ScopedSettings,
+    SlotInfo,
 };
 use crate::model::{game_views, CompiledMove, GameMeta, Outcome, Overview, Settings, SystemView};
 use crate::paths::Paths;
 use crate::ports::{
     Archive, ArtQuery, ArtSource, Catalog, CoreInstaller, CoverJob, GameProcess, LaunchSpec,
-    Launcher, Locator, Machine, Store,
+    Launcher, Locator, Machine, NativeSpec, Store,
 };
 use crate::protocol::Event;
 use crate::registry::{systems, System};
@@ -26,6 +27,8 @@ use vuretro_settings::GameSettings;
 const LAUNCH_GRACE: Duration = Duration::from_millis(1500);
 /// Whether the runner can draw 3D (GPU) systems. Switch on when it can.
 const HARDWARE_RENDERER: bool = false;
+/// A native program says nothing when it is up, so it is only given this long to fail early.
+const NATIVE_GRACE: Duration = Duration::from_millis(600);
 const LAUNCH_POLL: Duration = Duration::from_millis(50);
 /// How often a running game is asked what it reports.
 const WATCH_POLL: Duration = Duration::from_millis(100);
@@ -1231,6 +1234,78 @@ impl App {
         (!usable).then(|| chosen.to_string())
     }
 
+    // ---------- native games ----------
+
+    /// The programs the user added to the library as games of their own.
+    pub fn native_games(&self) -> Vec<NativeGame> {
+        self.settings.lock().unwrap().native_games.clone()
+    }
+
+    /// Add a program (or change the one with the same name). `exe` must be a file that exists.
+    pub fn add_native_game(
+        &self,
+        name: &str,
+        exe: &str,
+        args: Vec<String>,
+    ) -> Result<NativeGame, String> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("the game needs a name".into());
+        }
+        if !Path::new(exe).is_file() {
+            return Err(format!("{exe} is not a file"));
+        }
+        let id: String = name
+            .to_lowercase()
+            .chars()
+            .map(|c| if c.is_alphanumeric() { c } else { '-' })
+            .collect();
+        let game = NativeGame {
+            id: id.trim_matches('-').to_string(),
+            name: name.to_string(),
+            exe: exe.to_string(),
+            args,
+        };
+        {
+            let mut s = self.settings.lock().unwrap();
+            match s.native_games.iter_mut().find(|g| g.id == game.id) {
+                Some(existing) => *existing = game.clone(),
+                None => s.native_games.push(game.clone()),
+            }
+        }
+        self.save_settings();
+        Ok(game)
+    }
+
+    /// Take a program out of the library (the program itself is not touched).
+    pub fn remove_native_game(&self, id: &str) {
+        self.settings
+            .lock()
+            .unwrap()
+            .native_games
+            .retain(|g| g.id != id);
+        self.save_settings();
+    }
+
+    /// Start a native game. `Ok(None)` means it already finished successfully.
+    pub fn launch_native(&self, id: &str) -> Result<Option<Running>, String> {
+        let game = self
+            .native_games()
+            .into_iter()
+            .find(|g| g.id == id)
+            .ok_or("unknown game")?;
+        if !Path::new(&game.exe).is_file() {
+            return Err(format!("{} is not there any more", game.exe));
+        }
+        let key = format!("native:{}", game.id);
+        self.begin(game.name.clone(), Some(key), false, || {
+            self.launcher.spawn_native(&NativeSpec {
+                exe: PathBuf::from(&game.exe),
+                args: game.args.clone(),
+            })
+        })
+    }
+
     /// Run the fake test core so the app can be tried without any ROM.
     pub fn launch_demo(&self) -> Result<Option<Running>, String> {
         let core = self
@@ -1253,13 +1328,35 @@ impl App {
             .locator
             .runner()
             .ok_or("vuretro-runner not found. Run `make build` first.")?;
-        // One game at a time: two windows would fight over the sound, the gamepad and the
-        // saves of the same game. The place is taken before the game starts, so two quick
-        // presses of Play cannot both get through.
         let name = rom
             .file_stem()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| "a game".into());
+        self.begin(name, track, true, || {
+            self.launcher.spawn(&LaunchSpec {
+                runner,
+                core: core.to_path_buf(),
+                rom: rom.to_path_buf(),
+                system_dir: self.paths.system_dir(),
+                load_slot,
+                system: system.to_string(),
+            })
+        })
+    }
+
+    /// Take the one place for a game, start it with `spawn` and watch its first moments.
+    /// `reports` says whether the process tells when it is up (a runner does, a native
+    /// program does not, and is not waited for).
+    fn begin(
+        &self,
+        name: String,
+        track: Option<String>,
+        reports: bool,
+        spawn: impl FnOnce() -> Result<Box<dyn GameProcess>, String>,
+    ) -> Result<Option<Running>, String> {
+        // One game at a time: two windows would fight over the sound, the gamepad and the
+        // saves of the same game. The place is taken before the game starts, so two quick
+        // presses of Play cannot both get through.
         {
             let mut playing = self.playing.lock().unwrap();
             if let Some(open) = playing.as_ref() {
@@ -1270,14 +1367,7 @@ impl App {
             *playing = Some(name);
         }
         let free = |app: &App| *app.playing.lock().unwrap() = None;
-        let mut process = match self.launcher.spawn(&LaunchSpec {
-            runner,
-            core: core.to_path_buf(),
-            rom: rom.to_path_buf(),
-            system_dir: self.paths.system_dir(),
-            load_slot,
-            system: system.to_string(),
-        }) {
+        let mut process = match spawn() {
             Ok(p) => p,
             Err(e) => {
                 free(self);
@@ -1314,7 +1404,12 @@ impl App {
                     Err(exit.detail)
                 };
             }
-            if ready || started.elapsed() >= self.launch_grace {
+            let grace = if reports {
+                self.launch_grace
+            } else {
+                NATIVE_GRACE.min(self.launch_grace)
+            };
+            if ready || started.elapsed() >= grace {
                 break;
             }
             std::thread::sleep(LAUNCH_POLL.min(self.launch_grace));

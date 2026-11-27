@@ -5,6 +5,7 @@
   import { checkAtStart } from './lib/update.svelte.js';
   import Sidebar from './components/Sidebar.svelte';
   import Library from './components/Library.svelte';
+  import NativeGames from './components/NativeGames.svelte';
   import Cores from './components/Cores.svelte';
   import Controls from './components/Controls.svelte';
   import Settings from './components/Settings.svelte';
@@ -53,6 +54,8 @@
       <div class="loading">Loading…</div>
     {:else if app.view === 'library'}
       <Library />
+    {:else if app.view === 'native'}
+      <NativeGames />
     {:else if app.view === 'cores'}
       <Cores />
     {:else if app.view === 'macros'}

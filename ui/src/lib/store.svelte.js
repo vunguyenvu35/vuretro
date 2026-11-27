@@ -21,7 +21,7 @@ function readSidebar() {
 
 export const app = $state({
   sidebarW: readSidebar(), // px, dragged by the user
-  view: 'library', // library | cores | controls | macros | settings
+  view: 'library', // library | native | cores | controls | macros | settings
   overview: null,
   loaded: false,
   filter: 'all', // all | recent | favorites
@@ -40,10 +40,11 @@ export const app = $state({
   dialog: null, // 'about' | 'support': a small dialog over the page
   scope: '', // system id the Settings and Controls screens edit; empty = all games
   downloading: null, // { core, percent } while Play fetches the core a game needs
+  native: [], // games that are programs of their own: { id, name, exe, args }
 });
 
 const hash = typeof location !== "undefined" ? location.hash.slice(1).split(",") : [];
-if (["cores", "controls", "macros", "settings"].includes(hash[0])) app.view = hash[0];
+if (["cores", "controls", "macros", "settings", "native"].includes(hash[0])) app.view = hash[0];
 export const startSelect = hash.includes("select");
 if (["about", "support"].includes(hash[1])) app.dialog = hash[1]; // for development: #settings,support
 
@@ -149,6 +150,7 @@ export async function refresh() {
     toast(String(e), 'error');
   }
   app.loaded = true;
+  loadNative();
   scheduleCovers();
 }
 
@@ -268,6 +270,48 @@ export async function play(game, slot = null) {
     app.downloading = null;
   }
   refresh();
+}
+
+export async function loadNative() {
+  try {
+    app.native = await api.nativeGames();
+  } catch (e) {
+    toast(String(e), 'error');
+  }
+}
+
+/** Add a program to the library as a game of its own. Resolves to true when it was added. */
+export async function addNative(name, exe, args) {
+  try {
+    const game = await api.addNativeGame(name, exe, args);
+    toast(`Added ${game.name}`);
+    await loadNative();
+    return true;
+  } catch (e) {
+    toast(String(e), 'error');
+    return false;
+  }
+}
+
+export async function removeNative(game) {
+  const yes = await confirmDialog({
+    title: `Remove ${game.name}?`,
+    message: 'It leaves the library. The program and its files stay where they are.',
+    confirmLabel: 'Remove',
+    danger: true,
+  });
+  if (!yes) return;
+  await api.removeNativeGame(game.id);
+  await loadNative();
+}
+
+export async function playNative(game) {
+  try {
+    await api.launchNative(game.id);
+    toast(`Started ${game.name}`);
+  } catch (e) {
+    toast(String(e), 'error');
+  }
 }
 
 export async function runDemo() {

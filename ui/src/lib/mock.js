@@ -27,7 +27,16 @@ const fullMock = () => ({
   ],
 });
 
+let mockNative = [];
 const mock = {
+  list_native_games: async () => mockNative,
+  add_native_game: async (a) => {
+    const g = { id: a.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-'), name: a.name.trim(), exe: a.exe, args: a.args };
+    mockNative = [...mockNative.filter((x) => x.id !== g.id), g];
+    return g;
+  },
+  remove_native_game: async (a) => { mockNative = mockNative.filter((x) => x.id !== a.id); },
+  launch_native: async () => {},
   get_overview: async () => mockOverview(),
   set_rom_dir: async () => {},
   set_system_enabled: async () => {},

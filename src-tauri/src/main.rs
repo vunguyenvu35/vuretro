@@ -79,6 +79,10 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             get_overview,
+            list_native_games,
+            add_native_game,
+            remove_native_game,
+            launch_native,
             set_rom_dir,
             set_system_enabled,
             set_system_core,

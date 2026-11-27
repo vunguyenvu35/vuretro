@@ -34,6 +34,7 @@ struct World {
     runner_ends_after_polls: Option<usize>,
     removed: Vec<PathBuf>,
     spawned: Vec<LaunchSpec>,
+    native_spawned: Vec<NativeSpec>,
     cover_ok: bool,
     scratch_cleared: bool,
     macros: MacroConfig,
@@ -374,6 +375,16 @@ impl Launcher for Fake {
         Ok(Box::new(FakeProcess {
             exit: w.runner_exit.clone(),
             events: std::mem::take(&mut w.runner_events),
+            ends_after_polls: w.runner_ends_after_polls,
+            polls: 0,
+        }))
+    }
+    fn spawn_native(&self, spec: &NativeSpec) -> Result<Box<dyn GameProcess>, String> {
+        let mut w = self.0.lock().unwrap();
+        w.native_spawned.push(spec.clone());
+        Ok(Box::new(FakeProcess {
+            exit: w.runner_exit.clone(),
+            events: Vec::new(),
             ends_after_polls: w.runner_ends_after_polls,
             polls: 0,
         }))
@@ -2227,4 +2238,58 @@ fn clearing_recent_forgets_when_games_were_played_and_keeps_everything_else() {
         0
     );
     assert_eq!(a.clear_recent(), 0, "nothing left to clear");
+}
+
+/// A file that exists on every machine the tests run on, standing in for a game's program.
+fn some_program() -> String {
+    concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml").into()
+}
+
+#[test]
+fn a_native_game_is_added_once_and_started_without_a_runner_or_a_core() {
+    let f = Fake::default(); // no runner, no core: a native game needs neither
+    let a = app(&f);
+    let game = a
+        .add_native_game(
+            "Road Rash (PC)",
+            &some_program(),
+            vec!["--assets".into(), "/roadrash".into()],
+        )
+        .unwrap();
+    assert_eq!(game.id, "road-rash--pc");
+    // adding it again by the same name changes it instead of listing it twice
+    a.add_native_game("Road Rash (PC)", &some_program(), vec![])
+        .unwrap();
+    assert_eq!(a.native_games().len(), 1);
+    a.add_native_game("Road Rash (PC)", &some_program(), vec!["--x".into()])
+        .unwrap();
+    let running = a.launch_native("road-rash--pc").unwrap();
+    assert!(running.is_some(), "it keeps running");
+    let w = f.0.lock().unwrap();
+    assert!(w.spawned.is_empty(), "the libretro runner is not involved");
+    assert_eq!(w.native_spawned.len(), 1);
+    assert_eq!(w.native_spawned[0].args, vec!["--x".to_string()]);
+}
+
+#[test]
+fn a_native_game_that_is_missing_or_unnamed_is_refused() {
+    let f = Fake::default();
+    let a = app(&f);
+    assert!(a.add_native_game("  ", &some_program(), vec![]).is_err());
+    assert!(a.add_native_game("X", "/nowhere/game", vec![]).is_err());
+    assert!(a.launch_native("x").is_err(), "not in the library");
+    assert!(f.0.lock().unwrap().native_spawned.is_empty());
+}
+
+#[test]
+fn a_native_game_counts_as_the_one_open_game_and_can_be_removed() {
+    let f = Fake::default();
+    let a = app(&f);
+    a.add_native_game("One", &some_program(), vec![]).unwrap();
+    a.add_native_game("Two", &some_program(), vec![]).unwrap();
+    let _open = a.launch_native("one").unwrap();
+    let err = a.launch_native("two").err().unwrap();
+    assert!(err.starts_with("One is already open"), "{err}");
+    a.remove_native_game("two");
+    assert_eq!(a.native_games().len(), 1);
 }

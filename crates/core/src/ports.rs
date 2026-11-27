@@ -123,6 +123,13 @@ pub struct LaunchSpec {
     pub system: String,
 }
 
+/// A program of its own to start (see [`crate::model::NativeGame`]).
+#[derive(Debug, Clone)]
+pub struct NativeSpec {
+    pub exe: PathBuf,
+    pub args: Vec<String>,
+}
+
 /// A request to make a preview image without opening a window.
 #[derive(Debug, Clone)]
 pub struct CoverJob {
@@ -160,6 +167,10 @@ pub trait GameProcess: Send {
 /// Starts runner processes.
 pub trait Launcher: Send + Sync {
     fn spawn(&self, spec: &LaunchSpec) -> Result<Box<dyn GameProcess>, String>;
+    /// Start a program of its own, with no runner and no core.
+    fn spawn_native(&self, _spec: &NativeSpec) -> Result<Box<dyn GameProcess>, String> {
+        Err("this build cannot start native games".into())
+    }
     /// Run a game headless and keep its best frame. True when the image exists afterwards.
     fn capture_cover(&self, job: &CoverJob) -> bool;
     /// Ask a core which options it offers. Some cores announce most of them only once a game
