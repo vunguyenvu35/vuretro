@@ -44,6 +44,10 @@ pub struct Section {
     pub family_bias: i32,
     /// The hills at the side of the road, when that is the section's terrain.
     pub hills: Vec<HillRecord>,
+    /// The building at each side of the road at every sample, when that is the section's
+    /// terrain (`DLBR`: 16 bytes of header, the count at +8, then two selector bytes for each
+    /// sample, the left one first; 255 means no building).
+    pub buildings: Vec<[u8; 2]>,
 }
 
 /// One stretch of hills (the terrain chunk `LIHR`: 20 bytes of header with the record count at
@@ -137,6 +141,19 @@ impl Bytes<'_> {
             Err(format!("no {} at byte {at}", String::from_utf8_lossy(tag)))
         }
     }
+}
+
+/// The buildings of the terrain chunk at `at` (none when it is not a building chunk).
+fn read_buildings(sgs: &Bytes, at: usize) -> Result<Vec<[u8; 2]>, String> {
+    if at == 0 || sgs.0.get(at..at + 4) != Some(&b"DLBR"[..]) {
+        return Ok(Vec::new());
+    }
+    let count = sgs.u32(at + 8)? as usize;
+    let bytes = sgs
+        .0
+        .get(at + 16..at + 16 + count * 2)
+        .ok_or("the building table is cut short")?;
+    Ok(bytes.chunks_exact(2).map(|p| [p[0], p[1]]).collect())
 }
 
 /// The hills of the terrain chunk at `at` (none when it is not a hill chunk).
@@ -301,6 +318,7 @@ pub fn parse(file: &[u8]) -> Result<Course, String> {
             family_events: Vec::new(),
             family_bias: 0,
             hills: read_hills(&sgs, sgs.u32(row + 0x10)? as usize)?,
+            buildings: read_buildings(&sgs, sgs.u32(row + 0x10)? as usize)?,
         });
         let at = sgs.u32(row + 0xC)? as usize;
         if at != 0 {
@@ -532,6 +550,7 @@ mod tests {
             family_events: vec![],
             family_bias: 0,
             hills: vec![],
+            buildings: vec![],
         };
         assert_eq!(s.summed_elevation(), 90);
     }

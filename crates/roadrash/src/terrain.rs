@@ -12,6 +12,11 @@
 //! that the family of the section holds for that face (category 1 of the family: a group of
 //! pictures for the face next to the road, the middle one and the outer one), made brighter or
 //! darker by the band, and a plain green when the family has none.
+//!
+//! In a town the ground is buildings instead: a selector for the left and for the right of the
+//! road at every sample picks a group of pictures of the family (category 1), whose height is
+//! that of the building and whose last picture is its front, set up as a wall at the edge of
+//! the shoulder with a flat roof.
 
 use crate::course::{Course, HillRecord, Section};
 use crate::disc::Disc;
@@ -34,6 +39,25 @@ pub struct HillSlice {
     pub colour: [[[u8; 3]; 3]; 2],
     /// Where the shoulder ends on each side, in world units from the middle of the road.
     pub edge: [f32; 2],
+    /// Whether there are hills (the `out`, `height` and `colour` are used) at this sample.
+    pub hills: bool,
+    /// The building on each side, if there is one.
+    pub facades: [Option<Facade>; 2],
+}
+
+/// The front of a building: how high, and which of the [`Ground::textures`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Facade {
+    pub height: f32,
+    pub texture: usize,
+}
+
+/// A picture in true colour with see-through (alpha 0 where the picture has index 0).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Texture {
+    pub width: usize,
+    pub height: usize,
+    pub pixels: Vec<[u8; 4]>,
 }
 
 struct Random(u32);
@@ -154,8 +178,13 @@ fn fallback(band: u8) -> [u8; 3] {
 
 /// The ground along a route and how its colours were found.
 pub struct Ground {
-    /// A slice for each sample of the route (none where the terrain is not hills).
+    /// A slice for each sample of the route (none where the terrain is neither hills nor
+    /// buildings).
     pub slices: Vec<Option<HillSlice>>,
+    /// The fronts of the buildings.
+    pub textures: Vec<Texture>,
+    /// The colour of the flat roofs.
+    pub roof: [u8; 3],
     /// How many of the kinds of face got their colour from a picture of the disc, and how many
     /// had to be plain green.
     pub from_pictures: usize,
@@ -174,6 +203,8 @@ pub fn load(disc: &Disc, course: &Course, palette: &Palette) -> Result<Ground, S
     let entries = rsc::entries(&file)?;
     let mut families: HashMap<u16, Option<Family>> = HashMap::new();
     let mut colours: HashMap<(u16, u8, usize), Option<[u8; 3]>> = HashMap::new();
+    let mut fronts: HashMap<(u16, u8), Option<Facade>> = HashMap::new();
+    let mut textures: Vec<Texture> = Vec::new();
     let mut slices = Vec::new();
     for (index, (section_no, length)) in course.route().into_iter().enumerate() {
         let section = &course.sections[section_no];
@@ -193,7 +224,59 @@ pub fn load(disc: &Disc, course: &Course, palette: &Palette) -> Result<Ground, S
                 event += 1;
             }
             let Some(shape) = shape else {
-                slices.push(None);
+                // not hills: a town has buildings at the side of the road
+                if section.buildings.is_empty() {
+                    slices.push(None);
+                    continue;
+                }
+                let selectors = section.buildings[j.min(section.buildings.len() - 1)];
+                let lanes = section.lanes[j];
+                let mut slice = HillSlice {
+                    out: [[0.0; 3]; 2],
+                    height: [[0.0; 3]; 2],
+                    colour: [[[130, 130, 135]; 3]; 2],
+                    edge: [-(lanes[0] * 250.0) - SHOULDER, lanes[1] * 250.0 + SHOULDER],
+                    hills: false,
+                    facades: [None; 2],
+                };
+                for side in 0..2 {
+                    let selector = selectors[side];
+                    if selector == 255 {
+                        continue;
+                    }
+                    let family_id = slots[(selector >> 6) as usize];
+                    slice.facades[side] =
+                        *fronts.entry((family_id, selector & 63)).or_insert_with(|| {
+                            let family = families.entry(family_id).or_insert_with(|| {
+                                let e = entries
+                                    .iter()
+                                    .find(|e| e.tag == "FAM" && e.id == family_id as u32)?;
+                                Family::parse(e.bytes(&file)).ok()
+                            });
+                            let (height, picture) =
+                                family.as_ref()?.building((selector & 63) as usize)?;
+                            if height < 17.0 {
+                                return None;
+                            }
+                            textures.push(Texture {
+                                width: picture.width as usize,
+                                height: picture.height as usize,
+                                pixels: picture
+                                    .pixels
+                                    .iter()
+                                    .map(|&i| {
+                                        let c = palette.0[i as usize];
+                                        [c[0], c[1], c[2], if i == 0 { 0 } else { 255 }]
+                                    })
+                                    .collect(),
+                            });
+                            Some(Facade {
+                                height,
+                                texture: textures.len() - 1,
+                            })
+                        });
+                }
+                slices.push(Some(slice));
                 continue;
             };
             let record = section
@@ -208,6 +291,8 @@ pub fn load(disc: &Disc, course: &Course, palette: &Palette) -> Result<Ground, S
                 height: [[0.0; 3]; 2],
                 colour: [[[0; 3]; 3]; 2],
                 edge: [-(lanes[0] * 250.0) - SHOULDER, lanes[1] * 250.0 + SHOULDER],
+                hills: true,
+                facades: [None; 2],
             };
             for side in 0..2 {
                 let selector = record.selectors[side];
@@ -245,6 +330,8 @@ pub fn load(disc: &Disc, course: &Course, palette: &Palette) -> Result<Ground, S
     let plain = colours.len() - from_pictures;
     Ok(Ground {
         slices,
+        textures,
+        roof: palette.0[253],
         from_pictures,
         plain,
     })
@@ -283,6 +370,7 @@ mod tests {
                 selectors: [2, 2],
                 points: [point(10, 20, -3, 8); 8],
             }],
+            buildings: vec![],
         }
     }
 

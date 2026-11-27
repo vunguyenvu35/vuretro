@@ -10,7 +10,7 @@ use crate::image::Rgb;
 use crate::palette::Palette;
 use crate::road::{self, Guess};
 use crate::scenery::Scenery;
-use crate::terrain::HillSlice;
+use crate::terrain::Ground;
 
 /// Samples per second at the top speed (a sample is 256 world units).
 pub const TOP_SPEED: f32 = 80.0;
@@ -272,8 +272,8 @@ pub struct Look<'a> {
     pub police: Option<f32>,
     /// The things at the side of the road.
     pub scenery: Option<&'a Scenery>,
-    /// The hills at the side of the road, a slice for each sample of the route.
-    pub ground: Option<&'a [Option<HillSlice>]>,
+    /// The hills and the buildings at the side of the road.
+    pub ground: Option<&'a Ground>,
 }
 
 /// Draw a sprite so that the wheel touches the picture at (`x`, `bottom`), `scale` times its

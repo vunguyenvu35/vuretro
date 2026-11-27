@@ -158,7 +158,7 @@ fn main() -> Result<(), String> {
         headings: &headings,
         police: None,
         scenery: Some(&scenery),
-        ground: Some(&ground.slices),
+        ground: Some(&ground),
     };
     let mut rivals = spawn_rivals(rider);
     let dt = 1.0 / 30.0;

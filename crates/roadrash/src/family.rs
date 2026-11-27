@@ -122,6 +122,26 @@ impl Family {
         text
     }
 
+    /// The building of category 1 for a selector: its height in world units and the picture of
+    /// its front. The group is a grid of pictures (mode 0) whose last cell is the front, and
+    /// byte +22 of the group is the height in units of 16.
+    pub fn building(&self, selector: usize) -> Option<(f32, Indexed)> {
+        let at = self.resolve(1, selector)?;
+        if self.word(at)? != CLGP || *self.bytes.get(at + 20)? & 3 != 0 {
+            return None;
+        }
+        let height = *self.bytes.get(at + 22)? as f32 * 16.0;
+        let (last_col, last_row) = (
+            *self.bytes.get(at + 24)? as usize,
+            *self.bytes.get(at + 25)? as usize,
+        );
+        let table = at + *self.bytes.get(at + 21)? as usize * 4;
+        let row = at + self.word(table + 4 * last_row)? as usize;
+        let cell = at + 8 + self.word(row + 4 * last_col)? as usize;
+        let texture = crate::cel::read_indexed(self.bytes.get(cell..)?).ok()?;
+        Some((height, texture))
+    }
+
     /// The picture of frame `frame` of the animation for `category` and `selector`.
     pub fn sprite(&self, category: usize, selector: usize, frame: usize) -> Option<Sprite> {
         let at = self.resolve(category, selector)?;
