@@ -14,6 +14,8 @@ pub struct Mixer {
     out_rate: f32,
     engine_at: f64,
     shots: Vec<(usize, f64)>,
+    /// An effect that goes round and round (the siren): which, where it is, how loud.
+    looping: Option<(usize, f64, f32)>,
     /// Turns of the engine in a minute; 0 silences it.
     pub revs: f32,
     pub volume: f32,
@@ -27,9 +29,29 @@ impl Mixer {
             out_rate,
             engine_at: 0.0,
             shots: Vec::new(),
+            looping: None,
             revs: 0.0,
             volume: 0.8,
         }
+    }
+
+    /// Add a sound while the mixer is running; its number is returned.
+    pub fn add_effect(&mut self, clip: Clip) -> usize {
+        self.effects.push(clip);
+        self.effects.len() - 1
+    }
+
+    /// Start (or change the loudness of) the effect that goes round, or stop it with `None`.
+    pub fn set_loop(&mut self, which: Option<(usize, f32)>) {
+        self.looping = match (which, self.looping) {
+            (Some((n, volume)), _) if n >= self.effects.len() || volume <= 0.0 => {
+                let _ = volume;
+                None
+            }
+            (Some((n, volume)), Some((m, at, _))) if n == m => Some((n, at, volume)),
+            (Some((n, volume)), _) => Some((n, 0.0, volume)),
+            (None, _) => None,
+        };
     }
 
     /// Play effect number `n` once. A sound that is not there is ignored.
@@ -50,6 +72,13 @@ impl Mixer {
                 let (a, b) = (self.engine.samples[i], self.engine.samples[(i + 1) % len]);
                 value += (a + (b - a) * f) * 0.6;
                 self.engine_at = (self.engine_at + engine_step) % len as f64;
+            }
+            if let Some((n, at, volume)) = &mut self.looping {
+                let clip = &self.effects[*n];
+                if !clip.samples.is_empty() {
+                    value += clip.samples[*at as usize % clip.samples.len()] * *volume;
+                    *at = (*at + (clip.rate / self.out_rate) as f64) % clip.samples.len() as f64;
+                }
             }
             for (n, at) in &mut self.shots {
                 let clip = &self.effects[*n];
@@ -199,5 +228,44 @@ mod tests {
         let mut out = [0.0; 5];
         m.fill(&mut out);
         assert!(out.iter().all(|v| *v == 1.0));
+    }
+
+    #[test]
+    fn a_looped_effect_goes_round_until_it_is_stopped_and_can_be_made_louder() {
+        let mut m = Mixer::new(ramp(10), vec![clip(1000.0, vec![0.1, 0.2, 0.3])], 1000.0);
+        m.volume = 1.0;
+        m.set_loop(Some((0, 1.0)));
+        let mut out = [0.0; 7];
+        m.fill(&mut out);
+        let want = [0.1, 0.2, 0.3, 0.1, 0.2, 0.3, 0.1];
+        assert!(
+            out.iter().zip(want).all(|(a, b)| (a - b).abs() < 1e-6),
+            "{out:?}"
+        );
+        m.set_loop(Some((0, 0.5)));
+        let mut louder = [0.0; 2];
+        m.fill(&mut louder);
+        assert!(
+            (louder[0] - 0.1).abs() < 1e-6,
+            "went on where it was, half as loud: {louder:?}"
+        );
+        m.set_loop(None);
+        let mut quiet = [9.0; 3];
+        m.fill(&mut quiet);
+        assert_eq!(quiet, [0.0; 3]);
+        m.set_loop(Some((5, 1.0))); // not there
+        m.fill(&mut quiet);
+        assert_eq!(quiet, [0.0; 3]);
+    }
+
+    #[test]
+    fn a_sound_added_later_can_be_played() {
+        let mut m = Mixer::new(ramp(10), vec![], 1000.0);
+        m.volume = 1.0;
+        let n = m.add_effect(clip(1000.0, vec![0.25; 2]));
+        m.play(n);
+        let mut out = [0.0; 3];
+        m.fill(&mut out);
+        assert_eq!(out, [0.25, 0.25, 0.0]);
     }
 }

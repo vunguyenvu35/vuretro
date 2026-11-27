@@ -182,6 +182,80 @@ pub fn collide(bike: &mut Bike, rivals: &[Rival]) -> bool {
     hit
 }
 
+/// How long the bike can ride before the police come after it.
+pub const POLICE_AFTER: f32 = 12.0;
+/// How far behind the bike the police start, in samples.
+const POLICE_START: f32 = 40.0;
+
+/// A police bike.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Cop {
+    pub position: f32,
+    pub speed: f32,
+}
+
+/// What the police are doing about the bike.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Chased {
+    /// Nobody is after the bike.
+    Clear,
+    /// The police are this many samples behind.
+    Behind(f32),
+    /// They caught it.
+    Busted,
+}
+
+/// The police: they come after a while, a little faster than the bike but never faster than
+/// 78, so a bike at its top speed (80) gets away.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Chase {
+    pub elapsed: f32,
+    pub cop: Option<Cop>,
+}
+
+impl Chase {
+    pub fn step(&mut self, bike: &Bike, dt: f32) -> Chased {
+        self.elapsed += dt;
+        if self.cop.is_none() && self.elapsed >= POLICE_AFTER && bike.speed > 5.0 {
+            self.cop = Some(Cop {
+                position: bike.position - POLICE_START,
+                speed: bike.speed,
+            });
+        }
+        let Some(cop) = &mut self.cop else {
+            return Chased::Clear;
+        };
+        if cop.position > bike.position {
+            // the bike went back to the start of the route: so do the police
+            cop.position = bike.position - POLICE_START;
+        }
+        cop.speed = (bike.speed * 1.05 + 3.0).min(78.0);
+        cop.position += cop.speed * dt;
+        let gap = bike.position - cop.position;
+        if gap < 0.6 {
+            Chased::Busted
+        } else {
+            Chased::Behind(gap)
+        }
+    }
+}
+
+/// Hit a rival beside the bike, to the left (`side` -1) or the right (1): it is slowed and
+/// knocked sideways. True when there was one to hit.
+pub fn punch(bike: &Bike, rivals: &mut [Rival], side: f32) -> bool {
+    let mut hit = false;
+    for r in rivals {
+        let ahead = r.position - bike.position;
+        let across = (r.lateral - bike.lateral) * side;
+        if (-0.8..0.8).contains(&ahead) && (40.0..320.0).contains(&across) {
+            r.speed = (r.speed * 0.6).max(12.0);
+            r.lateral += side * 140.0;
+            hit = true;
+        }
+    }
+    hit
+}
+
 /// What is needed to draw riders: their sprites, the palette and the colour tables.
 pub struct Look<'a> {
     pub riders: &'a [Frame],
@@ -192,6 +266,8 @@ pub struct Look<'a> {
     /// The course's horizon and the heading of the road at each sample, which turns it.
     pub horizon: Option<&'a Rgb>,
     pub headings: &'a [f32],
+    /// The police are after the bike: how many samples behind it (for the warning).
+    pub police: Option<f32>,
 }
 
 /// Draw a sprite so that the wheel touches the picture at (`x`, `bottom`), `scale` times its
@@ -306,6 +382,10 @@ pub fn render(
             kmh,
             (place, rivals.len() + 1),
         );
+    }
+    if look.police.is_some() && (bike.position * 0.5) as i64 % 2 == 0 {
+        // flashing, with the road's own pace
+        hud::text(&mut picture, 232, 10, 4, "POLICE", [235, 40, 40]);
     }
     if let (Some(sprite), Some(remap)) = (look.riders.get(lean_frame(bike.lean)), remap_of(colour))
     {
@@ -461,6 +541,7 @@ mod tests {
             dash: None,
             horizon: None,
             headings: &[],
+            police: None,
         };
         let with = render(&road, &Bike::start(), &[], &look, 0);
         assert_eq!((with.width, with.height), (640, 480));
@@ -473,6 +554,7 @@ mod tests {
             dash: None,
             horizon: None,
             headings: &[],
+            police: None,
         };
         let without = render(&road, &Bike::start(), &[], &nobody, 0);
         assert_ne!(with.pixels, without.pixels);
@@ -544,6 +626,7 @@ mod tests {
             dash: None,
             horizon: None,
             headings: &[],
+            police: None,
         };
         let red = |p: &Rgb| {
             p.pixels
@@ -563,6 +646,113 @@ mod tests {
         assert!(
             with - alone < alone / 4,
             "and few of them, it is far away: {alone} {with}"
+        );
+    }
+
+    #[test]
+    fn the_police_come_after_a_while_and_catch_a_slow_bike() {
+        let mut chase = Chase::default();
+        let mut bike = Bike {
+            speed: 50.0,
+            position: 100.0,
+            ..Bike::start()
+        };
+        assert_eq!(chase.step(&bike, 1.0), Chased::Clear);
+        chase.elapsed = POLICE_AFTER;
+        assert!(matches!(chase.step(&bike, 0.0), Chased::Behind(g) if (g - 40.0).abs() < 1.0));
+        let mut caught = false;
+        for _ in 0..30 * 40 {
+            bike.position += bike.speed / 30.0;
+            if chase.step(&bike, 1.0 / 30.0) == Chased::Busted {
+                caught = true;
+                break;
+            }
+        }
+        assert!(caught, "a bike at speed 50 is caught: {chase:?} {bike:?}");
+    }
+
+    #[test]
+    fn a_bike_at_its_top_speed_gets_away_and_the_police_are_not_there_when_it_is_stopped() {
+        let mut chase = Chase {
+            elapsed: POLICE_AFTER,
+            cop: None,
+        };
+        let mut bike = Bike {
+            speed: 80.0,
+            position: 100.0,
+            ..Bike::start()
+        };
+        for _ in 0..30 * 20 {
+            bike.position += bike.speed / 30.0;
+            assert_ne!(chase.step(&bike, 1.0 / 30.0), Chased::Busted);
+        }
+        assert!(matches!(chase.step(&bike, 0.0), Chased::Behind(g) if g > 40.0));
+        let mut stopped = Chase {
+            elapsed: POLICE_AFTER,
+            cop: None,
+        };
+        let still = Bike {
+            speed: 0.0,
+            ..Bike::start()
+        };
+        assert_eq!(
+            stopped.step(&still, 1.0),
+            Chased::Clear,
+            "they come for a bike that rides"
+        );
+    }
+
+    #[test]
+    fn the_police_start_again_with_the_bike_at_the_end_of_the_route() {
+        let mut chase = Chase {
+            elapsed: 20.0,
+            cop: Some(Cop {
+                position: 300.0,
+                speed: 70.0,
+            }),
+        };
+        let bike = Bike {
+            speed: 70.0,
+            position: 2.0,
+            ..Bike::start()
+        };
+        assert!(matches!(chase.step(&bike, 0.0), Chased::Behind(_)));
+        assert!(chase.cop.unwrap().position < bike.position);
+    }
+
+    #[test]
+    fn a_punch_hits_a_rival_beside_the_bike_on_that_side_only() {
+        let bike = Bike {
+            position: 10.0,
+            lateral: 0.0,
+            ..Bike::start()
+        };
+        let rival = Rival {
+            position: 10.2,
+            lateral: 150.0,
+            speed: 60.0,
+            colour: 0,
+        };
+        let mut rivals = [rival];
+        assert!(!punch(&bike, &mut rivals, -1.0), "he is on the right");
+        assert!(punch(&bike, &mut rivals, 1.0));
+        assert!(
+            rivals[0].speed < 40.0 && rivals[0].lateral > 250.0,
+            "{:?}",
+            rivals[0]
+        );
+        let mut far = [Rival {
+            position: 30.0,
+            ..rival
+        }];
+        assert!(!punch(&bike, &mut far, 1.0), "too far");
+        let mut close = [Rival {
+            lateral: 5.0,
+            ..rival
+        }];
+        assert!(
+            !punch(&bike, &mut close, 1.0),
+            "on top of the bike is not beside it"
         );
     }
 }
