@@ -505,12 +505,12 @@ fn replace_icon(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// A small program with one icon (2x2, 8 bits, a red pixel and three see-through ones) and
     /// the resource tree around it, laid out like a real one.
-    fn program() -> Vec<u8> {
+    pub(crate) fn program() -> Vec<u8> {
         let mut d = vec![0u8; 0x400];
         d[0..2].copy_from_slice(b"MZ");
         d[0x3c..0x40].copy_from_slice(&0x40u32.to_le_bytes());

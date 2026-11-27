@@ -5,6 +5,7 @@ import { lazyCover } from '../lib/lazyCovers.js';
 import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, applyPatch, covers, setLayout, pinCovers, pickRomFiles, pickRomFolder, clearRecent, setSort } from '../lib/store.svelte.js';
   import { openMenu, confirmDialog, toast } from '../lib/ui.svelte.js';
   import { visibleGames, heroFor, headingFor, pickRange, formatSize, sortDirection, STATUSES } from '../lib/library.js';
+  import logo from '../lib/logo-mark.svg';
   import Select from './Select.svelte';
   import SortMenu from './SortMenu.svelte';
   import Welcome from "./Welcome.svelte";
@@ -260,7 +261,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
 <section class="main">
       {#if hero && !app.query}
         <div class="hero">
-          <div class="crt scan" style="--c:{colorOf(hero.system)}">{#if covers[hero.path]}<img src={covers[hero.path]} alt="" />{:else}<span>{hero.title}</span>{/if}</div>
+          <div class="crt scan" style="--c:{colorOf(hero.system)}">{#if covers[hero.path]}<img src={covers[hero.path]} alt="" />{:else}<span class="nocover"><img class="nologo" src={logo} alt="" /><em>{hero.title}</em></span>{/if}</div>
           <div class="hero-body">
             <div class="label">Continue playing</div>
             <h2>{hero.title}</h2>
@@ -355,7 +356,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
               {#if app.selecting}
                 <span class="rtick" class:on={app.picked.includes(g.path)} class:off={!g.imported} aria-hidden="true">{#if app.picked.includes(g.path)}<svg viewBox="0 0 16 16" width="11" height="11"><path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg>{/if}</span>
               {/if}
-              <span class="thumb cover scan" style="--c:{colorOf(g.system)}">{#if covers[g.path]}<img src={covers[g.path]} alt="" loading="lazy" />{/if}</span>
+              <span class="thumb cover scan" style="--c:{colorOf(g.system)}">{#if covers[g.path]}<img src={covers[g.path]} alt="" loading="lazy" />{:else}<img class="nologo" src={logo} alt="" />{/if}</span>
               <span class="rname"><b>{g.title}</b>{#if g.favorite}<i class="rstar" title="Favorite">★</i>{/if}{#if g.blocked}<i class="rlock" title={g.blocked}>🔒</i>{/if}</span>
               <span class="rsys col-system"><span class="sico" style="color:{colorOf(g.system)}"><Icon name={g.system} size={16} /></span><span class="sname">{sysName(g.system)}</span></span>
               <span class="r muted2 col-size">{formatSize(g.size)}</span>
@@ -373,7 +374,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
             <button use:lazyCover={g.path} class="card" class:sel={app.selected === g.path && !app.selecting} class:picked={app.picked.includes(g.path)} class:locked={app.selecting && !g.imported} title={app.selecting && !g.imported ? 'Games read from a linked folder cannot be removed here' : ''} onclick={(e) => cardClick(g, e)} oncontextmenu={(e) => gameMenu(e, g)} ondblclick={() => !app.selecting && play(g)}>
               <div class="cover scan" style="--c:{colorOf(g.system)}">
                 {#if app.selecting && g.imported}<span class="tick" aria-hidden="true">{#if app.picked.includes(g.path)}<svg viewBox="0 0 16 16" width="12" height="12"><path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg>{/if}</span>{/if}
-                {#if covers[g.path]}<img src={covers[g.path]} alt="" loading="lazy" />{:else}<span>{g.title.slice(0, 22)}</span>{/if}
+                {#if covers[g.path]}<img src={covers[g.path]} alt="" loading="lazy" />{:else}<span class="nocover"><img class="nologo" src={logo} alt="" /><em>{g.title.slice(0, 40)}</em></span>{/if}
                 {#if g.favorite}<b class="star">★</b>{/if}
                 {#if g.blocked}<b class="lock" title={g.blocked}>🔒</b>{/if}
               </div>
@@ -395,7 +396,7 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
       </button>
     </header>
     <div class="dbody">
-    <div class="crt scan big" style="--c:{colorOf(selected.system)}">{#if covers[selected.path]}<img src={covers[selected.path]} alt="" />{:else}<span>{selected.title}</span>{/if}</div>
+    <div class="crt scan big" style="--c:{colorOf(selected.system)}">{#if covers[selected.path]}<img src={covers[selected.path]} alt="" />{:else}<span class="nocover"><img class="nologo" src={logo} alt="" /><em>{selected.title}</em></span>{/if}</div>
     <GameTitle game={selected} />
     <p class="muted">{sel.name} · {formatSize(selected.size)}</p>
 
@@ -512,6 +513,12 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
   }
   .crt span, .cover span { font: 10px/1.6 var(--font-pixel); color: var(--c); padding: 8px; text-shadow: 0 0 8px color-mix(in srgb, var(--c) 60%, transparent); word-break: break-word; }
   .crt.big { width: 100%; height: 150px; }
+  /* a game with no picture of its own: the logo of the app and the name of the game under it */
+  .nocover { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 100%; padding: 8px; box-sizing: border-box; }
+  .nocover em { font-style: normal; font: 600 11px/1.3 var(--font-ui, system-ui); color: var(--text); opacity: .85; text-shadow: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
+  .crt img.nologo, .cover img.nologo { position: static; inset: auto; width: auto; height: auto; max-width: 52%; max-height: 52%; flex: 0 1 auto; object-fit: contain; image-rendering: auto; border-radius: 22%; }
+  .lrow .thumb img.nologo { position: absolute; inset: 0; margin: auto; width: auto; height: auto; max-width: 70%; max-height: 70%; object-fit: contain; image-rendering: auto; }
+  .cover:hover img.nologo { transform: none; }
 
   /* one toolbar: title, search, selection tools, sort and view. It stays put while the
      list scrolls under it. */

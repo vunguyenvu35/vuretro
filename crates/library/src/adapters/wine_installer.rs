@@ -616,7 +616,30 @@ pub(super) fn mac_icon_for(exe: &Path, icon: Option<&[u8]>) -> Result<(), String
         Some(rgba) => crate::pe_icon::set_icon(&mut bytes, rgba)?,
         None => crate::pe_icon::mac_style_icon(&mut bytes)?,
     }
-    std::fs::write(exe, bytes).map_err(|e| e.to_string())
+    // written beside it and moved over it, so that a failure leaves the program as it was
+    let part = exe.with_extension("part");
+    std::fs::write(&part, bytes).map_err(|e| e.to_string())?;
+    std::fs::rename(&part, exe).map_err(|e| {
+        let _ = std::fs::remove_file(&part);
+        e.to_string()
+    })
+}
+
+/// The icon of the program of any game (`program` is a path on the CD drive, and the files of
+/// the disc are in `game`): the app's with the badge of the system. The program may be packed or
+/// protected, or not a Windows program of 32 bits: then it is left as it was and keeps its icon.
+pub(super) fn patch_program_icon(
+    game: &Path,
+    program: &str,
+    icon: Option<&[u8]>,
+    log: &dyn Fn(&str),
+) {
+    let Some(names) = resolve_ci(game, program.trim_start_matches("D:")) else {
+        return;
+    };
+    if let Err(e) = mac_icon_for(&game.join(names.join("/")), icon) {
+        log(&format!("The game keeps its icon: {e}"));
+    }
 }
 
 /// Whether a Wine is on this computer (the one this app fetched, or another).
@@ -744,7 +767,9 @@ pub fn prepare(
         }
         Recipe::Generic => {
             copy_disc(disc, &game, log)?;
-            (find_program(&game)?, "800x600")
+            let program = find_program(&game)?;
+            patch_program_icon(&game, &program, icon, log);
+            (program, "800x600")
         }
     };
 
@@ -1033,5 +1058,36 @@ mod tests {
         prepare(&paths, &iso, Some(&icon), &|l| println!("{l}")).unwrap();
         let ready = std::fs::read_to_string(paths.native_dir().join("pc/roadrash/ready")).unwrap();
         assert!(ready.ends_with("patched-3\n"), "{ready}");
+    }
+
+    #[test]
+    fn the_icon_of_any_games_program_is_replaced_in_the_copy_and_a_bad_one_is_left_alone() {
+        let game = temp("any-icon");
+        std::fs::create_dir_all(game.join("Bin")).unwrap();
+        std::fs::write(game.join("Bin/Play.EXE"), crate::pe_icon::tests::program()).unwrap();
+        let lines = std::cell::RefCell::new(Vec::new());
+        let log = |l: &str| lines.borrow_mut().push(l.to_string());
+        let before = std::fs::read(game.join("Bin/Play.EXE")).unwrap();
+        // the path on the CD drive is matched without regard to letter case
+        patch_program_icon(&game, "D:\\bin\\play.exe", None, &log);
+        let after = std::fs::read(game.join("Bin/Play.EXE")).unwrap();
+        assert!(
+            after.len() > before.len(),
+            "a section with the icon was added"
+        );
+        assert!(lines.borrow().is_empty());
+        assert!(!game.join("Bin/Play.part").exists(), "no leftover");
+        // a file that is not a program is left as it was, and the log says so
+        std::fs::write(game.join("Bad.EXE"), b"not a program").unwrap();
+        patch_program_icon(&game, "D:\\Bad.EXE", None, &log);
+        assert_eq!(
+            std::fs::read(game.join("Bad.EXE")).unwrap(),
+            b"not a program"
+        );
+        assert_eq!(lines.borrow().len(), 1);
+        // a program that is not there is not an error
+        patch_program_icon(&game, "D:\\Nowhere.EXE", None, &log);
+        assert_eq!(lines.borrow().len(), 1);
+        std::fs::remove_dir_all(game).unwrap();
     }
 }
