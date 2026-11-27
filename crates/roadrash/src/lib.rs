@@ -8,6 +8,7 @@ pub mod avi;
 pub mod bob;
 pub mod cel;
 pub mod cinepak;
+pub mod course;
 pub mod image;
 pub mod palette;
 pub mod rsc;
