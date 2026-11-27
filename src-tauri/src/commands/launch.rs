@@ -61,7 +61,10 @@ pub async fn launch_game(
         let prepared = core.prepare_pc(&path, |line| {
             let _ = events.emit("pc-preparing", line.trim());
         });
-        let _ = events.emit("pc-prepared", ());
+        // an earlier press of Play is setting this game up: its banner stays
+        if !matches!(&prepared, Err(e) if e == vuretro_core::service::PC_BUSY) {
+            let _ = events.emit("pc-prepared", ());
+        }
         prepared?;
         core.launch_game(path, slot)
     })
@@ -90,7 +93,9 @@ pub async fn run_pc_installer(
         let done = core.run_pc_installer(&path, |line| {
             let _ = events.emit("pc-preparing", line.trim());
         });
-        let _ = events.emit("pc-prepared", ());
+        if !matches!(&done, Err(e) if e == vuretro_core::service::PC_BUSY) {
+            let _ = events.emit("pc-prepared", ());
+        }
         done
     })
     .await?

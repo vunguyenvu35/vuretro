@@ -55,6 +55,35 @@ fn now() -> u64 {
         .unwrap_or(0)
 }
 
+/// What setting a game up says when it is being set up already (by an earlier press of Play).
+pub const PC_BUSY: &str = "this game is already being set up: wait for it to finish";
+
+/// A claim on something that only one thing at a time may do (setting a game up, getting a
+/// core): given back when it is dropped, however the work ended.
+struct Busy<'a> {
+    set: &'a Mutex<HashSet<String>>,
+    key: String,
+}
+
+impl<'a> Busy<'a> {
+    fn claim(set: &'a Mutex<HashSet<String>>, key: &str) -> Option<Busy<'a>> {
+        set.lock().unwrap().insert(key.to_string()).then(|| Busy {
+            set,
+            key: key.to_string(),
+        })
+    }
+}
+
+impl Drop for Busy<'_> {
+    fn drop(&mut self) {
+        // a panic elsewhere may have poisoned the lock: the claim is still given back
+        self.set
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&self.key);
+    }
+}
+
 /// A game that is running; hand it back to [`App::wait_for_exit`] on a thread.
 pub struct Running {
     process: Box<dyn GameProcess>,
@@ -444,9 +473,9 @@ impl App {
                 .native_installer
                 .as_ref()
                 .ok_or("this build cannot set up Windows games")?;
-            if !self.installing.lock().unwrap().insert(stem.to_string()) {
+            let Some(_busy) = Busy::claim(&self.installing, stem) else {
                 return Err(format!("{} is already being set up", sys.name));
-            }
+            };
             let result = installer.install_pc_runtime(&|line: &str| {
                 if let Some(n) = line
                     .trim()
@@ -456,19 +485,16 @@ impl App {
                     progress(n.min(100));
                 }
             });
-            self.installing.lock().unwrap().remove(stem);
             return result;
         }
         let installer = self
             .installer
             .as_ref()
             .ok_or("this build cannot download cores")?;
-        if !self.installing.lock().unwrap().insert(stem.to_string()) {
+        let Some(_busy) = Busy::claim(&self.installing, stem) else {
             return Err(format!("{stem} is already being installed"));
-        }
-        let result = installer.install(stem, &progress);
-        self.installing.lock().unwrap().remove(stem);
-        result.map(|_| ())
+        };
+        installer.install(stem, &progress).map(|_| ())
     }
 
     /// Change how long a new game is watched for an immediate failure (tests).
@@ -1416,13 +1442,12 @@ impl App {
         if !installer.pc_ready() {
             return Ok(false);
         }
-        let key = format!("pc:{path}");
-        if !self.installing.lock().unwrap().insert(key.clone()) {
-            return Err("this game is already being set up".into());
-        }
-        let result = installer.prepare_pc_game(Path::new(path), &log);
-        self.installing.lock().unwrap().remove(&key);
-        result.map(|_| true)
+        let Some(_busy) = Busy::claim(&self.installing, &format!("pc:{path}")) else {
+            return Err(PC_BUSY.into());
+        };
+        installer
+            .prepare_pc_game(Path::new(path), &log)
+            .map(|_| true)
     }
 
     /// Run the installer of the disc of a Windows game, which the user follows in its window, and
@@ -1446,13 +1471,10 @@ impl App {
         if !installer.pc_ready() {
             return Err("Wine is not set up yet: press Play on a Windows game to get it".into());
         }
-        let key = format!("pc:{path}");
-        if !self.installing.lock().unwrap().insert(key.clone()) {
-            return Err("this game is already being set up".into());
-        }
-        let result = installer.run_pc_installer(Path::new(path), &log);
-        self.installing.lock().unwrap().remove(&key);
-        result
+        let Some(_busy) = Busy::claim(&self.installing, &format!("pc:{path}")) else {
+            return Err(PC_BUSY.into());
+        };
+        installer.run_pc_installer(Path::new(path), &log)
     }
 
     /// Start a Windows game from a disc image: made ready the first time (slow), then run
@@ -1865,5 +1887,40 @@ impl App {
             self.meta.lock().unwrap().entry(key).or_default().play_secs += secs;
             self.save_meta();
         }
+    }
+}
+
+#[cfg(test)]
+mod busy_tests {
+    use super::*;
+
+    #[test]
+    fn a_claim_is_given_back_however_the_work_ended() {
+        let set = Mutex::new(HashSet::new());
+        {
+            let first = Busy::claim(&set, "pc:/a.iso");
+            assert!(first.is_some());
+            assert!(Busy::claim(&set, "pc:/a.iso").is_none(), "one at a time");
+            assert!(
+                Busy::claim(&set, "pc:/b.iso").is_some(),
+                "another game is free"
+            );
+        }
+        assert!(
+            Busy::claim(&set, "pc:/a.iso").is_some(),
+            "given back when dropped"
+        );
+        // work that panicked gives it back too, though the lock is poisoned by then
+        let shared = std::sync::Arc::new(Mutex::new(HashSet::new()));
+        let inner = shared.clone();
+        let _ = std::thread::spawn(move || {
+            let _busy = Busy::claim(&inner, "k").unwrap();
+            let _held = inner.lock().unwrap();
+            panic!("the work failed");
+        })
+        .join();
+        assert!(shared.lock().is_err(), "the lock is poisoned");
+        let set = shared.lock().unwrap_or_else(|e| e.into_inner());
+        assert!(!set.contains("k"));
     }
 }

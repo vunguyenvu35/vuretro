@@ -805,16 +805,76 @@ struct WineEnv {
     prefix: PathBuf,
 }
 
+/// How long one command of Wine may take (the first start of a new Windows takes a few minutes
+/// on a slow computer): a command that takes longer is hung, and is ended.
+const WINE_COMMAND_LIMIT: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// Run `command` and wait for it for at most `limit`; what it says goes to `log_file`, and the end
+/// of it is in the error when it fails. Not a pipe: the program Wine starts behind the command
+/// (its server) would keep a pipe open for as long as it lives, and the wait would never end.
+fn run_bounded(
+    command: &mut Command,
+    limit: std::time::Duration,
+    log_file: &Path,
+) -> Result<(), String> {
+    let out = std::fs::File::create(log_file).map_err(|e| e.to_string())?;
+    let mut child = command
+        .stdin(std::process::Stdio::null())
+        .stdout(out.try_clone().map_err(|e| e.to_string())?)
+        .stderr(out)
+        .spawn()
+        .map_err(|e| format!("cannot start {:?}: {e}", command.get_program()))?;
+    let started = std::time::Instant::now();
+    let tail = || {
+        let text = std::fs::read_to_string(log_file).unwrap_or_default();
+        let lines: Vec<&str> = text.lines().rev().take(4).collect();
+        lines.into_iter().rev().collect::<Vec<_>>().join("\n")
+    };
+    loop {
+        match child.try_wait().map_err(|e| e.to_string())? {
+            Some(status) if status.success() => return Ok(()),
+            Some(status) => return Err(format!("{status}: {}", tail())),
+            None if started.elapsed() > limit => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!(
+                    "it took more than {} seconds and was ended: {}",
+                    limit.as_secs(),
+                    tail()
+                ));
+            }
+            None => std::thread::sleep(std::time::Duration::from_millis(100)),
+        }
+    }
+}
+
 impl WineEnv {
     fn run(&self, args: &[String]) -> Result<(), String> {
-        run(
+        let log = self.prefix.with_file_name("wine-command.log");
+        let result = run_bounded(
             Command::new(&self.wine)
                 .args(args)
                 .env("WINEPREFIX", &self.prefix)
                 .env("WINEDLLOVERRIDES", "mscoree,mshtml=")
                 .env("WINEDEBUG", "-all"),
-            &|_| {},
-        )
+            WINE_COMMAND_LIMIT,
+            &log,
+        );
+        if result.is_err() {
+            // a command that hung leaves the server of Wine hung: end it, so the next starts clean
+            if let Some(server) = self.wine.parent().map(|bin| bin.join("wineserver")) {
+                let _ = Command::new(server)
+                    .arg("-k")
+                    .env("WINEPREFIX", &self.prefix)
+                    .status();
+            }
+        }
+        result.map_err(|e| {
+            format!(
+                "wine {}: {e}",
+                args.first().map(String::as_str).unwrap_or("")
+            )
+        })
     }
 }
 
@@ -1811,5 +1871,39 @@ mod tests {
         let missing = spec(wine, &root, "C:\\Nope\\x.exe", "800x600", &l);
         assert_eq!(missing.cwd.unwrap(), root.join("game"));
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_command_that_hangs_is_ended_and_one_that_fails_says_why() {
+        let dir = temp("bounded");
+        let log = dir.join("out.log");
+        let limit = std::time::Duration::from_millis(300);
+        // done in time
+        assert!(run_bounded(
+            Command::new("/bin/sh").args(["-c", "echo hi"]),
+            limit * 10,
+            &log
+        )
+        .is_ok());
+        // a failure carries what the command said last
+        let err = run_bounded(
+            Command::new("/bin/sh").args(["-c", "echo one; echo two >&2; exit 3"]),
+            limit * 10,
+            &log,
+        )
+        .unwrap_err();
+        assert!(err.contains("two") && err.contains("3"), "{err}");
+        // one that hangs is ended after the limit, even when something it started keeps going
+        let started = std::time::Instant::now();
+        let err = run_bounded(
+            Command::new("/bin/sh").args(["-c", "sleep 30 & wait"]),
+            limit,
+            &log,
+        )
+        .unwrap_err();
+        assert!(err.contains("was ended"), "{err}");
+        assert!(started.elapsed().as_secs() < 5);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }
