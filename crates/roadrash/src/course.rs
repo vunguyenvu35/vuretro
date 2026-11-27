@@ -12,6 +12,13 @@
 //! change from the start values to the end values between the two samples, and a lane is 250
 //! world units wide while a sample is 256 long.
 //!
+//! A row also holds, at +8, the roadside table `BORR` (a 20-byte header with the count at +8,
+//! then one word for each stretch of roadside: see [`crate::scenery`]) and, at +0xC, the table of
+//! families `MSRR` (a 24-byte header with the count at +8 and a byte at +14 that is 0x58 plus a
+//! bias; then 12-byte records of a sample as `i32`, a kind and a slot as bytes, and a family
+//! number as a `u32` at +8). A family event of kind 1 or 3 puts a family in one of the four slots
+//! of the roadside from its sample on.
+//!
 //! `NOD `: `DONR`, the size at +4 (the resource's own size), the node count at +8 and the
 //! root node's offset at +16. A node starts with its kind: 0 road (+8 next, +12 previous,
 //! +16 section, +20 how many of its samples are used), 1 split (+8 and +12 the two roads
@@ -30,6 +37,20 @@ pub struct Section {
     pub rise: Vec<i8>,
     /// The number of lanes to the left and to the right of the middle, at every sample.
     pub lanes: Vec<[f32; 2]>,
+    /// The words of the roadside table (none when the section has no roadside).
+    pub roadside: Vec<u32>,
+    pub family_events: Vec<FamilyEvent>,
+    /// How many samples before the camera the families are changed (from the table).
+    pub family_bias: i32,
+}
+
+/// A change in which family the roadside draws from.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FamilyEvent {
+    pub sample: i32,
+    pub kind: u8,
+    pub slot: u8,
+    pub family: u16,
 }
 
 impl Section {
@@ -87,6 +108,41 @@ impl Bytes<'_> {
             Err(format!("no {} at byte {at}", String::from_utf8_lossy(tag)))
         }
     }
+}
+
+/// The words of the roadside table at `at` (0: there is none).
+fn read_roadside(sgs: &Bytes, at: usize) -> Result<Vec<u32>, String> {
+    if at == 0 {
+        return Ok(Vec::new());
+    }
+    sgs.tag(at, b"BORR")?;
+    let count = sgs.u32(at + 8)? as usize;
+    (0..count).map(|j| sgs.u32(at + 20 + 4 * j)).collect()
+}
+
+/// The family events at `at` and the bias of the table.
+fn read_families(sgs: &Bytes, at: usize) -> Result<(Vec<FamilyEvent>, i32), String> {
+    sgs.tag(at, b"MSRR")?;
+    let bias = *sgs.0.get(at + 14).ok_or("the family table is cut short")? as i32 - 0x58;
+    let count = sgs.u32(at + 8)? as usize;
+    let mut events = Vec::new();
+    for k in 0..count {
+        let p = at + 24 + k * 12;
+        let (kind, slot) = (
+            *sgs.0.get(p + 4).ok_or("the family table is cut short")?,
+            *sgs.0.get(p + 5).ok_or("the family table is cut short")?,
+        );
+        if slot > 3 || !(1..=4).contains(&kind) {
+            return Err("a family event that is not of a known kind".into());
+        }
+        events.push(FamilyEvent {
+            sample: sgs.u32(p)? as i32,
+            kind,
+            slot,
+            family: sgs.u32(p + 8)? as u16,
+        });
+    }
+    Ok((events, bias))
 }
 
 /// The lanes at each of `samples` samples, from the table at `at` (none: two on each side).
@@ -162,7 +218,15 @@ pub fn parse(file: &[u8]) -> Result<Course, String> {
             bend: data.chunks(2).map(|p| p[0] as i8).collect(),
             rise: data.chunks(2).map(|p| p[1] as i8).collect(),
             lanes: read_lanes(&sgs, sgs.u32(row + 0x18)? as usize, samples)?,
+            roadside: read_roadside(&sgs, sgs.u32(row + 8)? as usize)?,
+            family_events: Vec::new(),
+            family_bias: 0,
         });
+        let at = sgs.u32(row + 0xC)? as usize;
+        if at != 0 {
+            let section = sections.last_mut().expect("just pushed");
+            (section.family_events, section.family_bias) = read_families(&sgs, at)?;
+        }
     }
 
     nod.tag(0, b"DONR")?;
@@ -384,6 +448,9 @@ mod tests {
             bend: vec![0, 0, 0],
             rise: vec![5, -20, 5],
             lanes: vec![[2.0, 2.0]; 3],
+            roadside: vec![],
+            family_events: vec![],
+            family_bias: 0,
         };
         assert_eq!(s.summed_elevation(), 90);
     }

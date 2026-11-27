@@ -18,6 +18,57 @@ pub struct Texture {
     pub indices: Vec<u8>,
 }
 
+/// An indexed texture as the families hold them: `0x00BC614E`, the bounds of the picture (four
+/// `i16`, from the origin to the far corner) at +4, flags at +12, the width and height at +32
+/// and +36, the number of mip levels at +40, and from +56 twelve bytes per level, the first
+/// word of which is where that level's pixels are, counted from byte 28. Only the full-size
+/// level is kept. Its pixels are palette indices of the disc's palette.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Indexed {
+    pub bounds: [i16; 4],
+    pub flags: u32,
+    pub width: u32,
+    pub height: u32,
+    pub pixels: Vec<u8>,
+}
+
+/// Read an indexed texture that starts at the start of `body` (the rest of the buffer may
+/// follow it: the pixels are found by offsets).
+pub fn read_indexed(body: &[u8]) -> Result<Indexed, String> {
+    if word(body, 0)? != INDEXED {
+        return Err("not an indexed texture".into());
+    }
+    let (width, height, levels) = (word(body, 32)?, word(body, 36)?, word(body, 40)?);
+    if width == 0 || width > 256 || width & (width - 1) != 0 || height == 0 || height > 512 {
+        return Err(format!("a texture of {width}x{height} is not believable"));
+    }
+    if levels == 0 || levels > 9 {
+        return Err(format!("{levels} mip levels"));
+    }
+    let mut bounds = [0i16; 4];
+    for (i, b) in bounds.iter_mut().enumerate() {
+        let at = 4 + 2 * i;
+        *b = i16::from_le_bytes(
+            body.get(at..at + 2)
+                .map(|w| [w[0], w[1]])
+                .ok_or("the texture is cut in its header")?,
+        );
+    }
+    let start = word(body, 56)? as usize + 28;
+    let size = (width * height) as usize;
+    let pixels = body
+        .get(start..start + size)
+        .ok_or("the pixels run past the end")?
+        .to_vec();
+    Ok(Indexed {
+        bounds,
+        flags: word(body, 12)?,
+        width,
+        height,
+        pixels,
+    })
+}
+
 fn word(b: &[u8], at: usize) -> Result<u32, String> {
     b.get(at..at + 4)
         .map(|w| u32::from_le_bytes([w[0], w[1], w[2], w[3]]))

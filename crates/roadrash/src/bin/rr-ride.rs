@@ -17,6 +17,7 @@ use vuretro_roadrash::palette::{Order, Palette};
 use vuretro_roadrash::ride::{
     collide, punch, render, step, step_rivals, Bike, Chase, Chased, Input, Look, Rival, TOP_SPEED,
 };
+use vuretro_roadrash::scenery::Scenery;
 use vuretro_roadrash::sound::{Audio, Mixer};
 use vuretro_roadrash::{adpcm, avi, bob, cinepak, course, exe, horizon, hud, wav};
 
@@ -145,6 +146,7 @@ fn main() -> Result<(), String> {
         .and_then(|f| wav::parse(&f).ok());
     let backdrop = horizon::load(&disc, &name, &palette)?;
     let headings = course::headings(&samples, vuretro_roadrash::road::Guess::default().turn);
+    let scenery = Scenery::load(&disc, &course)?;
     let mut look = Look {
         riders: &riders,
         palette: &palette,
@@ -153,6 +155,7 @@ fn main() -> Result<(), String> {
         horizon: Some(&backdrop),
         headings: &headings,
         police: None,
+        scenery: Some(&scenery),
     };
     let mut rivals = spawn_rivals(rider);
     let dt = 1.0 / 30.0;

@@ -4,6 +4,7 @@
 //! data is included. What is known about each format is written next to its reader.
 
 pub mod adpcm;
+pub mod animation;
 pub mod avi;
 pub mod bob;
 pub mod cel;
@@ -11,6 +12,8 @@ pub mod cinepak;
 pub mod course;
 pub mod disc;
 pub mod exe;
+pub mod explode;
+pub mod family;
 pub mod horizon;
 pub mod hud;
 pub mod image;
@@ -19,5 +22,6 @@ pub mod palette;
 pub mod ride;
 pub mod road;
 pub mod rsc;
+pub mod scenery;
 pub mod sound;
 pub mod wav;

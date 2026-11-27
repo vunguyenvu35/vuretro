@@ -9,6 +9,7 @@ use crate::hud;
 use crate::image::Rgb;
 use crate::palette::Palette;
 use crate::road::{self, Guess};
+use crate::scenery::Scenery;
 
 /// Samples per second at the top speed (a sample is 256 world units).
 pub const TOP_SPEED: f32 = 80.0;
@@ -268,6 +269,8 @@ pub struct Look<'a> {
     pub headings: &'a [f32],
     /// The police are after the bike: how many samples behind it (for the warning).
     pub police: Option<f32>,
+    /// The things at the side of the road.
+    pub scenery: Option<&'a Scenery>,
 }
 
 /// Draw a sprite so that the wheel touches the picture at (`x`, `bottom`), `scale` times its
@@ -305,6 +308,83 @@ fn draw_sprite(
     }
 }
 
+/// Samples ahead of the camera that things at the side of the road are drawn for.
+const SCENERY_RANGE: usize = 110;
+
+/// Draw the things at the side of the road, the far ones first. A thing is as big as its
+/// picture times `size / 4` world units to the texel, and stands with its feet (the hotspot of
+/// the picture) on the road's side.
+fn draw_props(
+    picture: &mut Rgb,
+    samples: &[Sample],
+    bike: &Bike,
+    scenery: &Scenery,
+    palette: &Palette,
+) {
+    let guess = Guess::default();
+    let from = bike.position.max(0.0) as usize + 1;
+    for prop in scenery.between(from, from + SCENERY_RANGE).iter().rev() {
+        let Some(sprite) = scenery.sprite(prop) else {
+            continue;
+        };
+        let ahead = prop.sample as f32 - bike.position;
+        let Some(spot) = road::project(
+            samples,
+            bike.position,
+            bike.lateral,
+            guess,
+            ahead,
+            prop.lateral,
+        ) else {
+            continue;
+        };
+        // texels to pixels of the 640x480 picture
+        let k = prop.size as f32 / 4.0 * spot.scale;
+        if k <= 0.0 || k > 12.0 {
+            continue;
+        }
+        let t = &sprite.texture;
+        let (bw, bh) = (
+            (t.bounds[2] - t.bounds[0]).max(1) as i32,
+            (t.bounds[3] - t.bounds[1]).max(1) as i32,
+        );
+        let (foot_x, foot_y) = (spot.x * 2.0, spot.y * 2.0);
+        let (hx, hy) = (sprite.hotspot[0] as f32 * k, sprite.hotspot[1] as f32 * k);
+        let left = if prop.mirror {
+            foot_x + hx - bw as f32 * k
+        } else {
+            foot_x - hx
+        };
+        let top = foot_y - hy;
+        let (width, height) = (picture.width as i64, picture.height as i64);
+        for dy in 0..(((bh + 1) as f32 * k).ceil() as i64) {
+            let py = top as i64 + dy;
+            if py < 0 || py >= height {
+                continue;
+            }
+            let ty = ((dy as f32 / k) as usize).min(t.height as usize - 1);
+            for dx in 0..((bw as f32 * k).ceil() as i64) {
+                let px = left as i64 + dx;
+                if px < 0 || px >= width {
+                    continue;
+                }
+                let mut tx = (dx as f32 / k) as i32;
+                if prop.mirror {
+                    tx = bw - 1 - tx;
+                }
+                if tx < 0 || tx as u32 >= t.width {
+                    continue;
+                }
+                let index = t.pixels[ty * t.width as usize + tx as usize];
+                if index != 0 {
+                    let at = ((py * width + px) * 3) as usize;
+                    picture.pixels[at..at + 3].copy_from_slice(&palette.0[index as usize]);
+                }
+            }
+        }
+    }
+}
+
 /// The picture of the ride, 640x480: the road, the rivals on it (the far ones first) and the
 /// bike. `colour` is the bike's own rider colour.
 pub fn render(
@@ -335,6 +415,10 @@ pub fn render(
         backdrop.as_ref(),
     ));
     let remap_of = |c: usize| look.remaps.get(c).or(look.remaps.first());
+
+    if let Some(scenery) = look.scenery {
+        draw_props(&mut picture, samples, bike, scenery, look.palette);
+    }
 
     // the bike itself is one sample ahead of the camera
     let mut seen: Vec<(f32, &Rival)> = rivals
@@ -542,6 +626,7 @@ mod tests {
             horizon: None,
             headings: &[],
             police: None,
+            scenery: None,
         };
         let with = render(&road, &Bike::start(), &[], &look, 0);
         assert_eq!((with.width, with.height), (640, 480));
@@ -555,6 +640,7 @@ mod tests {
             horizon: None,
             headings: &[],
             police: None,
+            scenery: None,
         };
         let without = render(&road, &Bike::start(), &[], &nobody, 0);
         assert_ne!(with.pixels, without.pixels);
@@ -627,6 +713,7 @@ mod tests {
             horizon: None,
             headings: &[],
             police: None,
+            scenery: None,
         };
         let red = |p: &Rgb| {
             p.pixels
