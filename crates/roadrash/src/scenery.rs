@@ -224,6 +224,8 @@ mod tests {
             family_bias: 0,
             hills: vec![],
             buildings: vec![],
+            walls: [vec![], vec![]],
+            wall_selectors: vec![],
         }
     }
     fn event(family: u16) -> Vec<FamilyEvent> {

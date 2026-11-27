@@ -48,6 +48,22 @@ pub struct Section {
     /// terrain (`DLBR`: 16 bytes of header, the count at +8, then two selector bytes for each
     /// sample, the left one first; 255 means no building).
     pub buildings: Vec<[u8; 2]>,
+    /// The mountain walls at each side of the road when that is the section's terrain (`NTMR`
+    /// or `DWDR`: 24 bytes of header, the sample count at +8 and the number of records for the
+    /// left and for the right at +12 and +16, then 16-byte records, those of the left first, then
+    /// two selector bytes for each sample).
+    pub walls: [Vec<WallRecord>; 2],
+    pub wall_selectors: Vec<[u8; 2]>,
+}
+
+/// A stretch of mountain wall: from sample `start` on it holds to these limits. The eight
+/// parameter bytes are, in order, the size of the jitter of the width (byte 1) with the width
+/// itself (2), of the height (3), of the top (3), the offset (5), ... see [`crate::terrain`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WallRecord {
+    pub start: u32,
+    pub params: [u8; 8],
+    pub base_height: i32,
 }
 
 /// One stretch of hills (the terrain chunk `LIHR`: 20 bytes of header with the record count at
@@ -141,6 +157,38 @@ impl Bytes<'_> {
             Err(format!("no {} at byte {at}", String::from_utf8_lossy(tag)))
         }
     }
+}
+
+/// The walls of the terrain chunk at `at` (none when it is not a wall chunk).
+#[allow(clippy::type_complexity)]
+fn read_walls(sgs: &Bytes, at: usize) -> Result<([Vec<WallRecord>; 2], Vec<[u8; 2]>), String> {
+    let tag = sgs.0.get(at..at + 4);
+    if at == 0 || !(tag == Some(&b"NTMR"[..]) || tag == Some(&b"DWDR"[..])) {
+        return Ok(([Vec::new(), Vec::new()], Vec::new()));
+    }
+    let samples = sgs.u32(at + 8)? as usize;
+    let mut p = at + 24;
+    let mut walls = [Vec::new(), Vec::new()];
+    for (side, records) in walls.iter_mut().enumerate() {
+        let count = sgs.u32(at + 12 + 4 * side)? as usize;
+        if count == 0 {
+            return Err("a wall with no records".into());
+        }
+        for _ in 0..count {
+            let bytes = sgs.0.get(p..p + 16).ok_or("the wall table is cut short")?;
+            records.push(WallRecord {
+                start: sgs.u32(p)?,
+                params: bytes[4..12].try_into().expect("8 bytes"),
+                base_height: sgs.u32(p + 12)? as i32,
+            });
+            p += 16;
+        }
+    }
+    let bytes = sgs
+        .0
+        .get(p..p + samples * 2)
+        .ok_or("the wall selectors are cut short")?;
+    Ok((walls, bytes.chunks_exact(2).map(|b| [b[0], b[1]]).collect()))
 }
 
 /// The buildings of the terrain chunk at `at` (none when it is not a building chunk).
@@ -319,7 +367,14 @@ pub fn parse(file: &[u8]) -> Result<Course, String> {
             family_bias: 0,
             hills: read_hills(&sgs, sgs.u32(row + 0x10)? as usize)?,
             buildings: read_buildings(&sgs, sgs.u32(row + 0x10)? as usize)?,
+            walls: [Vec::new(), Vec::new()],
+            wall_selectors: Vec::new(),
         });
+        {
+            let section = sections.last_mut().expect("just pushed");
+            (section.walls, section.wall_selectors) =
+                read_walls(&sgs, sgs.u32(row + 0x10)? as usize)?;
+        }
         let at = sgs.u32(row + 0xC)? as usize;
         if at != 0 {
             let section = sections.last_mut().expect("just pushed");
@@ -551,6 +606,8 @@ mod tests {
             family_bias: 0,
             hills: vec![],
             buildings: vec![],
+            walls: [vec![], vec![]],
+            wall_selectors: vec![],
         };
         assert_eq!(s.summed_elevation(), 90);
     }

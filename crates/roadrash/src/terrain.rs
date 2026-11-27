@@ -197,22 +197,133 @@ fn lit(colour: [u8; 3], band: u8) -> [u8; 3] {
     colour.map(|c| (c as f32 * factor).min(255.0) as u8)
 }
 
+/// The shape of the mountain walls at each of the samples `0..length` of a section: for each
+/// side the width of the flat ground at the foot, how far out the top of the wall is and how
+/// high it goes (a height below 1 means a cliff, down to the ground).
+///
+/// Each side has records of limits (`WallRecord`); from the first, a width, a height and an offset
+/// start at the middle of their limits and every sample change by up to a jitter, never beyond the
+/// limits. The numbers of a record's eight parameter bytes are, by their place: 1 the jitter of
+/// the width, 2 the width (its limit is twice that), 3 the jitter of the offset, 4 its limit (four
+/// times), 5 a share of the offset of the top, 6 the jitter of the height, 7 its limit (four times).
+pub fn wall_profiles(section: &Section, length: usize, seed: u32) -> Vec<Option<[[f32; 3]; 2]>> {
+    if section.walls[0].is_empty() || section.walls[1].is_empty() {
+        return vec![None; length];
+    }
+    let mut random = Random(seed);
+    let mut record = [0usize; 2];
+    let mut v = [[0i32; 3]; 2];
+    for side in 0..2 {
+        let p = section.walls[side][0].params;
+        v[side] = [p[2] as i32, p[7] as i32 * 2, p[4] as i32 * 2];
+    }
+    let mut out = Vec::with_capacity(length);
+    for j in 0..length {
+        let mut slice = [[0.0f32; 3]; 2];
+        for side in 0..2 {
+            let records = &section.walls[side];
+            if j > 0 {
+                if record[side] + 1 < records.len() && records[record[side] + 1].start <= j as u32 {
+                    record[side] += 1;
+                }
+                let p = records[record[side]].params;
+                let jitter = |random: &mut Random, size: u8| {
+                    (random.next() % (size as u32 * 2 + 1)) as i32 - size as i32
+                };
+                v[side][0] = (v[side][0] + jitter(&mut random, p[1])).clamp(0, p[2] as i32 * 2);
+                v[side][1] = (v[side][1] + jitter(&mut random, p[6])).clamp(0, p[7] as i32 * 4);
+                v[side][2] = (v[side][2] + jitter(&mut random, p[3])).clamp(0, p[4] as i32 * 4);
+            }
+            let r = &records[record[side]];
+            let p = r.params;
+            slice[side] = [
+                v[side][0] as f32,
+                (v[side][2] + (p[2] as i32 + p[5] as i32 * 2) * 2) as f32,
+                (r.base_height + v[side][1]) as f32,
+            ];
+        }
+        out.push(Some(slice));
+    }
+    out
+}
+
+/// What is needed to find the colour and the pictures of a family: the families of the disc,
+/// read when they are first asked for.
+struct Looks<'a> {
+    entries: Vec<rsc::Entry>,
+    file: &'a [u8],
+    palette: &'a Palette,
+    families: HashMap<u16, Option<Family>>,
+    colours: HashMap<(u16, u8, usize), Option<[u8; 3]>>,
+}
+
+impl Looks<'_> {
+    fn family(&mut self, id: u16) -> Option<&Family> {
+        let (entries, file) = (&self.entries, self.file);
+        self.families
+            .entry(id)
+            .or_insert_with(|| {
+                let e = entries
+                    .iter()
+                    .find(|e| e.tag == "FAM" && e.id == id as u32)?;
+                Family::parse(e.bytes(file)).ok()
+            })
+            .as_ref()
+    }
+
+    /// The average colour of the picture for a family, a selector and a face (a frame).
+    fn colour(&mut self, family: u16, selector: u8, face: usize) -> Option<[u8; 3]> {
+        if let Some(c) = self.colours.get(&(family, selector, face)) {
+            return *c;
+        }
+        let palette = self.palette;
+        let found = self
+            .family(family)
+            .and_then(|f| f.cel_texture(1, selector as usize, Some(face)))
+            .and_then(|t| average(&t.pixels, palette));
+        self.colours.insert((family, selector, face), found);
+        found
+    }
+}
+
+/// A slice with nothing in it: the shoulder where the ground begins.
+fn bare(lanes: [f32; 2]) -> HillSlice {
+    HillSlice {
+        out: [[0.0; 3]; 2],
+        height: [[0.0; 3]; 2],
+        colour: [[[130, 130, 135]; 3]; 2],
+        edge: [-(lanes[0] * 250.0) - SHOULDER, lanes[1] * 250.0 + SHOULDER],
+        hills: false,
+        facades: [None; 2],
+    }
+}
+
 /// The ground along the route of a course.
 pub fn load(disc: &Disc, course: &Course, palette: &Palette) -> Result<Ground, String> {
     let file = disc.read("DATA/FAMILIES.RSC")?;
-    let entries = rsc::entries(&file)?;
-    let mut families: HashMap<u16, Option<Family>> = HashMap::new();
-    let mut colours: HashMap<(u16, u8, usize), Option<[u8; 3]>> = HashMap::new();
+    let mut looks = Looks {
+        entries: rsc::entries(&file)?,
+        file: &file,
+        palette,
+        families: HashMap::new(),
+        colours: HashMap::new(),
+    };
     let mut fronts: HashMap<(u16, u8), Option<Facade>> = HashMap::new();
     let mut textures: Vec<Texture> = Vec::new();
     let mut slices = Vec::new();
     for (index, (section_no, length)) in course.route().into_iter().enumerate() {
         let section = &course.sections[section_no];
         let length = length.min(section.lanes.len());
-        let shapes = profiles(section, length, 1 + section_no as u32 * 7919 + index as u32);
+        let seed = 1 + section_no as u32 * 7919 + index as u32;
+        let shapes = profiles(section, length, seed);
+        let walls = wall_profiles(section, length, seed);
         let mut slots = [0u16; 4];
         let mut event = 0;
-        for (j, shape) in shapes.iter().enumerate() {
+        let mut elevation = section.start_elevation as f32;
+        for j in 0..length {
+            if j > 0 {
+                elevation += section.rise[j - 1] as f32;
+            }
             let cursor = (j as i32 + 33 + section.family_bias).max(0);
             while event < section.family_events.len()
                 && section.family_events[event].sample <= cursor
@@ -223,111 +334,116 @@ pub fn load(disc: &Disc, course: &Course, palette: &Palette) -> Result<Ground, S
                 }
                 event += 1;
             }
-            let Some(shape) = shape else {
-                // not hills: a town has buildings at the side of the road
-                if section.buildings.is_empty() {
-                    slices.push(None);
-                    continue;
-                }
-                let selectors = section.buildings[j.min(section.buildings.len() - 1)];
-                let lanes = section.lanes[j];
+            let lanes = section.lanes[j];
+            let family_of = |selector: u8| slots[(selector >> 6) as usize];
+
+            if let Some(shape) = shapes[j] {
+                // hills
+                let record = section
+                    .hills
+                    .iter()
+                    .rev()
+                    .find(|r| r.start <= j as i32)
+                    .unwrap_or(&section.hills[0]);
                 let mut slice = HillSlice {
-                    out: [[0.0; 3]; 2],
-                    height: [[0.0; 3]; 2],
-                    colour: [[[130, 130, 135]; 3]; 2],
-                    edge: [-(lanes[0] * 250.0) - SHOULDER, lanes[1] * 250.0 + SHOULDER],
-                    hills: false,
-                    facades: [None; 2],
+                    hills: true,
+                    ..bare(lanes)
                 };
+                for side in 0..2 {
+                    let selector = record.selectors[side];
+                    let (mut prev_out, mut prev_h) = (0.0f32, 0.0f32);
+                    for face in 0..3 {
+                        let (px, ph) = shape[side][face];
+                        slice.out[side][face] = px;
+                        slice.height[side][face] = ph;
+                        let band = shade(px - prev_out, ph - prev_h);
+                        (prev_out, prev_h) = (px, ph);
+                        let base = looks.colour(family_of(selector), selector & 63, face);
+                        slice.colour[side][face] = lit(base.unwrap_or_else(|| fallback(31)), band);
+                    }
+                }
+                slices.push(Some(slice));
+            } else if let Some(wall) = walls[j] {
+                // a mountain wall: flat at the foot, the slope up to its top, the top level
+                let selectors =
+                    section.wall_selectors[j.min(section.wall_selectors.len().saturating_sub(1))];
+                let mut slice = HillSlice {
+                    hills: true,
+                    ..bare(lanes)
+                };
+                for side in 0..2 {
+                    let [foot, top, raw] = wall[side];
+                    let cliff = raw < 1.0;
+                    let height = if cliff { -elevation } else { raw };
+                    let top = top.max(foot + 1.0);
+                    slice.out[side] = [foot, top, top + 600.0];
+                    slice.height[side] = [0.0, height, height];
+                    let selector = selectors[side];
+                    let rock = looks
+                        .colour(family_of(selector), selector & 63, 0)
+                        .unwrap_or([110, 100, 90]);
+                    let plateau = looks
+                        .colour(family_of(selector), selector & 63, 1)
+                        .unwrap_or(rock);
+                    slice.colour[side] = [
+                        lit(rock, 12),
+                        lit(rock, shade(top - foot, height)),
+                        if cliff {
+                            [50, 100, 160]
+                        } else {
+                            lit(plateau, 31)
+                        },
+                    ];
+                }
+                slices.push(Some(slice));
+            } else if !section.buildings.is_empty() {
+                // a town: buildings
+                let selectors = section.buildings[j.min(section.buildings.len() - 1)];
+                let mut slice = bare(lanes);
                 for side in 0..2 {
                     let selector = selectors[side];
                     if selector == 255 {
                         continue;
                     }
-                    let family_id = slots[(selector >> 6) as usize];
-                    slice.facades[side] =
-                        *fronts.entry((family_id, selector & 63)).or_insert_with(|| {
-                            let family = families.entry(family_id).or_insert_with(|| {
-                                let e = entries
-                                    .iter()
-                                    .find(|e| e.tag == "FAM" && e.id == family_id as u32)?;
-                                Family::parse(e.bytes(&file)).ok()
-                            });
-                            let (height, picture) =
-                                family.as_ref()?.building((selector & 63) as usize)?;
-                            if height < 17.0 {
-                                return None;
-                            }
-                            textures.push(Texture {
-                                width: picture.width as usize,
-                                height: picture.height as usize,
-                                pixels: picture
-                                    .pixels
-                                    .iter()
-                                    .map(|&i| {
-                                        let c = palette.0[i as usize];
-                                        [c[0], c[1], c[2], if i == 0 { 0 } else { 255 }]
-                                    })
-                                    .collect(),
-                            });
-                            Some(Facade {
-                                height,
-                                texture: textures.len() - 1,
-                            })
-                        });
+                    let key = (family_of(selector), selector & 63);
+                    slice.facades[side] = match fronts.get(&key) {
+                        Some(f) => *f,
+                        None => {
+                            let facade = looks
+                                .family(key.0)
+                                .and_then(|f| f.building(key.1 as usize))
+                                .filter(|(height, _)| *height >= 17.0)
+                                .map(|(height, picture)| {
+                                    textures.push(Texture {
+                                        width: picture.width as usize,
+                                        height: picture.height as usize,
+                                        pixels: picture
+                                            .pixels
+                                            .iter()
+                                            .map(|&i| {
+                                                let c = palette.0[i as usize];
+                                                [c[0], c[1], c[2], if i == 0 { 0 } else { 255 }]
+                                            })
+                                            .collect(),
+                                    });
+                                    Facade {
+                                        height,
+                                        texture: textures.len() - 1,
+                                    }
+                                });
+                            fronts.insert(key, facade);
+                            facade
+                        }
+                    };
                 }
                 slices.push(Some(slice));
-                continue;
-            };
-            let record = section
-                .hills
-                .iter()
-                .rev()
-                .find(|r| r.start <= j as i32)
-                .unwrap_or(&section.hills[0]);
-            let lanes = section.lanes[j];
-            let mut slice = HillSlice {
-                out: [[0.0; 3]; 2],
-                height: [[0.0; 3]; 2],
-                colour: [[[0; 3]; 3]; 2],
-                edge: [-(lanes[0] * 250.0) - SHOULDER, lanes[1] * 250.0 + SHOULDER],
-                hills: true,
-                facades: [None; 2],
-            };
-            for side in 0..2 {
-                let selector = record.selectors[side];
-                let (mut prev_out, mut prev_h) = (0.0f32, 0.0f32);
-                for face in 0..3 {
-                    let (px, ph) = shape[side][face];
-                    slice.out[side][face] = px;
-                    slice.height[side][face] = ph;
-                    let band = shade(px - prev_out, ph - prev_h);
-                    (prev_out, prev_h) = (px, ph);
-                    let family_id = slots[(selector >> 6) as usize];
-                    let base = *colours
-                        .entry((family_id, selector & 63, face))
-                        .or_insert_with(|| {
-                            let family = families.entry(family_id).or_insert_with(|| {
-                                let e = entries
-                                    .iter()
-                                    .find(|e| e.tag == "FAM" && e.id == family_id as u32)?;
-                                Family::parse(e.bytes(&file)).ok()
-                            });
-                            family
-                                .as_ref()
-                                .and_then(|f| {
-                                    f.cel_texture(1, (selector & 63) as usize, Some(face))
-                                })
-                                .and_then(|t| average(&t.pixels, palette))
-                        });
-                    slice.colour[side][face] = lit(base.unwrap_or_else(|| fallback(31)), band);
-                }
+            } else {
+                slices.push(None);
             }
-            slices.push(Some(slice));
         }
     }
-    let from_pictures = colours.values().filter(|c| c.is_some()).count();
-    let plain = colours.len() - from_pictures;
+    let from_pictures = looks.colours.values().filter(|c| c.is_some()).count();
+    let plain = looks.colours.len() - from_pictures;
     Ok(Ground {
         slices,
         textures,
@@ -371,6 +487,8 @@ mod tests {
                 points: [point(10, 20, -3, 8); 8],
             }],
             buildings: vec![],
+            walls: [vec![], vec![]],
+            wall_selectors: vec![],
         }
     }
 
@@ -408,6 +526,51 @@ mod tests {
         }
         let moved = a.windows(2).filter(|w| w[0] != w[1]).count();
         assert!(moved > 100, "the hills change along the road: {moved}");
+    }
+
+    fn wall_section(samples: usize) -> Section {
+        let mut s = section(samples);
+        s.hills.clear();
+        let record = crate::course::WallRecord {
+            start: 0,
+            params: [0, 10, 40, 6, 10, 5, 8, 50],
+            base_height: 300,
+        };
+        s.walls = [vec![record], vec![record]];
+        s.wall_selectors = vec![[1, 1]; samples];
+        s
+    }
+
+    #[test]
+    fn a_wall_stays_between_its_limits_and_is_always_the_same() {
+        let s = wall_section(200);
+        let a = wall_profiles(&s, 200, 3);
+        assert_eq!(a, wall_profiles(&s, 200, 3));
+        let mut moved = 0;
+        for w in a.windows(2) {
+            moved += (w[0] != w[1]) as usize;
+        }
+        assert!(moved > 100, "the wall changes along the road: {moved}");
+        for slice in a.iter().flatten() {
+            for [foot, top, height] in slice {
+                let _ = (top, height);
+                assert!(
+                    (0.0..=80.0).contains(foot),
+                    "the foot {foot} is within twice the width byte"
+                );
+            }
+            // the height is the base plus a jitter of at most four times byte 7
+            for side in slice {
+                assert!((300.0..=300.0 + 200.0).contains(&side[2]), "{}", side[2]);
+            }
+        }
+    }
+
+    #[test]
+    fn a_section_that_is_not_a_wall_has_none() {
+        assert!(wall_profiles(&section(10), 10, 1)
+            .iter()
+            .all(Option::is_none));
     }
 
     #[test]
