@@ -69,8 +69,9 @@ pub fn add_native_game(
     name: String,
     exe: String,
     args: Vec<String>,
+    cover: Option<String>,
 ) -> Result<NativeGame, String> {
-    shell.app.add_native_game(&name, &exe, args)
+    shell.app.add_native_game_with(&name, &exe, args, cover)
 }
 
 #[tauri::command]
@@ -98,4 +99,57 @@ pub fn found_native_games(shell: State<'_, Shell>) -> Vec<NativeGame> {
 #[tauri::command]
 pub fn programs_in_folder(shell: State<'_, Shell>, dir: String) -> Result<Vec<NativeGame>, String> {
     shell.app.programs_in_folder(&dir)
+}
+
+/// The tools that setting up Road Rash needs and this computer lacks.
+#[tauri::command]
+pub fn native_tools_missing(shell: State<'_, Shell>) -> Result<Vec<String>, String> {
+    shell.app.native_tools_missing()
+}
+
+/// Install the missing tools; every line the installer prints goes to the page as
+/// `native-install-log`.
+#[tauri::command]
+pub async fn install_native_tools(app: AppHandle, shell: State<'_, Shell>) -> Result<(), String> {
+    let core = shell.app.clone();
+    blocking(move || {
+        core.install_native_tools(|line| {
+            let _ = app.emit("native-install-log", line);
+        })
+    })
+    .await?
+}
+
+/// Build Road Rash from its source, import the disc the user chose and add the game to the
+/// library; the lines of the build go to the page as `native-install-log`.
+#[tauri::command]
+pub async fn install_road_rash(
+    app: AppHandle,
+    shell: State<'_, Shell>,
+    disc: String,
+) -> Result<NativeGame, String> {
+    let core = shell.app.clone();
+    blocking(move || {
+        core.install_road_rash(&disc, |line| {
+            let _ = app.emit("native-install-log", line);
+        })
+    })
+    .await?
+}
+
+/// The pictures of the native games that have one, as `data:` URLs by id.
+#[tauri::command]
+pub fn native_covers(shell: State<'_, Shell>) -> std::collections::HashMap<String, String> {
+    use base64::Engine;
+    shell
+        .app
+        .native_games()
+        .into_iter()
+        .filter_map(|g| {
+            let bytes = shell.app.native_cover(&g.id)?;
+            let mime = vuretro_core::model::image_mime(&bytes)?;
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            Some((g.id, format!("data:{mime};base64,{b64}")))
+        })
+        .collect()
 }

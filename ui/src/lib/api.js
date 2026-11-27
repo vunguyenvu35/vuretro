@@ -81,7 +81,17 @@ export const api = {
   nativeGames: () => call('list_native_games'),
   foundNativeGames: () => call('found_native_games'),
   programsInFolder: (dir) => call('programs_in_folder', { dir }),
-  addNativeGame: (name, exe, args = []) => call('add_native_game', { name, exe, args }),
+  addNativeGame: (name, exe, args = [], cover = null) => call('add_native_game', { name, exe, args, cover }),
+  // setting up Road Rash from the user's own disc: the tools it needs, and the build
+  nativeToolsMissing: () => call('native_tools_missing'),
+  installNativeTools: () => call('install_native_tools'),
+  installRoadRash: (disc) => call('install_road_rash', { disc }),
+  nativeCovers: () => call('native_covers'),
+  onNativeInstallLog: (fn) => on('native-install-log', fn),
+  async pickDisc() {
+    if (!inTauri) return null;
+    return (await open({ multiple: false, title: 'Choose your Road Rash PC disc image', filters: [{ name: 'Disc image', extensions: ['iso', 'img', 'bin'] }] })) || null;
+  },
   removeNativeGame: (id) => call('remove_native_game', { id }),
   launchNative: (id) => call('launch_native', { id }),
   async pickProgram(title = 'Choose the game program') {

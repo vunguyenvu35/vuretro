@@ -2403,3 +2403,161 @@ fn a_game_folder_is_searched_for_its_program() {
     assert!(err.contains("disc image"), "{err}");
     std::fs::remove_dir_all(&root).unwrap();
 }
+
+/// A native installer that does what the real one ends with: it puts a game in the folder of
+/// native games.
+struct FakeNative {
+    root: PathBuf,
+    missing: Vec<String>,
+    fail: bool,
+    runs: Arc<Mutex<Vec<String>>>,
+}
+
+impl NativeInstaller for FakeNative {
+    fn missing_tools(&self) -> Vec<String> {
+        self.missing.clone()
+    }
+    fn install_tools(&self, log: &dyn Fn(&str)) -> Result<(), String> {
+        log("installing the tools");
+        self.runs.lock().unwrap().push("tools".into());
+        Ok(())
+    }
+    fn install_road_rash(&self, disc: &Path, log: &dyn Fn(&str)) -> Result<(), String> {
+        log("building");
+        self.runs
+            .lock()
+            .unwrap()
+            .push(format!("build {}", disc.display()));
+        if self.fail {
+            return Err("cmake failed".into());
+        }
+        let dir = self.root.join("native/road-rash");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("rr-game"), "#!/bin/sh\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(dir.join("rr-game"), std::fs::Permissions::from_mode(0o755))
+                .unwrap();
+        }
+        std::fs::write(dir.join("cover.png"), b"\x89PNG....").unwrap();
+        std::fs::write(
+            dir.join("game.json"),
+            r#"{"name":"Road Rash","exe":"rr-game","args":["--assets","{dir}/ROADRASH"],"cover":"cover.png"}"#,
+        )
+        .unwrap();
+        Ok(())
+    }
+}
+
+#[cfg(unix)]
+fn native_world(
+    name: &str,
+    missing: Vec<String>,
+    fail: bool,
+) -> (App, PathBuf, Arc<Mutex<Vec<String>>>) {
+    let root = std::env::temp_dir().join(format!("vuretro-native-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let f = Fake::default();
+    let runs = Arc::new(Mutex::new(Vec::new()));
+    let app = App::new(
+        Paths::new(root.to_str().unwrap()),
+        Box::new(f.clone()),
+        Box::new(f.clone()),
+        Box::new(f.clone()),
+        Box::new(f.clone()),
+    )
+    .with_native_installer(Box::new(FakeNative {
+        root: root.clone(),
+        missing,
+        fail,
+        runs: runs.clone(),
+    }));
+    (app, root, runs)
+}
+
+#[cfg(unix)]
+#[test]
+fn installing_road_rash_builds_it_and_adds_it_to_the_library_with_its_picture() {
+    let (app, root, runs) = native_world("ok", vec![], false);
+    let disc = root.join("disc.iso");
+    std::fs::write(&disc, "x").unwrap();
+    let logged = Mutex::new(Vec::new());
+    let game = app
+        .install_road_rash(disc.to_str().unwrap(), |l| {
+            logged.lock().unwrap().push(l.to_string())
+        })
+        .unwrap();
+    assert_eq!(game.id, "road-rash");
+    assert!(
+        game.args[1].ends_with("native/road-rash/ROADRASH"),
+        "{:?}",
+        game.args
+    );
+    assert_eq!(app.native_games().len(), 1);
+    assert_eq!(logged.lock().unwrap().as_slice(), ["building"]);
+    assert_eq!(runs.lock().unwrap().len(), 1);
+    assert!(
+        app.found_native_games().is_empty(),
+        "it is in the library now"
+    );
+    assert_eq!(app.native_cover("road-rash").unwrap(), b"\x89PNG....");
+    assert!(app.native_cover("nope").is_none());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failed_install_adds_nothing_and_a_missing_disc_is_refused() {
+    let (app, root, _) = native_world("fail", vec![], true);
+    let disc = root.join("d.iso");
+    std::fs::write(&disc, "x").unwrap();
+    assert_eq!(
+        app.install_road_rash(disc.to_str().unwrap(), |_| {})
+            .unwrap_err(),
+        "cmake failed"
+    );
+    assert!(app.native_games().is_empty());
+    assert!(app.install_road_rash("/nowhere.iso", |_| {}).is_err());
+    // after a failure it can be tried again
+    assert_eq!(
+        app.install_road_rash(disc.to_str().unwrap(), |_| {})
+            .unwrap_err(),
+        "cmake failed"
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn the_missing_tools_are_reported_and_a_cover_outside_the_native_folder_is_not_read() {
+    let (ready, root, runs) = native_world("tools", vec!["cmake".into(), "SDL3".into()], false);
+    assert_eq!(ready.native_tools_missing().unwrap(), ["cmake", "SDL3"]);
+    ready.install_native_tools(|_| {}).unwrap();
+    assert_eq!(runs.lock().unwrap().as_slice(), ["tools"]);
+    // a game whose picture is some other file of the disk
+    let secret = root.join("secret.txt");
+    std::fs::write(&secret, "private").unwrap();
+    std::fs::create_dir_all(root.join("native")).unwrap();
+    let exe = std::env::temp_dir().join("sh-for-test");
+    let _ = std::fs::remove_file(&exe);
+    std::os::unix::fs::symlink("/bin/sh", &exe).unwrap();
+    ready
+        .add_native_game_with(
+            "Spy",
+            exe.to_str().unwrap(),
+            vec![],
+            Some(secret.to_string_lossy().into_owned()),
+        )
+        .unwrap();
+    assert!(
+        ready.native_cover("spy").is_none(),
+        "only pictures in the native folder are read"
+    );
+    // a build that cannot set up native games says so
+    let f = Fake::default();
+    let plain = app(&f);
+    assert!(plain.native_tools_missing().is_err());
+    std::fs::remove_dir_all(root).unwrap();
+}

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### New
+- **Native games** in the sidebar: games that are programs of their own (not run by a core) can be added from their folder, or found by themselves from a `game.json`, and started from the library.
+- **Road Rash:** one button sets the native port up from your own PC disc: it fetches the source of the port, builds it on your computer, reads the game's data from the disc and adds the game with a cover. See Using vuretro.
+
 ## 0.1.7
 
 Help, About and Support in the app. Still an early release with unsigned packages.

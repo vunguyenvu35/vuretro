@@ -41,6 +41,9 @@ export const app = $state({
   scope: '', // system id the Settings and Controls screens edit; empty = all games
   downloading: null, // { core, percent } while Play fetches the core a game needs
   nativeFound: [], // installed native games not yet in the library: { id, name, exe, args }
+  nativeCovers: {}, // pictures of the native games by id (data: URLs)
+  nativeTools: [], // the tools Road Rash's build needs and this computer lacks
+  nativeInstall: { running: false, step: '', log: [] }, // setting Road Rash up from the disc
   native: [], // games that are programs of their own: { id, name, exe, args }
 });
 
@@ -277,15 +280,17 @@ export async function loadNative() {
   try {
     app.native = await api.nativeGames();
     app.nativeFound = await api.foundNativeGames();
+    app.nativeCovers = await api.nativeCovers();
+    app.nativeTools = await api.nativeToolsMissing().catch(() => []);
   } catch (e) {
     toast(String(e), 'error');
   }
 }
 
 /** Add a program to the library as a game of its own. Resolves to true when it was added. */
-export async function addNative(name, exe, args) {
+export async function addNative(name, exe, args, cover = null) {
   try {
-    const game = await api.addNativeGame(name, exe, args);
+    const game = await api.addNativeGame(name, exe, args, cover);
     toast(`Added ${game.name}`);
     await loadNative();
     return true;
@@ -294,6 +299,36 @@ export async function addNative(name, exe, args) {
     return false;
   }
 }
+
+/** Take in a line of what the installer prints. */
+export function installLine(line) {
+  const log = app.nativeInstall.log;
+  log.push(String(line));
+  if (log.length > 200) log.splice(0, log.length - 200);
+  // the steps are announced as "1/4 ..."
+  if (/^\d\/\d /.test(line)) app.nativeInstall.step = String(line);
+}
+
+async function runInstall(job, done) {
+  if (app.nativeInstall.running) return;
+  app.nativeInstall = { running: true, step: '', log: [] };
+  try {
+    await job();
+    toast(done);
+  } catch (e) {
+    toast(String(e), 'error');
+    installLine(`Failed: ${e}`);
+  } finally {
+    app.nativeInstall.running = false;
+  }
+  await loadNative();
+}
+
+/** Install the tools the build needs (Homebrew on a Mac). */
+export const installTools = () => runInstall(() => api.installNativeTools(), 'The tools are installed');
+
+/** Build Road Rash from its source and read the game's data from the user's disc. */
+export const installRoadRash = (disc) => runInstall(() => api.installRoadRash(disc), 'Road Rash is ready: press Play');
 
 export async function removeNative(game) {
   const yes = await confirmDialog({

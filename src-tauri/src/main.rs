@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 use vuretro_core::paths::Paths;
 use vuretro_core::service::App;
 use vuretro_library::adapters::{
-    BuildbotInstaller, DevLogin, FsCatalog, FsLocator, JsonStore, ProcessLauncher,
+    BuildbotInstaller, DevLogin, FsCatalog, FsLocator, JsonStore, ProcessLauncher, RoadRashInstaller,
     ScreenScraperArt, SysMachine, ThumbnailsArt, ZipBackup,
 };
 
@@ -36,6 +36,7 @@ fn build_app() -> App {
         Box::new(ProcessLauncher::new(paths.clone())),
     )
     .with_installer(Box::new(BuildbotInstaller::new(paths.clone())))
+    .with_native_installer(Box::new(RoadRashInstaller::new(paths.clone())))
     .with_archive(Box::new(ZipBackup::new(paths)))
     .with_machine(Box::new(SysMachine))
     .with_art_source(Box::new(ThumbnailsArt::new()));
@@ -81,6 +82,10 @@ fn main() {
             get_overview,
             list_native_games,
             found_native_games,
+            native_tools_missing,
+            install_native_tools,
+            install_road_rash,
+            native_covers,
             programs_in_folder,
             add_native_game,
             remove_native_game,

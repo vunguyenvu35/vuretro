@@ -40,6 +40,16 @@ Fan translations and ROM hacks come as small **IPS**, **UPS** or **BPS** patch f
 
 A disc that comes in a `.zip`, `.7z` or `.rar` (a `.cue` with its `.bin`, or a `.chd`, `.iso`…) is unpacked for you: import the archive as it is. If its `.cue` names a different `.bin` than the one packed (common in shared dumps), the sheet is mended. Archives of arcade or Neo Geo ROM sets are kept as they are. `.cue` and `.m3u` files bring the `.bin` / disc files they point to. If one is missing, the import is refused and nothing is copied. If a BIOS file is among what you import (a file you picked, or one inside a folder), vuretro installs it as a BIOS and says so, so a whole collection can be imported in one go. You can also add BIOS files yourself as described next.
 
+
+### Native games (programs of their own)
+
+Some games are not run by a core but are programs of their own, such as the native port of Road Rash. They are in **Native games** in the sidebar, and are started as they are: they keep their own saves and controls (Vuretro's save states, rewind and macros do not reach them).
+
+- **Add a game from a folder…** takes the folder of a game and finds the program in it. A folder with a `game.json` (`{"name": "My game", "exe": "play", "args": ["--data", "{dir}/data"]}`) is read as it says; `{dir}` stands for the folder.
+- Games kept under `<data dir>/native/<name>/` with a `game.json` are offered by themselves.
+- **Road Rash:** the page has an **Install from my disc image…** button. It needs your own Road Rash PC disc (the `.iso`, or the folder it was unpacked to). It downloads the source of the native port from `github.com/arkits/road-rash`, builds it on your computer (a few minutes) and reads the game's data from your disc, then adds the game with the title picture of the disc as its cover. It needs `git`, `cmake`, a C++ compiler and SDL 3: on a Mac the page offers to install `cmake` and `sdl3` with Homebrew (`xcode-select --install` gives the compiler and git). Vuretro includes none of the game or its data, and the port has no licence that lets it be passed on, so it is built on your computer rather than shipped.
+- The same, from a terminal: `cargo run --release -p vuretro-library --bin vuretro-install-road-rash -- /path/to/ROADRASH.iso`.
+
 ## 3. Add BIOS files
 
 Open **Cores & BIOS**. Drop BIOS files on the window or click the drop zone. vuretro checks each file by its MD5, so a renamed dump still works, and installs it with the right name.

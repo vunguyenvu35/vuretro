@@ -183,6 +183,19 @@ pub trait Launcher: Send + Sync {
     ) -> Result<Vec<CoreOptionDef>, String>;
 }
 
+/// Sets up a native game on this computer from its source (the Road Rash port): the tools it
+/// needs, and the build. Everything slow reports what it is doing through `log`.
+pub trait NativeInstaller: Send + Sync {
+    /// The tools the build needs that this computer lacks (empty when it is ready).
+    fn missing_tools(&self) -> Vec<String>;
+    /// Install the missing tools, as far as this computer allows.
+    fn install_tools(&self, log: &dyn Fn(&str)) -> Result<(), String>;
+    /// Fetch the source, build it and import the game's data from `disc` (a disc image or the
+    /// folder it was unpacked to). Afterwards the game is under `<data dir>/native/road-rash`
+    /// with a `game.json`.
+    fn install_road_rash(&self, disc: &Path, log: &dyn Fn(&str)) -> Result<(), String>;
+}
+
 /// Measures the computer the app runs on.
 pub trait Machine: Send + Sync {
     fn info(&self) -> MachineInfo;

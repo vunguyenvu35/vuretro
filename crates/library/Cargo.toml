@@ -13,6 +13,10 @@ path = "src/bin/scan.rs"
 name = "vuretro-bios-check"
 path = "src/bin/bios_check.rs"
 
+[[bin]]
+name = "vuretro-install-road-rash"
+path = "src/bin/install_road_rash.rs"
+
 [dependencies]
 vuretro-core = { path = "../core" }
 log.workspace = true

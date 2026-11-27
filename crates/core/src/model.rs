@@ -42,6 +42,9 @@ pub struct NativeGame {
     /// Arguments to start it with (e.g. `--assets <folder>`).
     #[serde(default)]
     pub args: Vec<String>,
+    /// A picture of the game to show in the library (a PNG or a JPEG file), if there is one.
+    #[serde(default)]
+    pub cover: Option<String>,
 }
 
 impl Settings {

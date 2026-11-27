@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { app, refresh, covers, loadCovers, scheduleCovers, handleMenu } from './lib/store.svelte.js';
+  import { app, refresh, covers, loadCovers, scheduleCovers, handleMenu, installLine } from './lib/store.svelte.js';
   import { api } from './lib/api.js';
   import { checkAtStart } from './lib/update.svelte.js';
   import Sidebar from './components/Sidebar.svelte';
@@ -34,6 +34,8 @@
       })
       .then((f) => off.push(f));
     api.onCoversDone(() => scheduleCovers()).then((f) => off.push(f));
+    // the lines of the build while Road Rash is being set up
+    api.onNativeInstallLog(installLine).then((f) => off.push(f));
     // a pad on the Controls screen is being recorded, not used to move around
     const stopNav = startGamepadNav(() => app.capturing);
     return () => {

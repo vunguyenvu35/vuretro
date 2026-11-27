@@ -285,6 +285,7 @@ mod tests {
                 name: "Road Rash".into(),
                 exe: "/games/rr-game".into(),
                 args: vec!["--assets".into(), "/games/ROADRASH".into()],
+                cover: Some("/games/cover.jpg".into()),
             }],
         };
         store.save_settings(&s);

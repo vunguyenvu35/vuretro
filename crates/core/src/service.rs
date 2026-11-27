@@ -11,7 +11,7 @@ use crate::model::{game_views, CompiledMove, GameMeta, Outcome, Overview, Settin
 use crate::paths::Paths;
 use crate::ports::{
     Archive, ArtQuery, ArtSource, Catalog, CoreInstaller, CoverJob, GameProcess, LaunchSpec,
-    Launcher, Locator, Machine, NativeSpec, Store,
+    Launcher, Locator, Machine, NativeInstaller, NativeSpec, Store,
 };
 use crate::protocol::Event;
 use crate::registry::{systems, System};
@@ -117,7 +117,7 @@ fn programs_in(dir: &Path) -> Vec<NativeGame> {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     let mut files = Vec::new();
-    let mut look = |d: &Path, files: &mut Vec<PathBuf>| {
+    let look = |d: &Path, files: &mut Vec<PathBuf>| {
         for e in std::fs::read_dir(d).into_iter().flatten().flatten() {
             files.push(e.path());
         }
@@ -147,6 +147,7 @@ fn programs_in(dir: &Path) -> Vec<NativeGame> {
             name: folder.clone(),
             exe: p.to_string_lossy().into_owned(),
             args: Vec::new(),
+            cover: None,
         })
         .collect();
     let stem = |g: &NativeGame| {
@@ -173,6 +174,9 @@ fn read_native_manifest(dir: &Path) -> Option<NativeGame> {
         exe: String,
         #[serde(default)]
         args: Vec<String>,
+        /// A picture, as a path from the folder of the game.
+        #[serde(default)]
+        cover: Option<String>,
     }
     let m: Manifest =
         serde_json::from_str(&std::fs::read_to_string(dir.join("game.json")).ok()?).ok()?;
@@ -184,6 +188,11 @@ fn read_native_manifest(dir: &Path) -> Option<NativeGame> {
         name: m.name,
         exe,
         args: m.args.iter().map(|a| a.replace("{dir}", &here)).collect(),
+        cover: m
+            .cover
+            .map(|c| dir.join(c))
+            .filter(|c| c.is_file())
+            .map(|c| c.to_string_lossy().into_owned()),
     })
 }
 
@@ -194,6 +203,7 @@ pub struct App {
     locator: Box<dyn Locator>,
     launcher: Box<dyn Launcher>,
     installer: Option<Box<dyn CoreInstaller>>,
+    native_installer: Option<Box<dyn NativeInstaller>>,
     archive: Option<Box<dyn Archive>>,
     /// What this computer offers, measured once at start-up.
     machine: Option<MachineInfo>,
@@ -232,6 +242,7 @@ impl App {
             locator,
             launcher,
             installer: None,
+            native_installer: None,
             archive: None,
             machine: None,
             art: Vec::new(),
@@ -333,6 +344,11 @@ impl App {
     }
 
     /// Let the app download cores itself.
+    pub fn with_native_installer(mut self, installer: Box<dyn NativeInstaller>) -> Self {
+        self.native_installer = Some(installer);
+        self
+    }
+
     pub fn with_installer(mut self, installer: Box<dyn CoreInstaller>) -> Self {
         self.installer = Some(installer);
         self
@@ -1354,6 +1370,17 @@ impl App {
         exe: &str,
         args: Vec<String>,
     ) -> Result<NativeGame, String> {
+        self.add_native_game_with(name, exe, args, None)
+    }
+
+    /// Like [`add_native_game`](App::add_native_game), with a picture for the library.
+    pub fn add_native_game_with(
+        &self,
+        name: &str,
+        exe: &str,
+        args: Vec<String>,
+        cover: Option<String>,
+    ) -> Result<NativeGame, String> {
         let name = name.trim();
         if name.is_empty() {
             return Err("the game needs a name".into());
@@ -1369,6 +1396,7 @@ impl App {
             name: name.to_string(),
             exe: exe.to_string(),
             args,
+            cover,
         };
         {
             let mut s = self.settings.lock().unwrap();
@@ -1430,6 +1458,71 @@ impl App {
             });
         }
         Ok(found)
+    }
+
+    /// The tools that building a native game needs and this computer lacks. An error when this
+    /// build cannot set native games up.
+    pub fn native_tools_missing(&self) -> Result<Vec<String>, String> {
+        Ok(self
+            .native_installer
+            .as_ref()
+            .ok_or("this build cannot set up native games")?
+            .missing_tools())
+    }
+
+    /// Install the missing tools. Slow: run it on a thread.
+    pub fn install_native_tools(&self, log: impl Fn(&str)) -> Result<(), String> {
+        self.native_installer
+            .as_ref()
+            .ok_or("this build cannot set up native games")?
+            .install_tools(&log)
+    }
+
+    /// Build the native Road Rash port from its source, import the disc the user has and add the
+    /// game to the library. Slow: run it on a thread. One at a time.
+    pub fn install_road_rash(&self, disc: &str, log: impl Fn(&str)) -> Result<NativeGame, String> {
+        let installer = self
+            .native_installer
+            .as_ref()
+            .ok_or("this build cannot set up native games")?;
+        if !Path::new(disc).exists() {
+            return Err(format!("{disc} is not there"));
+        }
+        if !self
+            .installing
+            .lock()
+            .unwrap()
+            .insert("native:road-rash".into())
+        {
+            return Err("Road Rash is already being installed".into());
+        }
+        let done = installer.install_road_rash(Path::new(disc), &log);
+        self.installing.lock().unwrap().remove("native:road-rash");
+        done?;
+        let game = self
+            .found_native_games()
+            .into_iter()
+            .find(|g| g.id == "road-rash")
+            .ok_or("the build finished but the game is not where it should be")?;
+        self.add_native_game_with(&game.name, &game.exe, game.args, game.cover)
+    }
+
+    /// The picture of a native game, when it has one inside the folder of native games (nothing
+    /// else on the disk is read, and no more than 8 MB).
+    pub fn native_cover(&self, id: &str) -> Option<Vec<u8>> {
+        let cover = self
+            .native_games()
+            .into_iter()
+            .find(|g| g.id == id)?
+            .cover?;
+        let (cover, root) = (
+            std::fs::canonicalize(cover).ok()?,
+            std::fs::canonicalize(self.paths.native_dir()).ok()?,
+        );
+        if !cover.starts_with(root) || std::fs::metadata(&cover).ok()?.len() > 8 << 20 {
+            return None;
+        }
+        std::fs::read(cover).ok()
     }
 
     /// Take a program out of the library (the program itself is not touched).
