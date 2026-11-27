@@ -1491,7 +1491,7 @@ mod tests {
         assert!(desktop
             .env
             .iter()
-            .any(|(k, v)| k == "WINEPREFIX" && v == "/data/pc/road-rash/prefix"));
+            .any(|(k, v)| k == "WINEPREFIX" && Path::new(v) == root.join("prefix").as_path()));
         let framed = spec(wine, root, "D:\\GAME.EXE", "800x600", &launch(true, false));
         assert_eq!(framed.args, ["R:\\GAME.EXE"]);
         assert!(framed

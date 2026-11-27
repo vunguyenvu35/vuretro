@@ -357,6 +357,8 @@ mod tests {
         assert!(run(&mut Command::new("/no/such/program"), &|_| {}).is_err());
     }
 
+    // building the port is not done on Windows: it says so before it looks at the tools
+    #[cfg(unix)]
     #[test]
     fn a_missing_tool_stops_the_install_before_anything_is_started() {
         let installer = RoadRashInstaller::new(Paths::new("/nonexistent-vuretro"));
