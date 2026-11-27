@@ -44,6 +44,59 @@ pub fn view(samples: &[Sample], position: usize, guess: Guess) -> Rgb {
     view_at(samples, position as f32, 0.0, guess)
 }
 
+/// Where a thing standing on the road shows in the 320x240 picture.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Spot {
+    /// Where its feet are, in the picture.
+    pub x: f32,
+    pub y: f32,
+    /// How big it is compared with a thing one sample ahead of the camera (where the rider's
+    /// own bike is): 1 there, a half at two samples, and so on.
+    pub scale: f32,
+}
+
+/// Where a thing `ahead` samples in front of the camera, `offset` world units to the right of
+/// the middle of the road, shows in the picture of [`view_at`]. `None` when it is too close or
+/// the road ends before it.
+pub fn project(
+    samples: &[Sample],
+    position: f32,
+    lateral: f32,
+    guess: Guess,
+    ahead: f32,
+    offset: f32,
+) -> Option<Spot> {
+    if ahead < 0.3 {
+        return None;
+    }
+    let first = position.max(0.0).floor() as usize;
+    let fraction = position.max(0.0) - first as f32;
+    // the slice whose distance is the thing's, as a number between slices
+    let wanted = (ahead * SAMPLE - 64.0 + fraction * SAMPLE) / 128.0;
+    let whole = wanted.floor().max(0.0) as usize;
+    let (mut x, mut dx, mut y) = (-lateral, 0.0f32, 0.0f32);
+    let (mut before, mut after) = ((x, y), (x, y));
+    for k in 0..=whole + 1 {
+        let s = samples.get(first + k / 2)?;
+        dx += s.bend as f32 * guess.turn * SAMPLE * 0.5;
+        x += dx;
+        y += s.rise as f32 * guess.lift * 0.5;
+        if k == whole {
+            before = (x, y);
+        }
+        after = (x, y);
+    }
+    let t = (wanted - whole as f32).clamp(0.0, 1.0);
+    let (px, py) = (lerp(before.0, after.0, t), lerp(before.1, after.1, t));
+    let z = ahead * SAMPLE;
+    let scale = FOCAL / z;
+    Some(Spot {
+        x: WIDTH as f32 / 2.0 + (px + offset) * scale,
+        y: HORIZON + (CAMERA_HEIGHT - py) * scale,
+        scale: SAMPLE / z,
+    })
+}
+
 /// The view from a place between samples, `lateral` world units to the right of the middle.
 pub fn view_at(samples: &[Sample], position: f32, lateral: f32, guess: Guess) -> Rgb {
     let first = position.max(0.0).floor() as usize;
@@ -187,6 +240,28 @@ mod tests {
             hill < flat,
             "the road climbs above where the flat one ends: {hill} < {flat}"
         );
+    }
+
+    #[test]
+    fn a_thing_further_ahead_is_smaller_and_nearer_the_horizon() {
+        let road = straight(400);
+        let near = project(&road, 0.0, 0.0, Guess::default(), 2.0, 0.0).unwrap();
+        let far = project(&road, 0.0, 0.0, Guess::default(), 20.0, 0.0).unwrap();
+        assert!(far.scale < near.scale && near.scale <= 0.5 + 1e-3);
+        assert!(far.y < near.y && far.y > 90.0, "{far:?} {near:?}");
+        assert!(
+            (far.x - 160.0).abs() < 1.0,
+            "straight ahead on a straight road"
+        );
+        let right = project(&road, 0.0, 0.0, Guess::default(), 5.0, 250.0).unwrap();
+        assert!(right.x > 160.0);
+    }
+
+    #[test]
+    fn a_thing_too_close_or_past_the_end_of_the_road_is_not_placed() {
+        let road = straight(50);
+        assert!(project(&road, 0.0, 0.0, Guess::default(), 0.1, 0.0).is_none());
+        assert!(project(&road, 0.0, 0.0, Guess::default(), 100.0, 0.0).is_none());
     }
 
     #[test]
