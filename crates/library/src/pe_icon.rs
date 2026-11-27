@@ -178,7 +178,7 @@ fn decode_icon(data: &[u8]) -> Result<Image, String> {
     let h2 = u32_at(data, 8)? as usize;
     let bits = u16_at(data, 14)? as usize;
     let used = u32_at(data, 32)? as usize;
-    if head < 40 || w == 0 || w > 512 || h2 < 2 || h2 > 1024 || u32_at(data, 16)? != 0 {
+    if head < 40 || !(1..=512).contains(&w) || !(2..=1024).contains(&h2) || u32_at(data, 16)? != 0 {
         return Err("an icon in a format that is not handled".into());
     }
     let h = h2 / 2;
@@ -445,7 +445,9 @@ pub fn set_icon(exe: &mut Vec<u8>, rgba: &[u8]) -> Result<(), String> {
         return Err("the icon must be 256 by 256 pixels".into());
     }
     let bgra: Vec<u8> = rgba
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .flat_map(|p| [p[2], p[1], p[0], p[3]])
         .collect();
     replace_icon(exe, |_| Ok(bgra))
@@ -672,7 +674,7 @@ pub(crate) mod tests {
     fn a_made_icon_replaces_the_programs_own() {
         let mut exe = program();
         let mut rgba = vec![0u8; SIDE * SIDE * 4];
-        for p in rgba.chunks_exact_mut(4) {
+        for p in rgba.as_chunks_mut::<4>().0 {
             p.copy_from_slice(&[10, 20, 30, 255]);
         }
         set_icon(&mut exe, &rgba).unwrap();

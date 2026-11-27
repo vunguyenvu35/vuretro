@@ -146,7 +146,7 @@ fn copy_tree(from: &Path, to: &Path, count: &mut usize, log: &dyn Fn(&str)) -> R
         } else {
             std::fs::copy(e.path(), &target).map_err(|e| format!("{}: {e}", target.display()))?;
             *count += 1;
-            if *count % 50 == 0 {
+            if (*count).is_multiple_of(50) {
                 log(&format!("  {count} files"));
             }
         }
@@ -187,7 +187,7 @@ pub(super) fn copy_root(
         std::fs::write(&target, iso.read(&from)?)
             .map_err(|e| format!("{}: {e}", target.display()))?;
         count += 1;
-        if count % 50 == 0 {
+        if count.is_multiple_of(50) {
             log(&format!("  {count} files"));
         }
     }
@@ -1549,7 +1549,7 @@ mod tests {
     #[ignore]
     fn the_app_icon_reaches_the_program_of_a_game_set_up_earlier() {
         let icon = std::fs::read(std::env::var("VURETRO_ICON_RGBA").unwrap()).unwrap();
-        let paths = Paths::new(&std::env::var("VURETRO_DATA").unwrap());
+        let paths = Paths::new(std::env::var("VURETRO_DATA").unwrap());
         let iso = PathBuf::from(std::env::var("VURETRO_ROADRASH_ISO").unwrap());
         prepare(&paths, &iso, Some(&icon), &|l| println!("{l}")).unwrap();
         let ready = std::fs::read_to_string(paths.native_dir().join("pc/roadrash/ready")).unwrap();
@@ -1624,7 +1624,7 @@ mod tests {
     #[test]
     #[ignore]
     fn prepares_the_game_in_a_data_folder() {
-        let paths = Paths::new(&std::env::var("VURETRO_DATA").unwrap());
+        let paths = Paths::new(std::env::var("VURETRO_DATA").unwrap());
         let iso = PathBuf::from(std::env::var("VURETRO_ROADRASH_ISO").unwrap());
         let spec = prepare(&paths, &iso, None, &|l| println!("{l}")).unwrap();
         println!("SPEC {spec:?}");

@@ -20,6 +20,9 @@ impl ProcessLauncher {
     }
 }
 
+/// A command (program and arguments) and the environment to run it in.
+type StopCommand = (Vec<String>, Vec<(String, String)>);
+
 struct Runner {
     child: Child,
     log: PathBuf,
@@ -29,7 +32,7 @@ struct Runner {
     reader: Option<JoinHandle<()>>,
     /// What ends the program's own helpers (see `NativeSpec::stop`), with the environment to run
     /// it in.
-    stop: Option<(Vec<String>, Vec<(String, String)>)>,
+    stop: Option<StopCommand>,
 }
 
 /// Read the runner's output line by line and pass on the events among them. Everything else
