@@ -11,5 +11,6 @@ pub mod cinepak;
 pub mod course;
 pub mod image;
 pub mod palette;
+pub mod ride;
 pub mod road;
 pub mod rsc;

@@ -39,8 +39,15 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
 }
 
-/// The view from `position` (a sample of the route).
+/// The view from `position` (a sample of the route), the rider on the middle line.
 pub fn view(samples: &[Sample], position: usize, guess: Guess) -> Rgb {
+    view_at(samples, position as f32, 0.0, guess)
+}
+
+/// The view from a place between samples, `lateral` world units to the right of the middle.
+pub fn view_at(samples: &[Sample], position: f32, lateral: f32, guess: Guess) -> Rgb {
+    let first = position.max(0.0).floor() as usize;
+    let fraction = position.max(0.0) - first as f32;
     let mut pixels = vec![0u8; WIDTH * HEIGHT * 3];
     let mut put_row = |row: usize, from: f32, to: f32, colour: [u8; 3]| {
         let (a, b) = (
@@ -63,13 +70,13 @@ pub fn view(samples: &[Sample], position: usize, guess: Guess) -> Rgb {
         put_row(row, 0.0, WIDTH as f32, colour);
     }
 
-    let (mut x, mut dx, mut y) = (0.0f32, 0.0f32, 0.0f32);
+    let (mut x, mut dx, mut y) = (-lateral, 0.0f32, 0.0f32);
     // the slice before the first one is far below the picture
     let mut near = (HORIZON + CAMERA_HEIGHT * FOCAL / 64.0, 0.0f32, 0.0f32);
     let mut top = HEIGHT as f32;
     for k in 0..SLICES {
-        let z = 64.0 + k as f32 * 128.0;
-        let Some(s) = samples.get(position + k / 2) else {
+        let z = (64.0 + k as f32 * 128.0 - fraction * SAMPLE).max(32.0);
+        let Some(s) = samples.get(first + k / 2) else {
             break;
         };
         dx += s.bend as f32 * guess.turn * SAMPLE * 0.5;
