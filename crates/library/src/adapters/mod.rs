@@ -12,6 +12,7 @@ mod machine;
 mod native_installer;
 mod screenscraper;
 mod store;
+mod windows_pc;
 mod wine_installer;
 
 pub use archive::ZipBackup;

@@ -349,6 +349,89 @@ fn icon_bitmap(bgra: &[u8]) -> Vec<u8> {
     out
 }
 
+/// Add a section with `data` at the end of the file (and of the image), readable and nothing
+/// else. Gives its relative virtual address. Nothing that is already in the file moves.
+fn append_section(exe: &mut Vec<u8>, pe: &Pe, name: &[u8], data: &[u8]) -> Result<usize, String> {
+    let last = pe.sections.last().ok_or("the program has no sections")?;
+    if pe.table_at + 40 * (pe.sections.len() + 1)
+        > pe.headers_size.min(
+            pe.sections
+                .iter()
+                .map(|s| s.raw_ptr)
+                .min()
+                .unwrap_or(usize::MAX),
+        )
+    {
+        return Err("there is no room for a section in the headers".into());
+    }
+    let va = align(last.va + last.vsize.max(last.raw_size), pe.section_align);
+    let raw_ptr = align(exe.len(), pe.file_align);
+    let raw_size = align(data.len(), pe.file_align);
+    exe.resize(raw_ptr, 0);
+    exe.extend_from_slice(data);
+    exe.resize(raw_ptr + raw_size, 0);
+
+    let header = pe.table_at + 40 * pe.sections.len();
+    exe[header..header + 40].fill(0);
+    exe[header..header + name.len().min(8)].copy_from_slice(&name[..name.len().min(8)]);
+    put_u32(exe, header + 8, data.len() as u32)?;
+    put_u32(exe, header + 12, va as u32)?;
+    put_u32(exe, header + 16, raw_size as u32)?;
+    put_u32(exe, header + 20, raw_ptr as u32)?;
+    put_u32(exe, header + 36, 0x4000_0040)?; // initialized data, readable
+    put_u16(exe, pe.count_at, pe.sections.len() as u16 + 1)?;
+    put_u32(
+        exe,
+        pe.opt + 56,
+        align(va + data.len(), pe.section_align) as u32,
+    )?; // size of image
+    put_u32(exe, pe.opt + 64, 0)?; // no checksum
+    Ok(va)
+}
+
+/// Change the title of the window of a program that names it with a push of the address of a
+/// text, such as `push "Road Rash"` before the call that makes its window: the text `old` (found
+/// once as a whole text, and pushed from exactly one place) is replaced by `new` in a section of
+/// its own, and the push points there. For programs of 32 bits whose address cannot change by
+/// more than the image (the push is in the list of addresses that Windows corrects).
+pub fn set_window_title(exe: &mut Vec<u8>, old: &str, new: &[u8]) -> Result<(), String> {
+    let pe = Pe::parse(exe)?;
+    let image_base = u32_at(exe, pe.opt + 28)? as usize;
+    let mut needle = old.as_bytes().to_vec();
+    needle.push(0);
+    let mut pushes = Vec::new();
+    for at in (1..exe.len().saturating_sub(needle.len()))
+        .filter(|&i| exe[i - 1] == 0 && exe[i..i + needle.len()] == needle[..])
+    {
+        // where the text is in memory
+        let Some(section) = pe
+            .sections
+            .iter()
+            .find(|s| at >= s.raw_ptr && at < s.raw_ptr + s.raw_size)
+        else {
+            continue;
+        };
+        let address = (image_base + section.va + at - section.raw_ptr) as u32;
+        let mut push = vec![0x68];
+        push.extend_from_slice(&address.to_le_bytes());
+        pushes.extend(
+            (0..exe.len().saturating_sub(5))
+                .filter(|&i| exe[i..i + 5] == push[..])
+                .collect::<Vec<_>>(),
+        );
+    }
+    let [at] = pushes[..] else {
+        return Err(format!(
+            "the title is pushed from {} places, not one",
+            pushes.len()
+        ));
+    };
+    let mut text = new.to_vec();
+    text.push(0);
+    let va = append_section(exe, &pe, b".title", &text)?;
+    put_u32(exe, at + 1, (image_base + va) as u32)
+}
+
 /// Give the program in `exe` the icon of its own biggest icon drawn as a Mac icon.
 pub fn mac_style_icon(exe: &mut Vec<u8>) -> Result<(), String> {
     replace_icon(exe, |source| Ok(mac_tile(source)))
@@ -405,40 +488,7 @@ fn replace_icon(
     let bitmap = icon_bitmap(&draw(&source)?);
 
     // a new section at the end for the bitmap
-    let last = pe.sections.last().ok_or("the program has no sections")?;
-    if pe.table_at + 40 * (pe.sections.len() + 1)
-        > pe.headers_size.min(
-            pe.sections
-                .iter()
-                .map(|s| s.raw_ptr)
-                .min()
-                .unwrap_or(usize::MAX),
-        )
-    {
-        return Err("there is no room for a section in the headers".into());
-    }
-    let va = align(last.va + last.vsize.max(last.raw_size), pe.section_align);
-    let raw_ptr = align(exe.len(), pe.file_align);
-    let raw_size = align(bitmap.len(), pe.file_align);
-    exe.resize(raw_ptr, 0);
-    exe.extend_from_slice(&bitmap);
-    exe.resize(raw_ptr + raw_size, 0);
-
-    let header = pe.table_at + 40 * pe.sections.len();
-    exe[header..header + 40].fill(0);
-    exe[header..header + 5].copy_from_slice(b".icon");
-    put_u32(exe, header + 8, bitmap.len() as u32)?;
-    put_u32(exe, header + 12, va as u32)?;
-    put_u32(exe, header + 16, raw_size as u32)?;
-    put_u32(exe, header + 20, raw_ptr as u32)?;
-    put_u32(exe, header + 36, 0x4000_0040)?; // initialized data, readable
-    put_u16(exe, pe.count_at, pe.sections.len() as u16 + 1)?;
-    put_u32(
-        exe,
-        pe.opt + 56,
-        align(va + bitmap.len(), pe.section_align) as u32,
-    )?; // size of image
-    put_u32(exe, pe.opt + 64, 0)?; // no checksum
+    let va = append_section(exe, &pe, b".icon", &bitmap)?;
 
     // the icon resource points at it, and the list holds that one icon
     put_u32(exe, target.entry_at, va as u32)?;
@@ -635,6 +685,46 @@ mod tests {
             "the colours keep their order"
         );
         assert!(set_icon(&mut program(), &[0; 4]).is_err());
+    }
+
+    /// A program of one section that holds a text and the code that pushes its address.
+    fn program_with_title() -> Vec<u8> {
+        let mut d = program();
+        // one more section's worth of room is already in the headers; the data goes in the
+        // resource section's file space (nothing reads it as resources here)
+        let section_va = 0x1000usize;
+        let at = 0x400 + 0x1c0; // in the file
+        d[at..at + 10].copy_from_slice(b"Road Rash\0");
+        d[at - 1] = 0;
+        let address = (0x40_0000 + section_va + 0x1c0) as u32;
+        d[0x400 + 0x1f0] = 0x68;
+        d[0x400 + 0x1f1..0x400 + 0x1f5].copy_from_slice(&address.to_le_bytes());
+        d[0x58 + 28..0x58 + 32].copy_from_slice(&0x40_0000u32.to_le_bytes());
+        d
+    }
+
+    #[test]
+    fn the_title_a_program_pushes_is_replaced_in_a_section_of_its_own() {
+        let mut exe = program_with_title();
+        set_window_title(&mut exe, "Road Rash", b"Road Rash \x97 Wine").unwrap();
+        let pe = Pe::parse(&exe).unwrap();
+        let new = pe.sections.last().unwrap();
+        assert_eq!(new.va, 0x2000);
+        let pushed = u32_at(&exe, 0x400 + 0x1f1).unwrap() as usize;
+        assert_eq!(pushed, 0x40_0000 + new.va);
+        assert_eq!(&exe[new.raw_ptr..new.raw_ptr + 16], b"Road Rash \x97 Wine");
+        assert_eq!(exe[new.raw_ptr + 16], 0, "the text ends");
+    }
+
+    #[test]
+    fn a_title_that_is_not_there_or_not_pushed_once_is_refused() {
+        let mut exe = program_with_title();
+        assert!(set_window_title(&mut exe, "Other", b"x").is_err());
+        let mut twice = program_with_title();
+        let address = (0x40_0000 + 0x1000 + 0x1c0) as u32;
+        twice[0x400 + 0x1a0] = 0x68;
+        twice[0x400 + 0x1a1..0x400 + 0x1a5].copy_from_slice(&address.to_le_bytes());
+        assert!(set_window_title(&mut twice, "Road Rash", b"x").is_err());
     }
 
     /// With the real program of the game (`VURETRO_ROADRASH_EXE`), writing the result where

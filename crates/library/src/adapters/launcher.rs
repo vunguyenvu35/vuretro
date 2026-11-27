@@ -71,22 +71,15 @@ impl GameProcess for Runner {
     }
 
     fn stop(&mut self) {
-        if let Some((argv, env)) = &self.stop {
-            if let Some((program, args)) = argv.split_first() {
-                let _ = Command::new(program)
-                    .args(args)
-                    .envs(env.iter().map(|(k, v)| (k, v)))
-                    .stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .status();
-            }
-        }
+        self.cleanup();
         let _ = self.child.kill();
     }
 
     fn wait(&mut self) {
         let _ = self.child.wait();
+        // what the program started besides itself (Wine's server, a mounted disc image) is
+        // ended with it, however it ended
+        self.cleanup();
         // the last things it said are still on their way: wait for the end of its output
         if let Some(reader) = self.reader.take() {
             let _ = reader.join();
@@ -99,6 +92,22 @@ impl GameProcess for Runner {
 }
 
 impl Runner {
+    /// Run the command that ends what the program started besides itself, once.
+    fn cleanup(&mut self) {
+        let Some((argv, env)) = self.stop.take() else {
+            return;
+        };
+        if let Some((program, args)) = argv.split_first() {
+            let _ = Command::new(program)
+                .args(args)
+                .envs(env.iter().map(|(k, v)| (k, v)))
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
+    }
+
     /// The reason the runner gave for failing, if it gave one. The reader may still be
     /// finishing when the process has just ended, so it is waited for.
     fn reported_error(&mut self) -> Option<String> {
@@ -362,6 +371,33 @@ mod tests {
         r.wait();
         assert_eq!(r.events(), vec![progress, exit]);
         assert!(r.events().is_empty(), "taken once");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_native_game_that_ends_by_itself_has_its_stop_command_run_once() {
+        let dir = std::env::temp_dir().join(format!("vuretro-end-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("log");
+        let launcher = ProcessLauncher::new(Paths::new(dir.to_str().unwrap()));
+        let mut p = launcher
+            .spawn_native(&NativeSpec {
+                exe: "/bin/sh".into(),
+                args: vec!["-c".into(), "exit 0".into()],
+                cwd: None,
+                env: Vec::new(),
+                stop: Some(vec![
+                    "/bin/sh".into(),
+                    "-c".into(),
+                    format!("echo ran >> '{}'", log.display()),
+                ]),
+            })
+            .unwrap();
+        p.wait();
+        p.stop(); // asked after it ended: the command is not run again
+        p.wait();
+        assert_eq!(std::fs::read_to_string(&log).unwrap(), "ran\n");
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[cfg(unix)]
