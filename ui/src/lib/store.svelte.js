@@ -44,7 +44,8 @@ export const app = $state({
   nativeCovers: {}, // pictures of the native games by id (data: URLs)
   nativeTools: [], // the tools Road Rash's build needs and this computer lacks
   preparing: null, // what a Windows game is doing before it starts the first time
-  playing: null, // the title of the game that is open, so it can be stopped from the app
+  playing: null,
+  playingNote: '', // what runs it, when it is not a core of the app ("wine") // the title of the game that is open, so it can be stopped from the app
   nativeInstall: { running: false, step: '', log: [] }, // setting Road Rash up from the disc
   native: [], // games that are programs of their own: { id, name, exe, args }
 });
@@ -270,6 +271,8 @@ export async function play(game, slot = null) {
   try {
     await api.launchGame(game.path, slot);
     app.playing = game.title;
+    // a Windows game runs in Wine, which the Dock shows as "wine"
+    app.playingNote = game.system === 'windows' ? 'wine' : '';
     toast(`Started ${game.title}`);
   } catch (e) {
     toast(String(e), 'error');

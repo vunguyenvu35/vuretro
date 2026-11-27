@@ -26,6 +26,7 @@
     // closing a game no longer replaces its picture: it keeps the one it had
     api.onGameExited(() => {
       app.playing = null;
+      app.playingNote = '';
       refresh();
     }).then((f) => off.push(f));
     api.onPcPreparing((line) => (app.preparing = line)).then((f) => off.push(f));
