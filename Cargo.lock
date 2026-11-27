@@ -3182,15 +3182,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "vuretro-roadrash"
-version = "0.1.7"
-dependencies = [
- "cpal",
- "minifb",
- "png 0.17.16",
-]
-
-[[package]]
 name = "vuretro-runner"
 version = "0.1.7"
 dependencies = [
