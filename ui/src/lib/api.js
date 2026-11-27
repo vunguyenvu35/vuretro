@@ -143,6 +143,8 @@ export const api = {
 
   // events (each returns a promise of an unsubscribe function)
   onGameExited: (fn) => on('game-exited', fn),
+  onPcPreparing: (fn) => on('pc-preparing', fn),
+  onPcPrepared: (fn) => on('pc-prepared', fn),
   // what the running game reports: {event: 'state', action: 'saved'|'loaded', slot},
   // {event: 'screenshot', path}, {event: 'progress', played_secs}, ...
   onGameEvent: (fn) => on('game-event', fn),

@@ -2434,7 +2434,8 @@ impl NativeInstaller for FakeNative {
         self.runs.lock().unwrap().push("runtime".into());
         Ok(())
     }
-    fn prepare_pc_game(&self, disc: &Path, _log: &dyn Fn(&str)) -> Result<NativeSpec, String> {
+    fn prepare_pc_game(&self, disc: &Path, log: &dyn Fn(&str)) -> Result<NativeSpec, String> {
+        log("copying the game");
         self.runs
             .lock()
             .unwrap()
@@ -2658,4 +2659,25 @@ fn a_failed_wine_download_is_reported_and_can_be_tried_again() {
     assert_eq!(app.install_core("wine", |_| {}).unwrap_err(), "no wine");
     assert!(runs.lock().unwrap().is_empty());
     assert!(app.core_to_install("/roms/pc/a.iso").is_some());
+}
+
+#[test]
+fn a_windows_game_is_prepared_ahead_of_play_with_what_it_does_told_and_other_games_are_not() {
+    let (app, _, runs) = pc_world(false);
+    let rom = "/roms/pc/roadrash.iso";
+    // nothing to prepare before Wine is there
+    assert!(!app.prepare_pc(rom, |_| {}).unwrap());
+    app.install_core("wine", |_| {}).unwrap();
+    let told = Mutex::new(Vec::new());
+    assert!(app
+        .prepare_pc(rom, |l| told.lock().unwrap().push(l.to_string()))
+        .unwrap());
+    assert_eq!(*told.lock().unwrap(), vec!["copying the game"]);
+    assert!(runs
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|r| r.starts_with("prepare ")));
+    // a game of another system is left alone
+    assert!(!app.prepare_pc("/roms/psx/a.cue", |_| {}).unwrap());
 }

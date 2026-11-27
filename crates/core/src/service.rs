@@ -1397,6 +1397,34 @@ impl App {
         (!usable).then(|| chosen.to_string())
     }
 
+    /// Make a Windows game ready ahead of Play, telling what it does through `log`: the first
+    /// time this takes minutes, and Play then starts it at once. `Ok(false)` when the file is
+    /// not a Windows game or it is ready already. Slow: run it on a thread.
+    pub fn prepare_pc(&self, path: &str, log: impl Fn(&str)) -> Result<bool, String> {
+        let rom_dir = self
+            .settings
+            .lock()
+            .unwrap()
+            .rom_dir
+            .clone()
+            .unwrap_or_default();
+        let is_pc = detect::detect_system(Path::new(&rom_dir), Path::new(path))
+            .is_some_and(|s| s.runtime == "wine");
+        let Some(installer) = self.native_installer.as_ref().filter(|_| is_pc) else {
+            return Ok(false);
+        };
+        if !installer.pc_ready() {
+            return Ok(false);
+        }
+        let key = format!("pc:{path}");
+        if !self.installing.lock().unwrap().insert(key.clone()) {
+            return Err("this game is already being set up".into());
+        }
+        let result = installer.prepare_pc_game(Path::new(path), &log);
+        self.installing.lock().unwrap().remove(&key);
+        result.map(|_| true)
+    }
+
     /// Start a Windows game from a disc image: made ready the first time (slow), then run
     /// under Wine like any other game of the library.
     fn launch_pc(&self, path: &str) -> Result<Option<Running>, String> {

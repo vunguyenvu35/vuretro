@@ -28,6 +28,8 @@
       app.playing = null;
       refresh();
     }).then((f) => off.push(f));
+    api.onPcPreparing((line) => (app.preparing = line)).then((f) => off.push(f));
+    api.onPcPrepared(() => (app.preparing = null)).then((f) => off.push(f));
     api.onCoversUpdated((path) => loadCovers([path])).then((f) => off.push(f));
     api.onMenu(handleMenu).then((f) => off.push(f));
     // Play fetches the core a game needs: show how far it is

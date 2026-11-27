@@ -43,6 +43,7 @@ export const app = $state({
   nativeFound: [], // installed native games not yet in the library: { id, name, exe, args }
   nativeCovers: {}, // pictures of the native games by id (data: URLs)
   nativeTools: [], // the tools Road Rash's build needs and this computer lacks
+  preparing: null, // what a Windows game is doing before it starts the first time
   playing: null, // the title of the game that is open, so it can be stopped from the app
   nativeInstall: { running: false, step: '', log: [] }, // setting Road Rash up from the disc
   native: [], // games that are programs of their own: { id, name, exe, args }

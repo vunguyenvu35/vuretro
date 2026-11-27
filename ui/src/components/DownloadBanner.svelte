@@ -6,6 +6,14 @@
   const name = $derived(d ? d.core.replace(/_libretro$/, '') : '');
 </script>
 
+{#if app.preparing && !d && app.preparing !== 'Starting'}
+  <div class="banner" role="status" aria-live="polite">
+    <div class="line"><strong>Setting the game up…</strong></div>
+    <div class="track"><span class="busy"></span></div>
+    <small>{app.preparing}. The first time takes a few minutes; after that it starts at once.</small>
+  </div>
+{/if}
+
 {#if d}
   <div class="banner" role="status" aria-live="polite">
     <div class="line"><strong>Getting the {name} core…</strong> <span>{d.percent}%</span></div>
@@ -21,4 +29,6 @@
   .track { height: 6px; border-radius: 99px; background: color-mix(in srgb, var(--text) 12%, transparent); overflow: hidden; }
   .track span { display: block; height: 100%; background: var(--accent); transition: width .25s ease; }
   small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+.track .busy { width: 35%; animation: slide 1.2s ease-in-out infinite alternate; }
+  @keyframes slide { from { margin-left: 0; } to { margin-left: 65%; } }
 </style>

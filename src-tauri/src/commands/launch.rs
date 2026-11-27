@@ -43,6 +43,14 @@ pub async fn launch_game(
             })
             .map_err(|e| format!("could not get the {stem} core: {e}"))?;
         }
+        // A Windows game is set up from its disc the first time (minutes): the page is told
+        // what is going on, and Play below finds it ready.
+        let _ = events.emit("pc-preparing", "Starting");
+        let prepared = core.prepare_pc(&path, |line| {
+            let _ = events.emit("pc-preparing", line.trim());
+        });
+        let _ = events.emit("pc-prepared", ());
+        prepared?;
         core.launch_game(path, slot)
     })
     .await??;
