@@ -1,0 +1,9 @@
+[package]
+name = "vuretro-roadrash"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Reader for the data of the Road Rash PC disc (1996), written from the files themselves"
+
+[dependencies]
+png = "0.17"

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/procon", "crates/libretro-sys", "crates/core", "crates/play", "crates/runner", "crates/library", "crates/test-core", "crates/controls", "crates/settings"]
+members = ["crates/procon", "crates/libretro-sys", "crates/core", "crates/play", "crates/runner", "crates/library", "crates/test-core", "crates/controls", "crates/settings", "crates/roadrash"]
 
 [workspace.package]
 version = "0.1.7"
