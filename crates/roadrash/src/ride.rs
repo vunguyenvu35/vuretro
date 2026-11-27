@@ -4,6 +4,7 @@
 use crate::bob::Frame;
 use crate::course::Sample;
 use crate::exe::Remap;
+use crate::hud;
 use crate::image::Rgb;
 use crate::palette::Palette;
 use crate::road::{self, Guess};
@@ -185,6 +186,8 @@ pub struct Look<'a> {
     pub riders: &'a [Frame],
     pub palette: &'a Palette,
     pub remaps: &'a [Remap],
+    /// The instrument panel, when there is one to draw.
+    pub dash: Option<&'a Frame>,
 }
 
 /// Draw a sprite so that the wheel touches the picture at (`x`, `bottom`), `scale` times its
@@ -270,6 +273,18 @@ pub fn render(
         }
     }
 
+    if let Some(dash) = look.dash {
+        // the speed is shown in km/h: the top speed stands for 280
+        let kmh = bike.speed / TOP_SPEED * 280.0;
+        let place = 1 + rivals.iter().filter(|r| r.position > bike.position).count();
+        hud::draw(
+            &mut picture,
+            dash,
+            look.palette,
+            kmh,
+            (place, rivals.len() + 1),
+        );
+    }
     if let (Some(sprite), Some(remap)) = (look.riders.get(lean_frame(bike.lean)), remap_of(colour))
     {
         let (w, h) = (picture.width as f32, picture.height as f32);
@@ -421,6 +436,7 @@ mod tests {
             riders: &riders,
             palette: &palette,
             remaps: &[same],
+            dash: None,
         };
         let with = render(&road, &Bike::start(), &[], &look, 0);
         assert_eq!((with.width, with.height), (640, 480));
@@ -430,6 +446,7 @@ mod tests {
             riders: &[],
             palette: &palette,
             remaps: &[same],
+            dash: None,
         };
         let without = render(&road, &Bike::start(), &[], &nobody, 0);
         assert_ne!(with.pixels, without.pixels);
@@ -498,6 +515,7 @@ mod tests {
             riders: &riders,
             palette: &palette,
             remaps: &[same],
+            dash: None,
         };
         let red = |p: &Rgb| {
             p.pixels

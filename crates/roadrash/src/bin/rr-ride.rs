@@ -8,7 +8,7 @@ use vuretro_roadrash::disc::Disc;
 use vuretro_roadrash::image::{sheet, write_png, Rgb};
 use vuretro_roadrash::palette::{Order, Palette};
 use vuretro_roadrash::ride::{collide, render, step, step_rivals, Bike, Input, Look, Rival};
-use vuretro_roadrash::{bob, course, exe};
+use vuretro_roadrash::{bob, course, exe, hud};
 
 fn main() -> Result<(), String> {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
@@ -47,10 +47,12 @@ fn main() -> Result<(), String> {
     let riders = bob::read_frames(&read("DATA/BIKERS/HIBOB.DAT".into())?)?;
     let course = course::parse(&read(format!("DATA/COURSES/{name}.CRS"))?)?;
     let remaps = exe::rider_remaps(&read("ROADRASH.EXE".into())?)?;
+    let dash = hud::panel(&read("IMAGES/BIKES/RAT/KHIDASH.BOB".into())?)?;
     let look = Look {
         riders: &riders,
         palette: &palette,
         remaps: &remaps,
+        dash: Some(&dash),
     };
     // six rivals ahead of the start, each in its own colour and lane, slower than the bike
     let mut rivals: Vec<Rival> = (0..6)

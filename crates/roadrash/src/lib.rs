@@ -11,6 +11,7 @@ pub mod cinepak;
 pub mod course;
 pub mod disc;
 pub mod exe;
+pub mod hud;
 pub mod image;
 pub mod iso;
 pub mod palette;
