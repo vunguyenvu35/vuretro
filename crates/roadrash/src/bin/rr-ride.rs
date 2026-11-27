@@ -1,6 +1,6 @@
 //! Ride a bike along a course of a Road Rash disc.
 //! Usage: rr-ride <ROADRASH.iso or its unpacked folder> [course: NAPA CITY HIWAY CANYN MEDLY]
-//!        [--rider 0..14] [--shots picture.png] [--sound-test sound.wav] [--busted-test picture.png]
+//!        [--rider 0..14] [--music NAME] [--shots picture.png] [--sound-test sound.wav] [--busted-test picture.png]
 //! Keys: Up or W to speed up, Down or S to brake, Left and Right or A and D to steer, Z and X
 //! to hit a rider on the left or on the right, Esc to quit. After a while the police come
 //! after you: stay fast, or the BUSTED video plays and the ride starts again.
@@ -101,6 +101,7 @@ fn main() -> Result<(), String> {
     let shots = take(&mut args, "--shots")?;
     let sound_test = take(&mut args, "--sound-test")?;
     let busted_test = take(&mut args, "--busted-test")?;
+    let music_name = take(&mut args, "--music")?;
     let rider = match take(&mut args, "--rider")? {
         Some(n) => n
             .parse::<usize>()
@@ -127,6 +128,21 @@ fn main() -> Result<(), String> {
         .iter()
         .map(|n| wav::parse(&read(format!("AUDIO/EFFECTS/{n}.WAV"))?))
         .collect::<Result<Vec<_>, String>>()?;
+    // the music: a track of the disc (a WAV file of its own), one for each course unless
+    // another is asked for with --music
+    let track = music_name.unwrap_or_else(|| {
+        match name.as_str() {
+            "CITY" => "SG_KICKS",
+            "HIWAY" => "SG_SUPER",
+            "MEDLY" => "SG_OUTSH",
+            "CANYN" => "HB_PASS",
+            _ => "SG_RUSTY",
+        }
+        .to_string()
+    });
+    let music = read(format!("AUDIO/MUSIC/{track}.RRA"))
+        .ok()
+        .and_then(|f| wav::parse(&f).ok());
     let backdrop = horizon::load(&disc, &name, &palette)?;
     let headings = course::headings(&samples, vuretro_roadrash::road::Guess::default().turn);
     let mut look = Look {
@@ -159,7 +175,16 @@ fn main() -> Result<(), String> {
     }
 
     if let Some(out) = sound_test {
+        match &music {
+            Some(m) => println!(
+                "music {track}: {:.0} s at {} Hz",
+                m.samples.len() as f32 / m.rate,
+                m.rate
+            ),
+            None => println!("music {track}: not read"),
+        }
         let mut mixer = Mixer::new(engine, effects, 22_050.0);
+        mixer.set_music(music.clone());
         let mut samples_out: Vec<i16> = Vec::new();
         for frame in 0..4 * 30 {
             mixer.revs = 3000.0 + 7000.0 * frame as f32 / 120.0;
@@ -225,7 +250,12 @@ fn main() -> Result<(), String> {
     let mut buffer = vec![0u32; w * h];
     // the sound, if there is a sound card to play it on
     let audio = match Audio::start(engine, effects) {
-        Ok(a) => Some(a),
+        Ok(a) => {
+            if let Ok(mut m) = a.mixer.lock() {
+                m.set_music(music);
+            }
+            Some(a)
+        }
         Err(e) => {
             eprintln!("riding without sound: {e}");
             None

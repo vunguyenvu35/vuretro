@@ -14,11 +14,16 @@ pub struct Mixer {
     out_rate: f32,
     engine_at: f64,
     shots: Vec<(usize, f64)>,
+    /// The music of the ride (goes round and round) and where it is.
+    music: Option<Clip>,
+    music_at: f64,
     /// An effect that goes round and round (the siren): which, where it is, how loud.
     looping: Option<(usize, f64, f32)>,
     /// Turns of the engine in a minute; 0 silences it.
     pub revs: f32,
     pub volume: f32,
+    /// How loud the music is compared with the rest.
+    pub music_volume: f32,
 }
 
 impl Mixer {
@@ -29,10 +34,19 @@ impl Mixer {
             out_rate,
             engine_at: 0.0,
             shots: Vec::new(),
+            music: None,
+            music_at: 0.0,
             looping: None,
             revs: 0.0,
             volume: 0.8,
+            music_volume: 0.35,
         }
+    }
+
+    /// Play this music from the start, again and again; `None` stops it.
+    pub fn set_music(&mut self, music: Option<Clip>) {
+        self.music = music;
+        self.music_at = 0.0;
     }
 
     /// Add a sound while the mixer is running; its number is returned.
@@ -72,6 +86,14 @@ impl Mixer {
                 let (a, b) = (self.engine.samples[i], self.engine.samples[(i + 1) % len]);
                 value += (a + (b - a) * f) * 0.6;
                 self.engine_at = (self.engine_at + engine_step) % len as f64;
+            }
+            if let Some(m) = &self.music {
+                if !m.samples.is_empty() {
+                    value +=
+                        m.samples[self.music_at as usize % m.samples.len()] * self.music_volume;
+                    self.music_at =
+                        (self.music_at + (m.rate / self.out_rate) as f64) % m.samples.len() as f64;
+                }
             }
             if let Some((n, at, volume)) = &mut self.looping {
                 let clip = &self.effects[*n];
@@ -267,5 +289,23 @@ mod tests {
         let mut out = [0.0; 3];
         m.fill(&mut out);
         assert_eq!(out, [0.25, 0.25, 0.0]);
+    }
+
+    #[test]
+    fn music_goes_round_at_its_own_loudness_and_can_be_stopped() {
+        let mut m = Mixer::new(ramp(10), vec![], 1000.0);
+        m.volume = 1.0;
+        m.music_volume = 0.5;
+        m.set_music(Some(clip(1000.0, vec![0.2, 0.4])));
+        let mut out = [0.0; 5];
+        m.fill(&mut out);
+        let want = [0.1, 0.2, 0.1, 0.2, 0.1];
+        assert!(
+            out.iter().zip(want).all(|(a, b)| (a - b).abs() < 1e-6),
+            "{out:?}"
+        );
+        m.set_music(None);
+        m.fill(&mut out);
+        assert_eq!(out, [0.0; 5]);
     }
 }
