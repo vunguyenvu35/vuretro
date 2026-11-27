@@ -89,3 +89,13 @@ pub async fn launch_native(
     watch(&app, &shell, running);
     Ok(())
 }
+
+#[tauri::command]
+pub fn found_native_games(shell: State<'_, Shell>) -> Vec<NativeGame> {
+    shell.app.found_native_games()
+}
+
+#[tauri::command]
+pub fn programs_in_folder(shell: State<'_, Shell>, dir: String) -> Result<Vec<NativeGame>, String> {
+    shell.app.programs_in_folder(&dir)
+}

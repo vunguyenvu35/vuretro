@@ -79,6 +79,8 @@ export const api = {
   launchDemo: () => call('launch_demo'),
   // native games: programs of their own, started as they are (no core, no ROM)
   nativeGames: () => call('list_native_games'),
+  foundNativeGames: () => call('found_native_games'),
+  programsInFolder: (dir) => call('programs_in_folder', { dir }),
   addNativeGame: (name, exe, args = []) => call('add_native_game', { name, exe, args }),
   removeNativeGame: (id) => call('remove_native_game', { id }),
   launchNative: (id) => call('launch_native', { id }),

@@ -40,6 +40,7 @@ export const app = $state({
   dialog: null, // 'about' | 'support': a small dialog over the page
   scope: '', // system id the Settings and Controls screens edit; empty = all games
   downloading: null, // { core, percent } while Play fetches the core a game needs
+  nativeFound: [], // installed native games not yet in the library: { id, name, exe, args }
   native: [], // games that are programs of their own: { id, name, exe, args }
 });
 
@@ -275,6 +276,7 @@ export async function play(game, slot = null) {
 export async function loadNative() {
   try {
     app.native = await api.nativeGames();
+    app.nativeFound = await api.foundNativeGames();
   } catch (e) {
     toast(String(e), 'error');
   }

@@ -81,6 +81,112 @@ struct CoverQueue {
     running: bool,
 }
 
+/// A native game's program must be a file the system can run (not a disc image or a folder).
+fn check_program(exe: &str) -> Result<(), String> {
+    let path = Path::new(exe);
+    if !path.is_file() {
+        return Err(format!("{exe} is not there (or is not a file)"));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = path
+            .metadata()
+            .map_err(|e| e.to_string())?
+            .permissions()
+            .mode();
+        if mode & 0o111 == 0 {
+            return Err(format!(
+                "{exe} is not a program (it cannot be run). Choose the game's program, not its data or disc image."
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Programs in a game's folder the user chose, so they need not find the file themselves. A
+/// `game.json` settles it. Otherwise every file the system can run, in the folder or one
+/// level down (a build folder), except libraries and scripts of the system; the one named
+/// like the folder comes first.
+fn programs_in(dir: &Path) -> Vec<NativeGame> {
+    if let Some(game) = read_native_manifest(dir) {
+        return vec![game];
+    }
+    let folder = dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let mut files = Vec::new();
+    let mut look = |d: &Path, files: &mut Vec<PathBuf>| {
+        for e in std::fs::read_dir(d).into_iter().flatten().flatten() {
+            files.push(e.path());
+        }
+    };
+    look(dir, &mut files);
+    let subdirs: Vec<PathBuf> = files.iter().filter(|p| p.is_dir()).cloned().collect();
+    for d in subdirs {
+        look(&d, &mut files);
+    }
+    let skip = [
+        "dylib", "so", "a", "dll", "o", "txt", "md", "json", "py", "sh", "bat", "ps1",
+    ];
+    let mut found: Vec<NativeGame> = files
+        .into_iter()
+        .filter(|p| p.is_file())
+        .filter(|p| {
+            let ext = p
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            !skip.contains(&ext.as_str())
+        })
+        .filter(|p| check_program(&p.to_string_lossy()).is_ok())
+        .map(|p| NativeGame {
+            id: String::new(),
+            name: folder.clone(),
+            exe: p.to_string_lossy().into_owned(),
+            args: Vec::new(),
+        })
+        .collect();
+    let stem = |g: &NativeGame| {
+        Path::new(&g.exe)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_lowercase())
+            .unwrap_or_default()
+    };
+    let key = folder.to_lowercase();
+    found.sort_by_key(|g| {
+        (
+            !stem(g).contains(&key) && !key.contains(&stem(g)),
+            g.exe.clone(),
+        )
+    });
+    found
+}
+
+/// The game described by `<dir>/game.json`, if it is there, readable and its program can run.
+fn read_native_manifest(dir: &Path) -> Option<NativeGame> {
+    #[derive(serde::Deserialize)]
+    struct Manifest {
+        name: String,
+        exe: String,
+        #[serde(default)]
+        args: Vec<String>,
+    }
+    let m: Manifest =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("game.json")).ok()?).ok()?;
+    let here = dir.to_string_lossy();
+    let exe = dir.join(&m.exe).to_string_lossy().into_owned();
+    check_program(&exe).ok()?;
+    Some(NativeGame {
+        id: dir.file_name()?.to_string_lossy().into_owned(),
+        name: m.name,
+        exe,
+        args: m.args.iter().map(|a| a.replace("{dir}", &here)).collect(),
+    })
+}
+
 pub struct App {
     paths: Paths,
     store: Box<dyn Store>,
@@ -1252,9 +1358,7 @@ impl App {
         if name.is_empty() {
             return Err("the game needs a name".into());
         }
-        if !Path::new(exe).is_file() {
-            return Err(format!("{exe} is not a file"));
-        }
+        check_program(exe)?;
         let id: String = name
             .to_lowercase()
             .chars()
@@ -1277,6 +1381,57 @@ impl App {
         Ok(game)
     }
 
+    /// Native games installed under `<data>/native/<folder>/` and not yet in the library, so
+    /// the page can offer them instead of asking for paths. A folder is a game when it holds
+    /// a `game.json`: `{"name": "...", "exe": "program", "args": ["--data", "{dir}/data"]}`.
+    /// `exe` is relative to the folder and `{dir}` in an argument stands for the folder.
+    pub fn found_native_games(&self) -> Vec<NativeGame> {
+        let Ok(entries) = std::fs::read_dir(self.paths.native_dir()) else {
+            return Vec::new();
+        };
+        let have = self.native_games();
+        let mut found: Vec<NativeGame> = entries
+            .flatten()
+            .filter_map(|e| read_native_manifest(&e.path()))
+            .filter(|g| !have.iter().any(|h| h.exe == g.exe))
+            .collect();
+        found.sort_by(|a, b| a.name.cmp(&b.name));
+        found
+    }
+
+    /// The programs the user could mean by a game folder (see `programs_in`): none when the
+    /// folder holds nothing that can be run.
+    pub fn programs_in_folder(&self, dir: &str) -> Result<Vec<NativeGame>, String> {
+        let dir = Path::new(dir);
+        if !dir.is_dir() {
+            return Err(format!("{} is not a folder", dir.display()));
+        }
+        let found = programs_in(dir);
+        if found.is_empty() {
+            let disc = std::fs::read_dir(dir)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .any(|e| {
+                    let ext = e
+                        .path()
+                        .extension()
+                        .and_then(|x| x.to_str())
+                        .map(str::to_lowercase);
+                    matches!(ext.as_deref(), Some("iso" | "bin" | "cue" | "chd" | "img"))
+                });
+            return Err(if disc {
+                "That folder holds a disc image, not a program: a disc needs a native port to \
+                 play it. For Road Rash (PC) run scripts/build-road-rash.sh with the disc image. \
+                 For a console game use Add games instead."
+                    .into()
+            } else {
+                "No program found in that folder. Choose the folder of the game itself.".into()
+            });
+        }
+        Ok(found)
+    }
+
     /// Take a program out of the library (the program itself is not touched).
     pub fn remove_native_game(&self, id: &str) {
         self.settings
@@ -1294,9 +1449,7 @@ impl App {
             .into_iter()
             .find(|g| g.id == id)
             .ok_or("unknown game")?;
-        if !Path::new(&game.exe).is_file() {
-            return Err(format!("{} is not there any more", game.exe));
-        }
+        check_program(&game.exe)?;
         let key = format!("native:{}", game.id);
         self.begin(game.name.clone(), Some(key), false, || {
             self.launcher.spawn_native(&NativeSpec {

@@ -30,6 +30,8 @@ const fullMock = () => ({
 let mockNative = [];
 const mock = {
   list_native_games: async () => mockNative,
+  found_native_games: async () => [],
+  programs_in_folder: async (a) => [{ id: '', name: a.dir.split('/').pop(), exe: a.dir + '/game', args: [] }],
   add_native_game: async (a) => {
     const g = { id: a.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-'), name: a.name.trim(), exe: a.exe, args: a.args };
     mockNative = [...mockNative.filter((x) => x.id !== g.id), g];

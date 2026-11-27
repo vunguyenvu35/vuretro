@@ -2240,9 +2240,26 @@ fn clearing_recent_forgets_when_games_were_played_and_keeps_everything_else() {
     assert_eq!(a.clear_recent(), 0, "nothing left to clear");
 }
 
-/// A file that exists on every machine the tests run on, standing in for a game's program.
+/// A program that exists on every machine the tests run on, standing in for a game's program.
 fn some_program() -> String {
-    concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml").into()
+    #[cfg(unix)]
+    return "/bin/sh".into();
+    #[cfg(not(unix))]
+    return concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml").into();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_file_that_cannot_be_run_is_not_taken_as_a_native_game() {
+    let f = Fake::default();
+    let err = app(&f)
+        .add_native_game(
+            "Disc",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"),
+            vec![],
+        )
+        .unwrap_err();
+    assert!(err.contains("not a program"), "{err}");
 }
 
 #[test]
@@ -2292,4 +2309,97 @@ fn a_native_game_counts_as_the_one_open_game_and_can_be_removed() {
     assert!(err.starts_with("One is already open"), "{err}");
     a.remove_native_game("two");
     assert_eq!(a.native_games().len(), 1);
+}
+
+#[cfg(unix)]
+#[test]
+fn installed_native_games_are_offered_from_their_manifest_until_added() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = std::env::temp_dir().join(format!("vuretro-native-{}", std::process::id()));
+    let make = |folder: &str, manifest: &str, runnable: bool| {
+        let dir = root.join("native").join(folder);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("game.json"), manifest).unwrap();
+        let exe = dir.join("play");
+        std::fs::write(&exe, "#!/bin/sh\n").unwrap();
+        let mode = if runnable { 0o755 } else { 0o644 };
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(mode)).unwrap();
+    };
+    make(
+        "alpha",
+        r#"{"name":"Alpha","exe":"play","args":["--data","{dir}/data"]}"#,
+        true,
+    );
+    make("beta", r#"{"name":"Beta","exe":"play"}"#, true);
+    make("broken", "not json", true);
+    make("stuck", r#"{"name":"Stuck","exe":"play"}"#, false);
+
+    let f = Fake::default();
+    let a = App::new(
+        Paths::new(root.to_str().unwrap()),
+        Box::new(f.clone()),
+        Box::new(f.clone()),
+        Box::new(f.clone()),
+        Box::new(f.clone()),
+    );
+    let found = a.found_native_games();
+    let names: Vec<_> = found.iter().map(|g| g.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["Alpha", "Beta"],
+        "broken and unrunnable ones are left out"
+    );
+    assert!(
+        found[0].args[1].ends_with("native/alpha/data"),
+        "{:?}",
+        found[0].args
+    );
+    a.add_native_game(&found[0].name, &found[0].exe, found[0].args.clone())
+        .unwrap();
+    assert_eq!(
+        a.found_native_games().len(),
+        1,
+        "Alpha is in the library now"
+    );
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_game_folder_is_searched_for_its_program() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = std::env::temp_dir().join(format!("vuretro-folder-{}", std::process::id()));
+    let put = |path: &str, runnable: bool| {
+        let p = root.join(path);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, "x").unwrap();
+        let mode = if runnable { 0o755 } else { 0o644 };
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(mode)).unwrap();
+    };
+    put("mygame/build/mygame", true); // one level down, named like the folder
+    put("mygame/build/helper", true);
+    put("mygame/build/libx.dylib", true); // a library is not the game
+    put("mygame/readme.txt", false);
+    put("empty/data.bin", false);
+    let f = Fake::default();
+    let a = app(&f);
+    let found = a
+        .programs_in_folder(root.join("mygame").to_str().unwrap())
+        .unwrap();
+    assert_eq!(found.len(), 2);
+    assert!(
+        found[0].exe.ends_with("build/mygame"),
+        "the one named like the folder is first"
+    );
+    assert_eq!(found[0].name, "mygame");
+    assert!(a
+        .programs_in_folder(root.join("empty").to_str().unwrap())
+        .is_err());
+    assert!(a.programs_in_folder("/nowhere").is_err());
+    put("disc/GAME.iso", false);
+    let err = a
+        .programs_in_folder(root.join("disc").to_str().unwrap())
+        .unwrap_err();
+    assert!(err.contains("disc image"), "{err}");
+    std::fs::remove_dir_all(&root).unwrap();
 }

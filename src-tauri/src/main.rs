@@ -80,6 +80,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_overview,
             list_native_games,
+            found_native_games,
+            programs_in_folder,
             add_native_game,
             remove_native_game,
             launch_native,

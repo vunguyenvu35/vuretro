@@ -17,6 +17,10 @@ impl Paths {
     pub fn data_dir(&self) -> &Path {
         &self.data_dir
     }
+    /// Where native games the app knows how to find are kept (see `App::found_native_games`).
+    pub fn native_dir(&self) -> PathBuf {
+        self.data_dir.join("native")
+    }
     /// BIOS files.
     pub fn system_dir(&self) -> PathBuf {
         self.data_dir.join("system")
