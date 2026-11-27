@@ -5,7 +5,12 @@
 //! per section. A row holds, at +4, the offset of the section's path chunk `HTPR`: 16 bytes
 //! of header (the sample count at +8, the elevation at the start as an `i16` at +0xC and at
 //! the end at +0xE) and then two signed bytes per sample, the *bend* and then the *rise*. The
-//! rise is a change of height from one sample to the next; the bend is a curvature.
+//! rise is a change of height from one sample to the next; the bend is a curvature. A row
+//! also holds, at +0x18, the offset of the lane table `NALR`: a 16-byte header (the record
+//! count at +8) and 20-byte records `{start, end: u32; lanes left and right at the start and
+//! then at the end: 4 bytes; two i32 slopes in 1/65536 of a lane per sample}`. The lanes
+//! change from the start values to the end values between the two samples, and a lane is 250
+//! world units wide while a sample is 256 long.
 //!
 //! `NOD `: `DONR`, the size at +4 (the resource's own size), the node count at +8 and the
 //! root node's offset at +16. A node starts with its kind: 0 road (+8 next, +12 previous,
@@ -23,6 +28,8 @@ pub struct Section {
     pub end_elevation: i16,
     pub bend: Vec<i8>,
     pub rise: Vec<i8>,
+    /// The number of lanes to the left and to the right of the middle, at every sample.
+    pub lanes: Vec<[f32; 2]>,
 }
 
 impl Section {
@@ -82,6 +89,50 @@ impl Bytes<'_> {
     }
 }
 
+/// The lanes at each of `samples` samples, from the table at `at` (none: two on each side).
+fn read_lanes(sgs: &Bytes, at: usize, samples: usize) -> Result<Vec<[f32; 2]>, String> {
+    if at == 0 {
+        return Ok(vec![[2.0, 2.0]; samples]);
+    }
+    sgs.tag(at, b"NALR")?;
+    let count = sgs.u32(at + 8)? as usize;
+    let mut records = Vec::new();
+    for i in 0..count {
+        let o = at + 16 + i * 20;
+        let bytes = sgs
+            .0
+            .get(o + 8..o + 12)
+            .ok_or("the lane table is cut short")?;
+        records.push((
+            sgs.u32(o)? as usize,
+            sgs.u32(o + 4)? as usize,
+            [bytes[0] as f32, bytes[1] as f32],
+            [bytes[2] as f32, bytes[3] as f32],
+        ));
+    }
+    // between records the lanes stay as the last one left them; inside one they move from
+    // its start values to its end values
+    let mut lanes = Vec::with_capacity(samples);
+    let mut now = records.first().map_or([2.0, 2.0], |r| r.2);
+    for j in 0..samples {
+        for &(start, end, from, to) in &records {
+            if j >= start && j <= end {
+                let t = if end > start {
+                    (j - start) as f32 / (end - start) as f32
+                } else {
+                    1.0
+                };
+                now = [
+                    from[0] + (to[0] - from[0]) * t,
+                    from[1] + (to[1] - from[1]) * t,
+                ];
+            }
+        }
+        lanes.push(now);
+    }
+    Ok(lanes)
+}
+
 pub fn parse(file: &[u8]) -> Result<Course, String> {
     let entries = rsc::entries(file)?;
     let find = |tag: &str| {
@@ -110,6 +161,7 @@ pub fn parse(file: &[u8]) -> Result<Course, String> {
             end_elevation: sgs.i16(path + 0xE)?,
             bend: data.chunks(2).map(|p| p[0] as i8).collect(),
             rise: data.chunks(2).map(|p| p[1] as i8).collect(),
+            lanes: read_lanes(&sgs, sgs.u32(row + 0x18)? as usize, samples)?,
         });
     }
 
@@ -203,6 +255,32 @@ impl Course {
     }
 }
 
+/// One sample of the way along a route, ready to be drawn.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Sample {
+    pub bend: i8,
+    pub rise: i8,
+    pub lanes: [f32; 2],
+}
+
+impl Course {
+    /// The samples of [`route`](Course::route), one after the other.
+    pub fn route_samples(&self) -> Vec<Sample> {
+        let mut out = Vec::new();
+        for (section, length) in self.route() {
+            let s = &self.sections[section];
+            for i in 0..length {
+                out.push(Sample {
+                    bend: s.bend[i],
+                    rise: s.rise[i],
+                    lanes: s.lanes[i],
+                });
+            }
+        }
+        out
+    }
+}
+
 /// A picture of a route: the road seen from above in the top part and its height below.
 ///
 /// What the bend means in angle is not known yet, so `turn` (radians of turning per unit of
@@ -281,6 +359,7 @@ mod tests {
             end_elevation: 90,
             bend: vec![0, 0, 0],
             rise: vec![5, -20, 5],
+            lanes: vec![[2.0, 2.0]; 3],
         };
         assert_eq!(s.summed_elevation(), 90);
     }
