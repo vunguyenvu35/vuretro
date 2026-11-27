@@ -4,6 +4,7 @@
 use crate::bob::Frame;
 use crate::course::Sample;
 use crate::exe::Remap;
+use crate::horizon;
 use crate::hud;
 use crate::image::Rgb;
 use crate::palette::Palette;
@@ -188,6 +189,9 @@ pub struct Look<'a> {
     pub remaps: &'a [Remap],
     /// The instrument panel, when there is one to draw.
     pub dash: Option<&'a Frame>,
+    /// The course's horizon and the heading of the road at each sample, which turns it.
+    pub horizon: Option<&'a Rgb>,
+    pub headings: &'a [f32],
 }
 
 /// Draw a sprite so that the wheel touches the picture at (`x`, `bottom`), `scale` times its
@@ -235,7 +239,25 @@ pub fn render(
     colour: usize,
 ) -> Rgb {
     let guess = Guess::default();
-    let mut picture = double(&road::view_at(samples, bike.position, bike.lateral, guess));
+    // the horizon turns with the road: a whole turn is the 720 columns of its picture
+    let backdrop = look.horizon.map(|h| {
+        let heading = look
+            .headings
+            .get(bike.position.max(0.0) as usize)
+            .copied()
+            .unwrap_or(0.0);
+        horizon::backdrop(
+            h,
+            (heading * horizon::WIDTH as f32 / std::f32::consts::TAU) as i64,
+        )
+    });
+    let mut picture = double(&road::view_over(
+        samples,
+        bike.position,
+        bike.lateral,
+        guess,
+        backdrop.as_ref(),
+    ));
     let remap_of = |c: usize| look.remaps.get(c).or(look.remaps.first());
 
     // the bike itself is one sample ahead of the camera
@@ -437,6 +459,8 @@ mod tests {
             palette: &palette,
             remaps: &[same],
             dash: None,
+            horizon: None,
+            headings: &[],
         };
         let with = render(&road, &Bike::start(), &[], &look, 0);
         assert_eq!((with.width, with.height), (640, 480));
@@ -447,6 +471,8 @@ mod tests {
             palette: &palette,
             remaps: &[same],
             dash: None,
+            horizon: None,
+            headings: &[],
         };
         let without = render(&road, &Bike::start(), &[], &nobody, 0);
         assert_ne!(with.pixels, without.pixels);
@@ -516,6 +542,8 @@ mod tests {
             palette: &palette,
             remaps: &[same],
             dash: None,
+            horizon: None,
+            headings: &[],
         };
         let red = |p: &Rgb| {
             p.pixels

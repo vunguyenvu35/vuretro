@@ -8,3 +8,4 @@ description = "Reader for the data of the Road Rash PC disc (1996), written from
 [dependencies]
 png = "0.17"
 minifb = "0.27"
+cpal = "0.15"

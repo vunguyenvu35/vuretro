@@ -1,14 +1,17 @@
 //! Ride a bike along a course of a Road Rash disc.
 //! Usage: rr-ride <ROADRASH.iso or its unpacked folder> [course: NAPA CITY HIWAY CANYN MEDLY] [--rider 0..14]
-//!        [--shots picture.png]
+//!        [--shots picture.png] [--sound-test sound.wav]
 //! Keys: Up or W to speed up, Down or S to brake, Left and Right or A and D to steer, Esc quits.
 //! With --shots nothing opens: a scripted ride is played and six pictures of it are written.
+//! With --sound-test nothing opens either: four seconds of engine (the revs rising) and a
+//! crash are mixed and written as a WAV file.
 use std::path::Path;
 use vuretro_roadrash::disc::Disc;
 use vuretro_roadrash::image::{sheet, write_png, Rgb};
 use vuretro_roadrash::palette::{Order, Palette};
 use vuretro_roadrash::ride::{collide, render, step, step_rivals, Bike, Input, Look, Rival};
-use vuretro_roadrash::{bob, course, exe, hud};
+use vuretro_roadrash::sound::{Audio, Mixer};
+use vuretro_roadrash::{bob, course, exe, horizon, hud, wav};
 
 fn main() -> Result<(), String> {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
@@ -20,6 +23,18 @@ fn main() -> Result<(), String> {
                 .get(i + 1)
                 .cloned()
                 .ok_or("--shots needs a file name")?;
+            args.drain(i..=i + 1);
+            Ok::<_, String>(name)
+        })
+        .transpose()?;
+    let sound_test = args
+        .iter()
+        .position(|a| a == "--sound-test")
+        .map(|i| {
+            let name = args
+                .get(i + 1)
+                .cloned()
+                .ok_or("--sound-test needs a file name")?;
             args.drain(i..=i + 1);
             Ok::<_, String>(name)
         })
@@ -48,11 +63,19 @@ fn main() -> Result<(), String> {
     let course = course::parse(&read(format!("DATA/COURSES/{name}.CRS"))?)?;
     let remaps = exe::rider_remaps(&read("ROADRASH.EXE".into())?)?;
     let dash = hud::panel(&read("IMAGES/BIKES/RAT/KHIDASH.BOB".into())?)?;
+    let samples = course.route_samples();
+    // the sounds: this bike's engine, and the knock of a crash
+    let engine = wav::parse(&read("AUDIO/EFFECTS/ENGRAT.WAV".into())?)?;
+    let effects = vec![wav::parse(&read("AUDIO/EFFECTS/CRASHLIT.WAV".into())?)?];
+    let backdrop = horizon::load(&disc, &name, &palette)?;
+    let headings = course::headings(&samples, vuretro_roadrash::road::Guess::default().turn);
     let look = Look {
         riders: &riders,
         palette: &palette,
         remaps: &remaps,
         dash: Some(&dash),
+        horizon: Some(&backdrop),
+        headings: &headings,
     };
     // six rivals ahead of the start, each in its own colour and lane, slower than the bike
     let mut rivals: Vec<Rival> = (0..6)
@@ -63,8 +86,27 @@ fn main() -> Result<(), String> {
             colour: (rider + 1 + i) % exe::RIDER_COLOURS,
         })
         .collect();
-    let samples = course.route_samples();
     let dt = 1.0 / 30.0;
+
+    if let Some(out) = sound_test {
+        let mut mixer = Mixer::new(engine, effects, 22_050.0);
+        let mut samples_out: Vec<i16> = Vec::new();
+        for frame in 0..4 * 30 {
+            mixer.revs = 3000.0 + 7000.0 * frame as f32 / 120.0;
+            if frame == 60 {
+                mixer.play(0);
+            }
+            let mut chunk = vec![0.0f32; 22_050 / 30];
+            mixer.fill(&mut chunk);
+            samples_out.extend(chunk.iter().map(|v| (v * 32767.0) as i16));
+        }
+        let rms = (samples_out.iter().map(|&v| (v as f64).powi(2)).sum::<f64>()
+            / samples_out.len() as f64)
+            .sqrt();
+        println!("{} samples, rms {rms:.0}", samples_out.len());
+        return std::fs::write(&out, vuretro_roadrash::adpcm::wav(&samples_out, 1, 22_050))
+            .map_err(|e| e.to_string());
+    }
 
     if let Some(out) = shots {
         // a scripted ride: full throttle, held near the middle of the road by steering back
@@ -99,6 +141,15 @@ fn main() -> Result<(), String> {
     window.set_target_fps(30);
     let mut bike = Bike::start();
     let mut buffer = vec![0u32; w * h];
+    // the sound, if there is a sound card to play it on
+    let audio = match Audio::start(engine, effects) {
+        Ok(a) => Some(a),
+        Err(e) => {
+            eprintln!("riding without sound: {e}");
+            None
+        }
+    };
+    let mut touching = false;
     let down =
         |window: &minifb::Window, keys: &[minifb::Key]| keys.iter().any(|&k| window.is_key_down(k));
     while window.is_open() && !window.is_key_down(minifb::Key::Escape) {
@@ -112,7 +163,19 @@ fn main() -> Result<(), String> {
         };
         step(&mut bike, input, &samples, dt);
         step_rivals(&mut rivals, &samples, dt);
-        collide(&mut bike, &rivals);
+        let hit = collide(&mut bike, &rivals);
+        if let Some(Ok(mut m)) = audio.as_ref().map(|a| a.mixer.lock()) {
+            // idle when stopped; otherwise the revs of the panel
+            m.revs = if bike.speed < 0.5 {
+                2500.0
+            } else {
+                hud::revs(bike.speed / vuretro_roadrash::ride::TOP_SPEED * 280.0)
+            };
+            if hit && !touching {
+                m.play(0);
+            }
+        }
+        touching = hit;
         let picture: Rgb = render(&samples, &bike, &rivals, &look, rider);
         for (pixel, rgb) in buffer.iter_mut().zip(picture.pixels.chunks_exact(3)) {
             *pixel = (rgb[0] as u32) << 16 | (rgb[1] as u32) << 8 | rgb[2] as u32;

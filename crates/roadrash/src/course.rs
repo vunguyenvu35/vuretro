@@ -281,6 +281,19 @@ impl Course {
     }
 }
 
+/// The direction the road is heading at each sample, in radians turned from the start of the
+/// route (to the right is positive), given the angle `turn` a unit of bend stands for.
+pub fn headings(samples: &[Sample], turn: f32) -> Vec<f32> {
+    let mut heading = 0.0;
+    samples
+        .iter()
+        .map(|s| {
+            heading += s.bend as f32 * turn;
+            heading
+        })
+        .collect()
+}
+
 /// A picture of a route: the road seen from above in the top part and its height below.
 ///
 /// What the bend means in angle is not known yet, so `turn` (radians of turning per unit of
@@ -351,6 +364,17 @@ pub fn draw_route(course: &Course, turn: f64) -> crate::image::Rgb {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_heading_adds_the_bends_up() {
+        let s = |bend| Sample {
+            bend,
+            rise: 0,
+            lanes: [2.0, 2.0],
+        };
+        assert_eq!(headings(&[s(2), s(-1), s(3)], 0.5), vec![1.0, 0.5, 2.0]);
+        assert!(headings(&[], 0.5).is_empty());
+    }
 
     #[test]
     fn the_elevation_is_the_start_plus_the_rises() {

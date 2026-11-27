@@ -99,9 +99,21 @@ pub fn project(
 
 /// The view from a place between samples, `lateral` world units to the right of the middle.
 pub fn view_at(samples: &[Sample], position: f32, lateral: f32, guess: Guess) -> Rgb {
+    view_over(samples, position, lateral, guess, None)
+}
+
+/// Like [`view_at`], over a picture of 320x240 for the sky and the far ground (the horizon).
+pub fn view_over(
+    samples: &[Sample],
+    position: f32,
+    lateral: f32,
+    guess: Guess,
+    backdrop: Option<&Rgb>,
+) -> Rgb {
     let first = position.max(0.0).floor() as usize;
     let fraction = position.max(0.0) - first as f32;
-    let mut pixels = vec![0u8; WIDTH * HEIGHT * 3];
+    let given = backdrop.filter(|b| b.pixels.len() == WIDTH * HEIGHT * 3);
+    let mut pixels = given.map_or_else(|| vec![0u8; WIDTH * HEIGHT * 3], |b| b.pixels.clone());
     let mut put_row = |row: usize, from: f32, to: f32, colour: [u8; 3]| {
         let (a, b) = (
             from.max(0.0) as usize,
@@ -112,20 +124,28 @@ pub fn view_at(samples: &[Sample], position: f32, lateral: f32, guess: Guess) ->
             pixels[at..at + 3].copy_from_slice(&colour);
         }
     };
-    // the sky, then the ground under the horizon
-    for row in 0..HEIGHT {
-        let t = row as f32 / HORIZON;
-        let colour = if (row as f32) < HORIZON {
-            [(90.0 + 90.0 * t) as u8, (140.0 + 60.0 * t) as u8, 235]
-        } else {
-            [40, 120, 40]
-        };
-        put_row(row, 0.0, WIDTH as f32, colour);
+    if given.is_none() {
+        // the sky, then the ground under the horizon
+        for row in 0..HEIGHT {
+            let t = row as f32 / HORIZON;
+            let colour = if (row as f32) < HORIZON {
+                [(90.0 + 90.0 * t) as u8, (140.0 + 60.0 * t) as u8, 235]
+            } else {
+                [40, 120, 40]
+            };
+            put_row(row, 0.0, WIDTH as f32, colour);
+        }
     }
 
     let (mut x, mut dx, mut y) = (-lateral, 0.0f32, 0.0f32);
     // the slice before the first one is far below the picture
-    let mut near = (HORIZON + CAMERA_HEIGHT * FOCAL / 64.0, 0.0f32, 0.0f32);
+    let mut near = (
+        HORIZON + CAMERA_HEIGHT * FOCAL / 64.0,
+        0.0f32,
+        0.0f32,
+        0.0f32,
+        0.0f32,
+    );
     let mut top = HEIGHT as f32;
     for k in 0..SLICES {
         let z = (64.0 + k as f32 * 128.0 - fraction * SAMPLE).max(32.0);
@@ -141,7 +161,8 @@ pub fn view_at(samples: &[Sample], position: f32, lateral: f32, guess: Guess) ->
             WIDTH as f32 / 2.0 + (x - s.lanes[0] * LANE) * scale,
             WIDTH as f32 / 2.0 + (x + s.lanes[1] * LANE) * scale,
         );
-        let far = (row, left, right);
+        let centre = WIDTH as f32 / 2.0 + x * scale;
+        let far = (row, left, right, centre, scale);
         if row < near.0 && row < top {
             let stripe = (k / 4) % 2 == 0;
             let (road, grass, edge) = if stripe {
@@ -150,7 +171,8 @@ pub fn view_at(samples: &[Sample], position: f32, lateral: f32, guess: Guess) ->
                 ([100, 100, 105], [35, 110, 35], [200, 40, 40])
             };
             let first = row.max(0.0).ceil() as usize;
-            let last = (near.0.min(top).min(HEIGHT as f32)).floor() as usize;
+            // up to the row where the slice before ended, rounded up so that no row is left out
+            let last = (near.0.min(top).min(HEIGHT as f32)).ceil() as usize;
             for r in first..last {
                 let t = (near.0 - r as f32) / (near.0 - row).max(0.001);
                 let (l, rt) = (lerp(near.1, far.1, t), lerp(near.2, far.2, t));
@@ -159,6 +181,24 @@ pub fn view_at(samples: &[Sample], position: f32, lateral: f32, guess: Guess) ->
                 put_row(r, l - edge_w, l, edge);
                 put_row(r, rt, rt + edge_w, edge);
                 put_row(r, l, rt, road);
+                if stripe {
+                    // the lines between lanes: yellow in the middle, white elsewhere, in dashes
+                    let lanes = (s.lanes[0].floor() as i32, s.lanes[1].floor() as i32);
+                    for j in -(lanes.0 - 1).max(0)..=(lanes.1 - 1).max(0) {
+                        let at = lerp(
+                            near.3 + j as f32 * LANE * near.4,
+                            far.3 + j as f32 * LANE * far.4,
+                            t,
+                        );
+                        let w = (2.0 * scale).max(1.0);
+                        let c = if j == 0 {
+                            [230, 200, 40]
+                        } else {
+                            [230, 230, 230]
+                        };
+                        put_row(r, at - w / 2.0, at + w / 2.0, c);
+                    }
+                }
             }
             top = top.min(row);
         }

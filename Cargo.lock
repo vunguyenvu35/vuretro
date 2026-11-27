@@ -3185,6 +3185,7 @@ dependencies = [
 name = "vuretro-roadrash"
 version = "0.1.7"
 dependencies = [
+ "cpal",
  "minifb",
  "png 0.17.16",
 ]
