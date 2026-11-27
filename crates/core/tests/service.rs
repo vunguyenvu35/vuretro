@@ -366,6 +366,12 @@ impl GameProcess for FakeProcess {
         Ok(self.exit.clone())
     }
     fn wait(&mut self) {}
+    fn stop(&mut self) {
+        self.exit = Some(Exit {
+            success: true,
+            detail: String::new(),
+        });
+    }
 }
 
 impl Launcher for Fake {
@@ -2680,4 +2686,31 @@ fn a_windows_game_is_prepared_ahead_of_play_with_what_it_does_told_and_other_gam
         .any(|r| r.starts_with("prepare ")));
     // a game of another system is left alone
     assert!(!app.prepare_pc("/roms/psx/a.cue", |_| {}).unwrap());
+}
+
+#[test]
+fn stopping_the_open_game_ends_it_and_frees_the_place() {
+    let (app, _, _) = pc_world(false);
+    let app = Arc::new(app);
+    // nothing is open: nothing to stop
+    assert!(!app.stop_game());
+    app.install_core("wine", |_| {}).unwrap();
+    let running = app
+        .launch_game("/roms/pc/roadrash.iso".into(), None)
+        .unwrap()
+        .expect("it keeps running");
+    let (done, ended) = std::sync::mpsc::channel();
+    let watcher = app.clone();
+    std::thread::spawn(move || {
+        watcher.watch(running, |_| {});
+        done.send(()).unwrap();
+    });
+    assert!(app.stop_game(), "a game is open");
+    ended
+        .recv_timeout(Duration::from_secs(5))
+        .expect("the watcher ends the game that was asked to stop");
+    assert!(!app.stop_game(), "and the place is free again");
+    assert!(app
+        .launch_game("/roms/pc/roadrash.iso".into(), None)
+        .is_ok());
 }

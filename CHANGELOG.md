@@ -5,7 +5,7 @@
 ### New
 - **Native games** in the sidebar: games that are programs of their own (not run by a core) can be added from their folder, or found by themselves from a `game.json`, and started from the library.
 - **Road Rash:** one button sets the native port up from your own PC disc: it fetches the source of the port, builds it on your computer, reads the game's data from the disc and adds the game with a cover. See Using vuretro.
-- **PC (Windows)** system: put a Windows game's disc image in a `pc` folder and press Play. Wine is fetched the first time like a core (checked against a fixed SHA-256), the game is set up from your disc and runs in a window with the title bar and buttons of the Mac (cnc-ddraw, fetched and checked). Any disc is tried (best-effort, with a **Stop** button while it plays); Road Rash (1996) is known and set up for what it needs.
+- **PC (Windows)** system: put a Windows game's disc image in a `pc` folder and press Play. Wine is fetched the first time like a core (checked against a fixed SHA-256), the game is set up from your disc and runs in a window with the title bar and buttons of the Mac (cnc-ddraw, fetched and checked). Any disc is tried (best-effort, with a **Stop** button while it plays); Road Rash (1996) is known and set up for what it needs, with its Dock icon redrawn as a Mac icon.
 
 ## 0.1.7
 

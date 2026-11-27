@@ -5,6 +5,7 @@ pub mod adapters;
 pub mod bios;
 pub mod dat;
 pub mod iso;
+pub mod pe_icon;
 pub mod roms;
 pub mod scan;
 pub mod unpack;

@@ -554,6 +554,13 @@ fn registry_commands(recipe: &Recipe) -> Vec<Vec<String>> {
     commands
 }
 
+/// Give the program in `exe` an icon that looks like a Mac icon (see [`crate::pe_icon`]).
+fn mac_icon_for(exe: &Path) -> Result<(), String> {
+    let mut bytes = std::fs::read(exe).map_err(|e| e.to_string())?;
+    crate::pe_icon::mac_style_icon(&mut bytes)?;
+    std::fs::write(exe, bytes).map_err(|e| e.to_string())
+}
+
 /// Whether a Wine is on this computer (the one this app fetched, or another).
 pub fn ready(paths: &Paths) -> bool {
     locate_wine(paths).is_some()
@@ -651,6 +658,10 @@ pub fn prepare(paths: &Paths, disc: &Path, log: &dyn Fn(&str)) -> Result<NativeS
             copy_game(disc, &game, log)?;
             std::fs::write(game.join("AWEMAN32.DLL"), aweman32_stub())
                 .map_err(|e| e.to_string())?;
+            // its Dock icon: the program's own, drawn as a Mac icon (best effort)
+            if let Err(e) = mac_icon_for(&game.join("ROADRASH.EXE")) {
+                log(&format!("The game keeps its old icon: {e}"));
+            }
             std::fs::create_dir_all(prefix.join("drive_c").join("RoadRash"))
                 .map_err(|e| e.to_string())?;
             ("D:\\RoadRash\\ROADRASH.EXE".to_string(), "640x480")
