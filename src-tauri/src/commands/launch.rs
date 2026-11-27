@@ -5,15 +5,27 @@ use vuretro_core::model::NativeGame;
 use vuretro_core::service::Running;
 
 /// Watch the game on its own thread, passing on what it reports, then tell the page it ended.
+/// The keys that stop the open game from anywhere (a Windows game has no window to close, and
+/// its window hides the one of the app). Taken only while a game is open.
+pub const STOP_KEYS: &str = "CommandOrControl+Alt+Q";
+
 fn watch(app: &AppHandle, shell: &Shell, running: Option<Running>) {
     let Some(running) = running else { return };
     let (app, core) = (app.clone(), shell.app.clone());
+    // if another program holds the keys, the Stop button is still there
+    let shortcut = tauri_plugin_global_shortcut::GlobalShortcutExt::global_shortcut(&app)
+        .register(STOP_KEYS)
+        .is_ok();
     std::thread::spawn(move || {
         // what the game reports while it plays (save slots used, screenshots, play time) goes
         // to the page as it happens
         core.watch(running, |event| {
             let _ = app.emit("game-event", event);
         });
+        if shortcut {
+            let _ = tauri_plugin_global_shortcut::GlobalShortcutExt::global_shortcut(&app)
+                .unregister(STOP_KEYS);
+        }
         let _ = app.emit("game-exited", ());
     });
 }

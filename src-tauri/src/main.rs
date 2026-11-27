@@ -65,6 +65,17 @@ fn main() {
     use commands::{backup::*, config::*, cores::*, covers::*, launch::*, library::*, update::*};
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // the shortcut that stops the open game (see `commands::launch::STOP_KEYS`)
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        use tauri::Manager;
+                        app.state::<Shell>().app.stop_game();
+                    }
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(shell)
         .menu(menu::build)
