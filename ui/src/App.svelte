@@ -14,6 +14,7 @@
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import Toasts from './components/Toasts.svelte';
   import DownloadBanner from './components/DownloadBanner.svelte';
+  import PlayingBanner from './components/PlayingBanner.svelte';
   import AboutDialog from './components/AboutDialog.svelte';
   import SupportDialog from './components/SupportDialog.svelte';
   import { startGamepadNav } from './lib/gamepadNav.js';
@@ -23,7 +24,10 @@
     checkAtStart();
     let off = [];
     // closing a game no longer replaces its picture: it keeps the one it had
-    api.onGameExited(() => refresh()).then((f) => off.push(f));
+    api.onGameExited(() => {
+      app.playing = null;
+      refresh();
+    }).then((f) => off.push(f));
     api.onCoversUpdated((path) => loadCovers([path])).then((f) => off.push(f));
     api.onMenu(handleMenu).then((f) => off.push(f));
     // Play fetches the core a game needs: show how far it is
@@ -77,6 +81,7 @@
   {/if}
   <Toasts />
   <DownloadBanner />
+  <PlayingBanner />
 </div>
 
 <style>

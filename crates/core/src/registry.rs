@@ -36,6 +36,9 @@ pub struct System {
     pub hardware: bool,
     /// An arcade system: games need a coin (the Select button) before Start does anything.
     pub coin_op: bool,
+    /// What runs the system when it is not a libretro core: "wine" (Windows games). Empty for
+    /// the systems that run in a core.
+    pub runtime: &'static str,
     /// Memory and CPU cores below which the system is unlikely to run (0: no requirement).
     pub min_ram_gb: u32,
     pub min_cores: u32,
@@ -84,6 +87,8 @@ struct RawSystem {
     hardware: bool,
     #[serde(default)]
     coin_op: bool,
+    #[serde(default)]
+    runtime: String,
     #[serde(default)]
     min_ram_gb: u32,
     #[serde(default)]
@@ -147,6 +152,7 @@ pub fn parse_systems(json: &str) -> Result<Vec<System>, String> {
             look: leak(r.look),
             hardware: r.hardware,
             coin_op: r.coin_op,
+            runtime: leak(r.runtime),
             min_ram_gb: r.min_ram_gb,
             min_cores: r.min_cores,
             extensions: leak_all(r.extensions),
@@ -193,8 +199,12 @@ mod tests {
         let all = systems();
         assert!(all.len() >= 4);
         for s in all {
-            assert!(s.core.ends_with("_libretro"), "{}", s.id);
-            assert!(s.alt_cores.iter().all(|c| c.ends_with("_libretro")));
+            if s.runtime.is_empty() {
+                assert!(s.core.ends_with("_libretro"), "{}", s.id);
+                assert!(s.alt_cores.iter().all(|c| c.ends_with("_libretro")));
+            } else {
+                assert_eq!(s.core, s.runtime, "{}: a runtime is its own core", s.id);
+            }
             assert!(s.extensions.iter().all(|e| *e == e.to_ascii_lowercase()));
             assert!(s.folders.iter().all(|f| *f == f.to_ascii_lowercase()));
         }

@@ -139,6 +139,7 @@ fn main() {
             reveal_path,
             remove_roms,
             launch_game,
+            stop_game,
             launch_demo,
             get_controls,
             set_controls,

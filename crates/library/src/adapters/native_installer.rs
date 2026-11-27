@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::channel;
 use vuretro_core::paths::Paths;
-use vuretro_core::ports::NativeInstaller;
+use vuretro_core::ports::{NativeInstaller, NativeSpec};
 
 /// Where the source of the native port is fetched from, and nowhere else.
 const REPO: &str = "https://github.com/arkits/road-rash";
@@ -21,7 +21,7 @@ const EXTRA_PATH: &[&str] = &[
 ];
 
 /// The search path of the programs we start: the one we have and the usual extra ones.
-fn search_path() -> OsString {
+pub(super) fn search_path() -> OsString {
     let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|p| std::env::split_paths(&p).collect())
         .unwrap_or_default();
@@ -33,7 +33,7 @@ fn search_path() -> OsString {
 }
 
 /// A program of that name on the search path.
-fn find_tool(name: &str) -> Option<PathBuf> {
+pub(super) fn find_tool(name: &str) -> Option<PathBuf> {
     std::env::split_paths(&search_path())
         .map(|d| d.join(name))
         .find(|p| p.is_file())
@@ -72,7 +72,7 @@ fn manifest(cover: Option<&str>) -> String {
 
 /// Run a command, passing on every line it prints (output and errors alike) to `log`. On
 /// failure the error holds the last lines it printed.
-fn run(cmd: &mut Command, log: &dyn Fn(&str)) -> Result<(), String> {
+pub(super) fn run(cmd: &mut Command, log: &dyn Fn(&str)) -> Result<(), String> {
     let program = cmd.get_program().to_string_lossy().into_owned();
     let mut child = cmd
         .env("PATH", search_path())
@@ -185,6 +185,18 @@ impl NativeInstaller for RoadRashInstaller {
             find_tool("brew").ok_or("Homebrew is needed to install them: see https://brew.sh")?;
         log(&format!("brew install {}", packages.join(" ")));
         run(Command::new(brew).arg("install").args(&packages), log)
+    }
+
+    fn pc_ready(&self) -> bool {
+        super::wine_installer::ready(&self.paths)
+    }
+
+    fn install_pc_runtime(&self, log: &dyn Fn(&str)) -> Result<(), String> {
+        super::wine_installer::install_runtime(&self.paths, log)
+    }
+
+    fn prepare_pc_game(&self, disc: &Path, log: &dyn Fn(&str)) -> Result<NativeSpec, String> {
+        super::wine_installer::prepare(&self.paths, disc, log)
     }
 
     fn install_road_rash(&self, disc: &Path, log: &dyn Fn(&str)) -> Result<(), String> {

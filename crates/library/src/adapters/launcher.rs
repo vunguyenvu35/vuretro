@@ -27,6 +27,9 @@ struct Runner {
     /// runner must never wait for the app to read it.
     reports: Receiver<Event>,
     reader: Option<JoinHandle<()>>,
+    /// What ends the program's own helpers (see `NativeSpec::stop`), with the environment to run
+    /// it in.
+    stop: Option<(Vec<String>, Vec<(String, String)>)>,
 }
 
 /// Read the runner's output line by line and pass on the events among them. Everything else
@@ -65,6 +68,21 @@ impl GameProcess for Runner {
             success: status.success(),
             detail,
         }))
+    }
+
+    fn stop(&mut self) {
+        if let Some((argv, env)) = &self.stop {
+            if let Some((program, args)) = argv.split_first() {
+                let _ = Command::new(program)
+                    .args(args)
+                    .envs(env.iter().map(|(k, v)| (k, v)))
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status();
+            }
+        }
+        let _ = self.child.kill();
     }
 
     fn wait(&mut self) {
@@ -151,6 +169,7 @@ impl Launcher for ProcessLauncher {
             log: log_path,
             reports,
             reader,
+            stop: None,
         }))
     }
 
@@ -160,11 +179,17 @@ impl Launcher for ProcessLauncher {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
         let log = std::fs::File::create(&log_path).map_err(|e| e.to_string())?;
-        // Start it from its own folder: games of this kind look for their data next to them.
+        // Start it from the folder it asks for, or its own: games of this kind look for their
+        // data next to them.
         let mut cmd = Command::new(&spec.exe);
-        if let Some(dir) = spec.exe.parent().filter(|d| !d.as_os_str().is_empty()) {
+        let cwd = spec
+            .cwd
+            .as_deref()
+            .or_else(|| spec.exe.parent().filter(|d| !d.as_os_str().is_empty()));
+        if let Some(dir) = cwd {
             cmd.current_dir(dir);
         }
+        cmd.envs(spec.env.iter().map(|(k, v)| (k, v)));
         let child = cmd
             .args(&spec.args)
             .stdin(Stdio::null())
@@ -179,6 +204,7 @@ impl Launcher for ProcessLauncher {
             log: log_path,
             reports,
             reader: None,
+            stop: spec.stop.clone().map(|argv| (argv, spec.env.clone())),
         }))
     }
 
@@ -286,6 +312,7 @@ mod tests {
             log: PathBuf::from("/nonexistent/runner.log"),
             reports,
             reader: Some(std::thread::spawn(move || read_events(out, to))),
+            stop: None,
         }
     }
 
@@ -335,5 +362,37 @@ mod tests {
         r.wait();
         assert_eq!(r.events(), vec![progress, exit]);
         assert!(r.events().is_empty(), "taken once");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_native_game_starts_in_the_folder_and_with_the_environment_it_asked_for() {
+        let dir = std::env::temp_dir().join(format!("vuretro-spawn-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let out = dir.join("out.txt");
+        let launcher = ProcessLauncher::new(Paths::new(dir.to_str().unwrap()));
+        let script = format!(
+            "pwd > '{}'; echo \"$WINEPREFIX\" >> '{}'",
+            out.display(),
+            out.display()
+        );
+        let mut process = launcher
+            .spawn_native(&NativeSpec {
+                exe: PathBuf::from("/bin/sh"),
+                args: vec!["-c".into(), script],
+                cwd: Some(dir.clone()),
+                env: vec![("WINEPREFIX".into(), "/some/prefix".into())],
+                stop: None,
+            })
+            .unwrap();
+        process.wait();
+        let text = std::fs::read_to_string(&out).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(
+            std::fs::canonicalize(lines[0]).unwrap(),
+            std::fs::canonicalize(&dir).unwrap()
+        );
+        assert_eq!(lines[1], "/some/prefix");
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

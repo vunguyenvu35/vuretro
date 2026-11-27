@@ -210,6 +210,12 @@
     "folders": ["n64", "nintendo64", "nintendo-64"]
   },
   {
+    "id": "windows", "name": "PC (Windows)", "core": "wine", "runtime": "wine", "look": "none",
+    "folder_only": true,
+    "extensions": ["iso"],
+    "folders": ["pc", "windows", "pc-games", "windows-games"]
+  },
+  {
     "id": "psp", "name": "PlayStation Portable", "core": "ppsspp_libretro",
     "thumbnails": "Sony - PlayStation Portable", "screenscraper": 61,
     "hardware": true, "min_ram_gb": 8, "min_cores": 4,

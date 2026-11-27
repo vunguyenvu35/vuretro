@@ -128,6 +128,13 @@ pub struct LaunchSpec {
 pub struct NativeSpec {
     pub exe: PathBuf,
     pub args: Vec<String>,
+    /// The folder to start it in; the folder of the program when `None`.
+    pub cwd: Option<PathBuf>,
+    pub env: Vec<(String, String)>,
+    /// A command (program and arguments, run with the same environment) that ends what the
+    /// program started besides itself, for when the game is stopped from the app: Wine keeps a
+    /// server running for the game.
+    pub stop: Option<Vec<String>>,
 }
 
 /// A request to make a preview image without opening a window.
@@ -157,6 +164,8 @@ pub trait GameProcess: Send {
     fn poll(&mut self) -> Result<Option<Exit>, String>;
     /// Block until it ends. Whatever it reported is available from `events` afterwards.
     fn wait(&mut self);
+    /// End the game now (the user asked to stop it). A process that cannot be asked ignores it.
+    fn stop(&mut self) {}
     /// What the game has reported since the last call (see [`crate::protocol`]), oldest first.
     /// A process that reports nothing gives an empty list.
     fn events(&mut self) -> Vec<Event> {
@@ -194,6 +203,13 @@ pub trait NativeInstaller: Send + Sync {
     /// folder it was unpacked to). Afterwards the game is under `<data dir>/native/road-rash`
     /// with a `game.json`.
     fn install_road_rash(&self, disc: &Path, log: &dyn Fn(&str)) -> Result<(), String>;
+    /// Whether the runtime for Windows games (Wine) is on this computer.
+    fn pc_ready(&self) -> bool;
+    /// Fetch the runtime for Windows games. `log` gets progress lines, `  40%` among them.
+    fn install_pc_runtime(&self, log: &dyn Fn(&str)) -> Result<(), String>;
+    /// Make a Windows game from a disc image ready to start (the first time: an environment
+    /// for it and its files from the disc; later: nothing to do) and say how to start it.
+    fn prepare_pc_game(&self, disc: &Path, log: &dyn Fn(&str)) -> Result<NativeSpec, String>;
 }
 
 /// Measures the computer the app runs on.

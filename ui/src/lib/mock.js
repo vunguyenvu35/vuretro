@@ -75,6 +75,7 @@ const mock = {
   toggle_favorite: async () => true,
   import_bios: async ({ paths }) => paths.map((p) => ({ source: p, ok: false, message: 'Not available in browser preview' })),
   launch_game: async () => {},
+  stop_game: async () => true,
   launch_demo: async () => {},
 };
 

@@ -50,6 +50,12 @@ pub async fn launch_game(
     Ok(())
 }
 
+/// End the game that is open (a Windows game has no window of its own to close).
+#[tauri::command]
+pub fn stop_game(shell: State<'_, Shell>) -> bool {
+    shell.app.stop_game()
+}
+
 #[tauri::command]
 pub async fn launch_demo(app: AppHandle, shell: State<'_, Shell>) -> Result<(), String> {
     let core = shell.app.clone();

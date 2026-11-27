@@ -17,6 +17,7 @@ use crate::protocol::Event;
 use crate::registry::{systems, System};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use vuretro_controls::{macros::MacroConfig, ControlsConfig};
@@ -214,6 +215,8 @@ pub struct App {
     installing: Mutex<HashSet<String>>,
     /// The game that is open now (its name): only one can be at a time.
     playing: Mutex<Option<String>>,
+    /// The user asked to stop the game that is open; its watcher ends it.
+    stop_requested: AtomicBool,
     launch_grace: Duration,
     settings: Mutex<Settings>,
     meta: Mutex<HashMap<String, GameMeta>>,
@@ -249,6 +252,7 @@ impl App {
             art_missing: Mutex::new(HashSet::new()),
             installing: Mutex::new(HashSet::new()),
             playing: Mutex::new(None),
+            stop_requested: AtomicBool::new(false),
             launch_grace: LAUNCH_GRACE,
             settings,
             meta,
@@ -434,6 +438,27 @@ impl App {
         if !systems().iter().any(|s| s.all_cores().any(|c| c == stem)) {
             return Err(format!("{stem} is not a core vuretro knows"));
         }
+        if let Some(sys) = systems().iter().find(|s| s.runtime == stem) {
+            // A runtime, not a libretro core: the app sets it up itself.
+            let installer = self
+                .native_installer
+                .as_ref()
+                .ok_or("this build cannot set up Windows games")?;
+            if !self.installing.lock().unwrap().insert(stem.to_string()) {
+                return Err(format!("{} is already being set up", sys.name));
+            }
+            let result = installer.install_pc_runtime(&|line: &str| {
+                if let Some(n) = line
+                    .trim()
+                    .strip_suffix('%')
+                    .and_then(|n| n.parse::<u8>().ok())
+                {
+                    progress(n.min(100));
+                }
+            });
+            self.installing.lock().unwrap().remove(stem);
+            return result;
+        }
         let installer = self
             .installer
             .as_ref()
@@ -479,6 +504,15 @@ impl App {
         scanned
     }
 
+    /// Whether what runs `sys` is on this computer: its core, or Wine for Windows games.
+    fn core_present(&self, sys: &System, core: &str) -> bool {
+        if sys.runtime.is_empty() {
+            self.locator.core(core).is_some()
+        } else {
+            self.native_installer.as_ref().is_some_and(|n| n.pc_ready())
+        }
+    }
+
     /// Everything the library screen shows. Scans the disk, so it can take a moment.
     pub fn overview(&self) -> Overview {
         let settings = self.settings.lock().unwrap().clone();
@@ -495,11 +529,11 @@ impl App {
                 let mut view = SystemView::new(
                     s,
                     &settings,
-                    self.locator.core(settings.core_for(s)).is_some(),
+                    self.core_present(s, settings.core_for(s)),
                     s.all_cores()
                         .map(|c| CoreChoice {
                             name: c,
-                            installed: self.locator.core(c).is_some(),
+                            installed: self.core_present(s, c),
                         })
                         .collect(),
                     self.catalog.bios_status(s),
@@ -1297,6 +1331,9 @@ impl App {
         let rom = PathBuf::from(&path);
         let sys = detect::detect_system(Path::new(&rom_dir), &rom)
             .ok_or("unknown system for this file")?;
+        if sys.runtime == "wine" {
+            return self.launch_pc(&path);
+        }
         if !crate::model::bios_ready(&self.catalog.bios_status(sys)) {
             return Err("BIOS missing: add it in Cores & BIOS".into());
         }
@@ -1332,7 +1369,6 @@ impl App {
     /// (or, for a game with no core of its own, another of its system's) is installed, the
     /// system is unknown, or this build cannot download cores.
     pub fn core_to_install(&self, path: &str) -> Option<String> {
-        self.installer.as_ref()?;
         let rom_dir = self
             .settings
             .lock()
@@ -1341,6 +1377,11 @@ impl App {
             .clone()
             .unwrap_or_default();
         let sys = detect::detect_system(Path::new(&rom_dir), Path::new(path))?;
+        if sys.runtime == "wine" {
+            let installer = self.native_installer.as_ref()?;
+            return (!installer.pc_ready()).then(|| sys.core.to_string());
+        }
+        self.installer.as_ref()?;
         let chosen = self.core_of(path, sys);
         let own = self
             .meta
@@ -1354,6 +1395,26 @@ impl App {
             sys.all_cores().any(|c| self.locator.core(c).is_some())
         };
         (!usable).then(|| chosen.to_string())
+    }
+
+    /// Start a Windows game from a disc image: made ready the first time (slow), then run
+    /// under Wine like any other game of the library.
+    fn launch_pc(&self, path: &str) -> Result<Option<Running>, String> {
+        let installer = self
+            .native_installer
+            .as_ref()
+            .ok_or("this build cannot run Windows games")?;
+        if !installer.pc_ready() {
+            return Err("Wine is not set up yet: press Play again to get it".into());
+        }
+        let title = Path::new(path)
+            .file_stem()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.to_string());
+        self.begin(title, Some(path.to_string()), false, || {
+            let spec = installer.prepare_pc_game(Path::new(path), &|_| {})?;
+            self.launcher.spawn_native(&spec)
+        })
     }
 
     // ---------- native games ----------
@@ -1385,12 +1446,12 @@ impl App {
         if name.is_empty() {
             return Err("the game needs a name".into());
         }
-        check_program(exe)?;
         let id: String = name
             .to_lowercase()
             .chars()
             .map(|c| if c.is_alphanumeric() { c } else { '-' })
             .collect();
+        check_program(exe)?;
         let game = NativeGame {
             id: id.trim_matches('-').to_string(),
             name: name.to_string(),
@@ -1548,6 +1609,9 @@ impl App {
             self.launcher.spawn_native(&NativeSpec {
                 exe: PathBuf::from(&game.exe),
                 args: game.args.clone(),
+                cwd: None,
+                env: Vec::new(),
+                stop: None,
             })
         })
     }
@@ -1611,6 +1675,7 @@ impl App {
                 ));
             }
             *playing = Some(name);
+            self.stop_requested.store(false, Ordering::SeqCst);
         }
         let free = |app: &App| *app.playing.lock().unwrap() = None;
         let mut process = match spawn() {
@@ -1700,6 +1765,9 @@ impl App {
             on_event(&event);
         }
         loop {
+            if self.stop_requested.swap(false, Ordering::SeqCst) {
+                running.process.stop();
+            }
             for event in running.process.events() {
                 running.note(&event);
                 on_event(&event);
@@ -1716,6 +1784,16 @@ impl App {
             on_event(&event);
         }
         self.finish(running);
+    }
+
+    /// Ask the open game to end (a Windows game has no window to close). `false` when no game
+    /// is open.
+    pub fn stop_game(&self) -> bool {
+        let open = self.playing.lock().unwrap().is_some();
+        if open {
+            self.stop_requested.store(true, Ordering::SeqCst);
+        }
+        open
     }
 
     /// The game is over: free the place and add the play time. The time is what the runner

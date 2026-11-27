@@ -2422,6 +2422,32 @@ impl NativeInstaller for FakeNative {
         self.runs.lock().unwrap().push("tools".into());
         Ok(())
     }
+    fn pc_ready(&self) -> bool {
+        self.runs.lock().unwrap().iter().any(|r| r == "runtime")
+    }
+    fn install_pc_runtime(&self, log: &dyn Fn(&str)) -> Result<(), String> {
+        log("  50%");
+        log("  100%");
+        if self.fail {
+            return Err("no wine".into());
+        }
+        self.runs.lock().unwrap().push("runtime".into());
+        Ok(())
+    }
+    fn prepare_pc_game(&self, disc: &Path, _log: &dyn Fn(&str)) -> Result<NativeSpec, String> {
+        self.runs
+            .lock()
+            .unwrap()
+            .push(format!("prepare {}", disc.display()));
+        Ok(NativeSpec {
+            exe: "/wine".into(),
+            args: vec!["game.exe".into()],
+            cwd: Some(self.root.join("pc/g/game")),
+            env: vec![("WINEPREFIX".into(), "/p".into())],
+            stop: None,
+        })
+    }
+
     fn install_road_rash(&self, disc: &Path, log: &dyn Fn(&str)) -> Result<(), String> {
         log("building");
         self.runs
@@ -2560,4 +2586,76 @@ fn the_missing_tools_are_reported_and_a_cover_outside_the_native_folder_is_not_r
     let plain = app(&f);
     assert!(plain.native_tools_missing().is_err());
     std::fs::remove_dir_all(root).unwrap();
+}
+
+/// A library whose ROM folder is `/roms`, with a Windows game on a disc image in it.
+fn pc_world(fail: bool) -> (App, Fake, Arc<Mutex<Vec<String>>>) {
+    let f = Fake::default();
+    let runs = Arc::new(Mutex::new(Vec::new()));
+    let app = App::new(
+        Paths::new("/data"),
+        Box::new(f.clone()),
+        Box::new(f.clone()),
+        Box::new(f.clone()),
+        Box::new(f.clone()),
+    )
+    .with_launch_grace(Duration::from_millis(1))
+    .with_native_installer(Box::new(FakeNative {
+        root: PathBuf::from("/data"),
+        missing: vec![],
+        fail,
+        runs: runs.clone(),
+    }));
+    app.set_rom_dir(Some("/roms".into()));
+    (app, f, runs)
+}
+
+#[test]
+fn a_windows_disc_image_in_the_pc_folder_belongs_to_the_pc_system() {
+    let sys = vuretro_core::detect::detect_system(
+        Path::new("/roms"),
+        Path::new("/roms/pc/Road Rash.iso"),
+    )
+    .unwrap();
+    assert_eq!(sys.id, "windows");
+    assert_eq!(sys.runtime, "wine");
+    // an image elsewhere is never guessed to be a Windows game
+    assert!(vuretro_core::detect::detect_system(
+        Path::new("/roms"),
+        Path::new("/roms/Road Rash.iso")
+    )
+    .is_none_or(|s| s.id != "windows"));
+}
+
+#[test]
+fn wine_is_fetched_like_a_core_and_then_the_game_starts_in_it() {
+    let (app, f, runs) = pc_world(false);
+    let rom = "/roms/pc/roadrash.iso";
+    assert_eq!(app.core_to_install(rom).as_deref(), Some("wine"));
+    // playing before it is there says what to do instead of failing in the dark
+    assert!(app.launch_game(rom.into(), None).is_err());
+    let seen = Mutex::new(Vec::new());
+    app.install_core("wine", |p| seen.lock().unwrap().push(p))
+        .unwrap();
+    assert_eq!(*seen.lock().unwrap(), vec![50, 100]);
+    assert_eq!(app.core_to_install(rom), None);
+
+    app.launch_game(rom.into(), None).unwrap();
+    let spawned = f.0.lock().unwrap().native_spawned.clone();
+    assert_eq!(spawned.len(), 1);
+    assert_eq!(spawned[0].exe, Path::new("/wine"));
+    assert!(runs
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|r| r == "prepare /roms/pc/roadrash.iso"));
+}
+
+#[test]
+fn a_failed_wine_download_is_reported_and_can_be_tried_again() {
+    let (app, _, runs) = pc_world(true);
+    assert_eq!(app.install_core("wine", |_| {}).unwrap_err(), "no wine");
+    assert_eq!(app.install_core("wine", |_| {}).unwrap_err(), "no wine");
+    assert!(runs.lock().unwrap().is_empty());
+    assert!(app.core_to_install("/roms/pc/a.iso").is_some());
 }
