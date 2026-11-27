@@ -14,6 +14,7 @@ use crate::cel::Indexed;
 use crate::explode;
 
 const OFST: u32 = 0x4F46_5354;
+const CLGP: u32 = 0x434C_4750;
 
 pub struct Family {
     bytes: Vec<u8>,
@@ -66,6 +67,59 @@ impl Family {
     /// The node for a `category` and a `selector`.
     pub fn resolve(&self, category: usize, selector: usize) -> Option<usize> {
         self.child(self.child(0, category)?, selector)
+    }
+
+    /// The first picture of a cel group (`CLGP`) for a `category`, a `selector` and, when the
+    /// category has them, a `frame` (the three faces of a hill are frames). A group is a
+    /// set of textures of one thing at different sizes or in pieces: at +20 its flags (the two low
+    /// bits are the mode), at +21 where its table of textures is (in words from the group), at
+    /// +24 and +25 the last column and row. Mode 0 holds rows of offsets to the cells; mode 1
+    /// the offsets themselves. Offsets are counted from byte 8 of the group.
+    pub fn cel_texture(
+        &self,
+        category: usize,
+        selector: usize,
+        frame: Option<usize>,
+    ) -> Option<Indexed> {
+        let mut at = self.resolve(category, selector)?;
+        if let Some(f) = frame {
+            at = self.child(at, f)?;
+        }
+        if self.word(at)? != CLGP {
+            return None;
+        }
+        let flags = *self.bytes.get(at + 20)?;
+        let table = at + *self.bytes.get(at + 21)? as usize * 4;
+        let first = match flags & 3 {
+            // the first cell of the first row
+            0 => at + self.word(table)? as usize,
+            1 => table,
+            _ => return None,
+        };
+        let cell = at + 8 + self.word(first)? as usize;
+        crate::cel::read_indexed(self.bytes.get(cell..)?).ok()
+    }
+
+    /// What is at a category and selector, for looking into a family (the node's first word, how
+    /// many children it has when it is an array, and the same for its first children).
+    pub fn describe(&self, category: usize, selector: usize) -> String {
+        let Some(at) = self.resolve(category, selector) else {
+            return "nothing".into();
+        };
+        let word = self.word(at).unwrap_or(0);
+        let mut text = format!("node at {at}, word {word:#x}");
+        if word < 0x1000 {
+            text += &format!(", {word} children:");
+            for i in 0..(word as usize).min(4) {
+                match self.child(at, i) {
+                    Some(c) => {
+                        text += &format!(" [{i}: {c} word {:#x}]", self.word(c).unwrap_or(0))
+                    }
+                    None => text += &format!(" [{i}: none]"),
+                }
+            }
+        }
+        text
     }
 
     /// The picture of frame `frame` of the animation for `category` and `selector`.

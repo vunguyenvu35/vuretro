@@ -9,6 +9,7 @@
 
 use crate::course::Sample;
 use crate::image::Rgb;
+use crate::terrain::{self, HillSlice};
 
 pub const WIDTH: usize = 320;
 pub const HEIGHT: usize = 240;
@@ -99,31 +100,23 @@ pub fn project(
 
 /// The view from a place between samples, `lateral` world units to the right of the middle.
 pub fn view_at(samples: &[Sample], position: f32, lateral: f32, guess: Guess) -> Rgb {
-    view_over(samples, position, lateral, guess, None)
+    view_over(samples, position, lateral, guess, None, None)
 }
 
-/// Like [`view_at`], over a picture of 320x240 for the sky and the far ground (the horizon).
+/// Like [`view_at`], over a picture of 320x240 for the sky and the far ground (the horizon),
+/// with the hills at the side of the road when `ground` has them (one entry for each sample).
 pub fn view_over(
     samples: &[Sample],
     position: f32,
     lateral: f32,
     guess: Guess,
     backdrop: Option<&Rgb>,
+    ground: Option<&[Option<HillSlice>]>,
 ) -> Rgb {
     let first = position.max(0.0).floor() as usize;
     let fraction = position.max(0.0) - first as f32;
     let given = backdrop.filter(|b| b.pixels.len() == WIDTH * HEIGHT * 3);
     let mut pixels = given.map_or_else(|| vec![0u8; WIDTH * HEIGHT * 3], |b| b.pixels.clone());
-    let mut put_row = |row: usize, from: f32, to: f32, colour: [u8; 3]| {
-        let (a, b) = (
-            from.max(0.0) as usize,
-            (to.min(WIDTH as f32) as usize).min(WIDTH),
-        );
-        for x in a..b.max(a) {
-            let at = (row * WIDTH + x) * 3;
-            pixels[at..at + 3].copy_from_slice(&colour);
-        }
-    };
     if given.is_none() {
         // the sky, then the ground under the horizon
         for row in 0..HEIGHT {
@@ -133,20 +126,13 @@ pub fn view_over(
             } else {
                 [40, 120, 40]
             };
-            put_row(row, 0.0, WIDTH as f32, colour);
+            put_row(&mut pixels, row, 0.0, WIDTH as f32, colour);
         }
     }
 
+    // the slices of road ahead, near to far
+    let mut slices: Vec<Slice> = Vec::new();
     let (mut x, mut dx, mut y) = (-lateral, 0.0f32, 0.0f32);
-    // the slice before the first one is far below the picture
-    let mut near = (
-        HORIZON + CAMERA_HEIGHT * FOCAL / 64.0,
-        0.0f32,
-        0.0f32,
-        0.0f32,
-        0.0f32,
-    );
-    let mut top = HEIGHT as f32;
     for k in 0..SLICES {
         let z = (64.0 + k as f32 * 128.0 - fraction * SAMPLE).max(32.0);
         let Some(s) = samples.get(first + k / 2) else {
@@ -157,57 +143,220 @@ pub fn view_over(
         y += s.rise as f32 * guess.lift * 0.5;
         let scale = FOCAL / z;
         let row = HORIZON + (CAMERA_HEIGHT - y) * scale;
-        let (left, right) = (
-            WIDTH as f32 / 2.0 + (x - s.lanes[0] * LANE) * scale,
-            WIDTH as f32 / 2.0 + (x + s.lanes[1] * LANE) * scale,
-        );
-        let centre = WIDTH as f32 / 2.0 + x * scale;
-        let far = (row, left, right, centre, scale);
-        if row < near.0 && row < top {
-            let stripe = (k / 4) % 2 == 0;
-            let (road, grass, edge) = if stripe {
-                ([110, 110, 115], [45, 130, 45], [235, 235, 235])
-            } else {
-                ([100, 100, 105], [35, 110, 35], [200, 40, 40])
-            };
-            let first = row.max(0.0).ceil() as usize;
+        slices.push(Slice {
+            row,
+            left: WIDTH as f32 / 2.0 + (x - s.lanes[0] * LANE) * scale,
+            right: WIDTH as f32 / 2.0 + (x + s.lanes[1] * LANE) * scale,
+            centre: WIDTH as f32 / 2.0 + x * scale,
+            scale,
+            x,
+            lanes: s.lanes,
+            hills: ground.and_then(|g| g.get(first + k / 2).copied().flatten()),
+        });
+    }
+
+    // which rows each slice paints: from the row where the one before it ended, up to its own,
+    // unless a nearer hill crest hides it
+    struct Span {
+        k: usize,
+        first: usize,
+        last: usize,
+    }
+    let mut spans = Vec::new();
+    let mut near_row = HORIZON + CAMERA_HEIGHT * FOCAL / 64.0;
+    let mut top = HEIGHT as f32;
+    for (k, s) in slices.iter().enumerate() {
+        if s.row < near_row && s.row < top {
             // up to the row where the slice before ended, rounded up so that no row is left out
-            let last = (near.0.min(top).min(HEIGHT as f32)).ceil() as usize;
-            for r in first..last {
-                let t = (near.0 - r as f32) / (near.0 - row).max(0.001);
-                let (l, rt) = (lerp(near.1, far.1, t), lerp(near.2, far.2, t));
-                let edge_w = (3.0 * scale * FOCAL / 128.0).max(1.0);
-                put_row(r, 0.0, WIDTH as f32, grass);
-                put_row(r, l - edge_w, l, edge);
-                put_row(r, rt, rt + edge_w, edge);
-                put_row(r, l, rt, road);
-                if stripe {
-                    // the lines between lanes: yellow in the middle, white elsewhere, in dashes
-                    let lanes = (s.lanes[0].floor() as i32, s.lanes[1].floor() as i32);
-                    for j in -(lanes.0 - 1).max(0)..=(lanes.1 - 1).max(0) {
-                        let at = lerp(
-                            near.3 + j as f32 * LANE * near.4,
-                            far.3 + j as f32 * LANE * far.4,
-                            t,
-                        );
-                        let w = (2.0 * scale).max(1.0);
-                        let c = if j == 0 {
-                            [230, 200, 40]
-                        } else {
-                            [230, 230, 230]
-                        };
-                        put_row(r, at - w / 2.0, at + w / 2.0, c);
-                    }
+            spans.push(Span {
+                k,
+                first: s.row.max(0.0).ceil() as usize,
+                last: (near_row.min(top).min(HEIGHT as f32)).ceil() as usize,
+            });
+            top = top.min(s.row);
+        }
+        near_row = s.row;
+    }
+    let before = |k: usize| {
+        slices.get(k.wrapping_sub(1)).copied().unwrap_or(Slice {
+            row: HORIZON + CAMERA_HEIGHT * FOCAL / 64.0,
+            left: 0.0,
+            right: 0.0,
+            centre: 0.0,
+            scale: 0.0,
+            x: 0.0,
+            lanes: [0.0; 2],
+            hills: None,
+        })
+    };
+
+    // pass 1: the ground in the colour of the stripe
+    for sp in &spans {
+        let grass = if (sp.k / 4) % 2 == 0 {
+            [45, 130, 45]
+        } else {
+            [35, 110, 35]
+        };
+        let far = slices[sp.k];
+        for r in sp.first..sp.last {
+            match far.hills {
+                // the shoulder takes the colour of the face of the hill next to it
+                Some(h) => {
+                    put_row(&mut pixels, r, 0.0, far.centre, h.colour[0][0]);
+                    put_row(&mut pixels, r, far.centre, WIDTH as f32, h.colour[1][0]);
+                }
+                None => put_row(&mut pixels, r, 0.0, WIDTH as f32, grass),
+            }
+        }
+    }
+
+    // pass 2: the hills, the far faces first so that the near ones cover them
+    for k in (1..slices.len()).rev() {
+        let (near, far) = (slices[k - 1], slices[k]);
+        let (Some(hn), Some(hf)) = (near.hills, far.hills) else {
+            continue;
+        };
+        for side in 0..2 {
+            let chain = |s: &Slice, h: &HillSlice| -> [(f32, f32); 5] {
+                let sign = if side == 0 { -1.0 } else { 1.0 };
+                let mut c = [(0.0, 0.0); 5];
+                c[0] = point(s, s.x + h.edge[side], 0.0);
+                for i in 0..3 {
+                    c[i + 1] = point(
+                        s,
+                        s.x + h.edge[side] + sign * h.out[side][i],
+                        h.height[side][i],
+                    );
+                }
+                c[4] = point(
+                    s,
+                    s.x + h.edge[side] + sign * (h.out[side][2] + terrain::FAR),
+                    h.height[side][2],
+                );
+                c
+            };
+            let (cn, cf) = (chain(&near, &hn), chain(&far, &hf));
+            for f in 0..4 {
+                let colour = hn.colour[side][f.min(2)];
+                let quad = [cn[f], cn[f + 1], cf[f + 1], cf[f]];
+                fill_triangle(&mut pixels, [quad[0], quad[1], quad[2]], colour);
+                fill_triangle(&mut pixels, [quad[0], quad[2], quad[3]], colour);
+            }
+        }
+    }
+
+    // pass 3: the road, its edges and its lines
+    for sp in &spans {
+        let (far, near) = (slices[sp.k], before(sp.k));
+        let stripe = (sp.k / 4) % 2 == 0;
+        let (road, edge) = if stripe {
+            ([110, 110, 115], [235, 235, 235])
+        } else {
+            ([100, 100, 105], [200, 40, 40])
+        };
+        for r in sp.first..sp.last {
+            let t = (near.row - r as f32) / (near.row - far.row).max(0.001);
+            let (l, rt) = (lerp(near.left, far.left, t), lerp(near.right, far.right, t));
+            let edge_w = (3.0 * far.scale * FOCAL / 128.0).max(1.0);
+            put_row(&mut pixels, r, l - edge_w, l, edge);
+            put_row(&mut pixels, r, rt, rt + edge_w, edge);
+            put_row(&mut pixels, r, l, rt, road);
+            if stripe {
+                // the lines between lanes: yellow in the middle, white elsewhere, in dashes
+                let lanes = (far.lanes[0].floor() as i32, far.lanes[1].floor() as i32);
+                for j in -(lanes.0 - 1).max(0)..=(lanes.1 - 1).max(0) {
+                    let at = lerp(
+                        near.centre + j as f32 * LANE * near.scale,
+                        far.centre + j as f32 * LANE * far.scale,
+                        t,
+                    );
+                    let w = (2.0 * far.scale).max(1.0);
+                    let c = if j == 0 {
+                        [230, 200, 40]
+                    } else {
+                        [230, 230, 230]
+                    };
+                    put_row(&mut pixels, r, at - w / 2.0, at + w / 2.0, c);
                 }
             }
-            top = top.min(row);
         }
-        near = far;
     }
     Rgb {
         width: WIDTH as u32,
         height: HEIGHT as u32,
         pixels,
+    }
+}
+
+/// Paint the part of a row of the picture from one column to another.
+fn put_row(pixels: &mut [u8], row: usize, from: f32, to: f32, colour: [u8; 3]) {
+    let (a, b) = (
+        from.max(0.0) as usize,
+        (to.min(WIDTH as f32) as usize).min(WIDTH),
+    );
+    for x in a..b.max(a) {
+        let at = (row * WIDTH + x) * 3;
+        pixels[at..at + 3].copy_from_slice(&colour);
+    }
+}
+
+/// A slice of road as it shows in the picture.
+#[derive(Clone, Copy)]
+struct Slice {
+    row: f32,
+    left: f32,
+    right: f32,
+    centre: f32,
+    scale: f32,
+    /// How far the road's middle has gone sideways, in world units.
+    x: f32,
+    lanes: [f32; 2],
+    hills: Option<HillSlice>,
+}
+
+/// Where a point at the world position `x` (sideways) and `height` over the road of `slice`
+/// shows in the picture.
+fn point(slice: &Slice, x: f32, height: f32) -> (f32, f32) {
+    (
+        WIDTH as f32 / 2.0 + x * slice.scale,
+        slice.row - height * slice.scale,
+    )
+}
+
+/// Fill a triangle with a colour (rows and columns outside the picture are left out).
+fn fill_triangle(pixels: &mut [u8], p: [(f32, f32); 3], colour: [u8; 3]) {
+    let clamp = |v: f32| v.clamp(-1.0e6, 1.0e6);
+    let p = p.map(|(x, y)| (clamp(x), clamp(y)));
+    let (min_y, max_y) = (
+        p.iter().map(|v| v.1).fold(f32::MAX, f32::min),
+        p.iter().map(|v| v.1).fold(f32::MIN, f32::max),
+    );
+    let (from, to) = (
+        min_y.max(0.0).ceil() as usize,
+        (max_y.min(HEIGHT as f32)).ceil() as usize,
+    );
+    for row in from..to.min(HEIGHT) {
+        let y = row as f32;
+        let (mut lo, mut hi) = (f32::MAX, f32::MIN);
+        for i in 0..3 {
+            let (a, b) = (p[i], p[(i + 1) % 3]);
+            if (a.1 <= y && y < b.1) || (b.1 <= y && y < a.1) {
+                let x = a.0 + (b.0 - a.0) * (y - a.1) / (b.1 - a.1);
+                lo = lo.min(x);
+                hi = hi.max(x);
+            }
+        }
+        if lo > hi {
+            continue;
+        }
+        let (a, b) = (
+            lo.max(0.0).ceil() as usize,
+            hi.min(WIDTH as f32).ceil() as usize,
+        );
+        for x in a..b.min(WIDTH) {
+            let at = (row * WIDTH + x) * 3;
+            pixels[at..at + 3].copy_from_slice(&colour);
+        }
     }
 }
 

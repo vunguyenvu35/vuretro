@@ -42,6 +42,35 @@ pub struct Section {
     pub family_events: Vec<FamilyEvent>,
     /// How many samples before the camera the families are changed (from the table).
     pub family_bias: i32,
+    /// The hills at the side of the road, when that is the section's terrain.
+    pub hills: Vec<HillRecord>,
+}
+
+/// One stretch of hills (the terrain chunk `LIHR`: 20 bytes of header with the record count at
+/// +8, then 76-byte records). Each of the eight points (four on each side of the road, the
+/// first three used) says how far from the road its hill goes and how high, and how it changes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HillRecord {
+    pub start: i32,
+    pub end: i32,
+    /// The surface of the left and of the right hills (the high two bits pick a family slot).
+    pub selectors: [u8; 2],
+    pub points: [HillPoint; 8],
+}
+
+/// How a point of a hill may lie and move: from `min_x` to `max_x` (times 32 world units) out
+/// from the edge of the road, from `min_height` to `max_height` (times 16) up, changing by
+/// up to a variation (times 8) a sample over a stretch of `min_length` to `max_length` samples.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HillPoint {
+    pub min_x: u8,
+    pub max_x: u8,
+    pub x_variation: u8,
+    pub min_height: i8,
+    pub max_height: i8,
+    pub height_variation: u8,
+    pub min_length: u8,
+    pub max_length: u8,
 }
 
 /// A change in which family the roadside draws from.
@@ -108,6 +137,56 @@ impl Bytes<'_> {
             Err(format!("no {} at byte {at}", String::from_utf8_lossy(tag)))
         }
     }
+}
+
+/// The hills of the terrain chunk at `at` (none when it is not a hill chunk).
+fn read_hills(sgs: &Bytes, at: usize) -> Result<Vec<HillRecord>, String> {
+    if at == 0 || sgs.0.get(at..at + 4) != Some(&b"LIHR"[..]) {
+        return Ok(Vec::new());
+    }
+    let count = sgs.u32(at + 8)? as usize;
+    let mut records = Vec::new();
+    for i in 0..count {
+        let p = at + 20 + 76 * i;
+        let bytes = sgs.0.get(p..p + 76).ok_or("the hill table is cut short")?;
+        let mut points = [HillPoint {
+            min_x: 0,
+            max_x: 0,
+            x_variation: 0,
+            min_height: 0,
+            max_height: 0,
+            height_variation: 0,
+            min_length: 1,
+            max_length: 1,
+        }; 8];
+        for (j, point) in points.iter_mut().enumerate() {
+            let q = &bytes[12 + 8 * j..20 + 8 * j];
+            *point = HillPoint {
+                min_x: q[0],
+                max_x: q[1],
+                x_variation: q[2],
+                min_height: q[3] as i8,
+                max_height: q[4] as i8,
+                height_variation: q[5],
+                min_length: q[6],
+                max_length: q[7],
+            };
+            if point.min_x > point.max_x
+                || point.min_height > point.max_height
+                || point.min_length == 0
+                || point.min_length > point.max_length
+            {
+                return Err("a hill point whose limits do not fit".into());
+            }
+        }
+        records.push(HillRecord {
+            start: sgs.u32(p)? as i32,
+            end: sgs.u32(p + 4)? as i32,
+            selectors: [bytes[8], bytes[9]],
+            points,
+        });
+    }
+    Ok(records)
 }
 
 /// The words of the roadside table at `at` (0: there is none).
@@ -221,6 +300,7 @@ pub fn parse(file: &[u8]) -> Result<Course, String> {
             roadside: read_roadside(&sgs, sgs.u32(row + 8)? as usize)?,
             family_events: Vec::new(),
             family_bias: 0,
+            hills: read_hills(&sgs, sgs.u32(row + 0x10)? as usize)?,
         });
         let at = sgs.u32(row + 0xC)? as usize;
         if at != 0 {
@@ -451,6 +531,7 @@ mod tests {
             roadside: vec![],
             family_events: vec![],
             family_bias: 0,
+            hills: vec![],
         };
         assert_eq!(s.summed_elevation(), 90);
     }

@@ -24,4 +24,5 @@ pub mod road;
 pub mod rsc;
 pub mod scenery;
 pub mod sound;
+pub mod terrain;
 pub mod wav;

@@ -222,6 +222,7 @@ mod tests {
             roadside: words,
             family_events: events,
             family_bias: 0,
+            hills: vec![],
         }
     }
     fn event(family: u16) -> Vec<FamilyEvent> {

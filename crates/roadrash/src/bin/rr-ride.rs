@@ -19,6 +19,7 @@ use vuretro_roadrash::ride::{
 };
 use vuretro_roadrash::scenery::Scenery;
 use vuretro_roadrash::sound::{Audio, Mixer};
+use vuretro_roadrash::terrain;
 use vuretro_roadrash::{adpcm, avi, bob, cinepak, course, exe, horizon, hud, wav};
 
 /// Take `--flag value` out of the arguments.
@@ -147,6 +148,7 @@ fn main() -> Result<(), String> {
     let backdrop = horizon::load(&disc, &name, &palette)?;
     let headings = course::headings(&samples, vuretro_roadrash::road::Guess::default().turn);
     let scenery = Scenery::load(&disc, &course)?;
+    let ground = terrain::load(&disc, &course, &palette)?;
     let mut look = Look {
         riders: &riders,
         palette: &palette,
@@ -156,6 +158,7 @@ fn main() -> Result<(), String> {
         headings: &headings,
         police: None,
         scenery: Some(&scenery),
+        ground: Some(&ground.slices),
     };
     let mut rivals = spawn_rivals(rider);
     let dt = 1.0 / 30.0;

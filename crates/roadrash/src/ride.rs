@@ -10,6 +10,7 @@ use crate::image::Rgb;
 use crate::palette::Palette;
 use crate::road::{self, Guess};
 use crate::scenery::Scenery;
+use crate::terrain::HillSlice;
 
 /// Samples per second at the top speed (a sample is 256 world units).
 pub const TOP_SPEED: f32 = 80.0;
@@ -271,6 +272,8 @@ pub struct Look<'a> {
     pub police: Option<f32>,
     /// The things at the side of the road.
     pub scenery: Option<&'a Scenery>,
+    /// The hills at the side of the road, a slice for each sample of the route.
+    pub ground: Option<&'a [Option<HillSlice>]>,
 }
 
 /// Draw a sprite so that the wheel touches the picture at (`x`, `bottom`), `scale` times its
@@ -413,6 +416,7 @@ pub fn render(
         bike.lateral,
         guess,
         backdrop.as_ref(),
+        look.ground,
     ));
     let remap_of = |c: usize| look.remaps.get(c).or(look.remaps.first());
 
@@ -627,6 +631,7 @@ mod tests {
             headings: &[],
             police: None,
             scenery: None,
+            ground: None,
         };
         let with = render(&road, &Bike::start(), &[], &look, 0);
         assert_eq!((with.width, with.height), (640, 480));
@@ -641,6 +646,7 @@ mod tests {
             headings: &[],
             police: None,
             scenery: None,
+            ground: None,
         };
         let without = render(&road, &Bike::start(), &[], &nobody, 0);
         assert_ne!(with.pixels, without.pixels);
@@ -714,6 +720,7 @@ mod tests {
             headings: &[],
             police: None,
             scenery: None,
+            ground: None,
         };
         let red = |p: &Rgb| {
             p.pixels
