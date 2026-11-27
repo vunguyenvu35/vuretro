@@ -733,6 +733,20 @@ fn build_environment(
     std::fs::write(&marker, "").map_err(|e| e.to_string())
 }
 
+/// Whether the CD drive of a game is what `setup_cd_drive` makes: the link of `R:` points where the
+/// recipe says (the folder with the game's folder in it, or the game's files themselves).
+fn cd_drive_is_right(prefix: &Path, recipe: &Recipe, game: &Path, cdroot: &Path) -> bool {
+    let link = prefix
+        .join("dosdevices")
+        .join(format!("{}:", pc_recipes::CD_DRIVE.to_ascii_lowercase()));
+    let expected = if recipe.drive_folder.is_some() {
+        cdroot
+    } else {
+        game
+    };
+    std::fs::read_link(link).is_ok_and(|target| target == expected)
+}
+
 /// What a set-up game remembers, in its `ready` file, a line each: the program to start (a path on
 /// the CD drive), the size of the screen it asks for, whether it has a window frame (`framed` or
 /// `desktop`), then marks: `recipe:<id>` and `rev-<n>` for the recipe it was set up with.
@@ -946,27 +960,36 @@ pub fn prepare(
             ready.mode = if framed { "framed" } else { "desktop" }.into();
             let _ = ready.write(&done);
         }
-        // a game set up when the CD drive was `D:` gets `R:` (see `pc_recipes::CD_DRIVE`)
-        let drive_link = prefix
-            .join("dosdevices")
-            .join(format!("{}:", pc_recipes::CD_DRIVE.to_ascii_lowercase()));
-        if !drive_link.exists() && game.is_dir() {
-            let recipe = ready
-                .recipe()
-                .unwrap_or_else(|| pc_recipes::by_id("generic"));
-            let done = setup_cd_drive(&prefix, recipe, &game, &cdroot, &game_id(disc))
-                .and_then(|_| env.run(&pc_recipes::drive_command()));
+        // the recipe of the game: the one it was set up with, or the one its disc has
+        let recipe = ready.recipe().or_else(|| {
+            pc_recipes::for_disc(disc)
+                .ok()
+                .filter(|r| r.id != "generic")
+        });
+        // a game set up when the CD drive was `D:`, or whose `R:` is not what its recipe says,
+        // gets the drive made again (see `pc_recipes::CD_DRIVE`)
+        if game.is_dir()
+            && !cd_drive_is_right(
+                &prefix,
+                recipe.unwrap_or_else(|| pc_recipes::by_id("generic")),
+                &game,
+                &cdroot,
+            )
+        {
+            let done = setup_cd_drive(
+                &prefix,
+                recipe.unwrap_or_else(|| pc_recipes::by_id("generic")),
+                &game,
+                &cdroot,
+                &game_id(disc),
+            )
+            .and_then(|_| env.run(&pc_recipes::drive_command()));
             if let Err(e) = done {
                 log(&format!("Could not set up the CD drive: {e}"));
             }
         }
         // a game set up with an older revision of its recipe gets what changed: the program is
         // taken from the disc again, as the patches are written over it
-        let recipe = ready.recipe().or_else(|| {
-            pc_recipes::for_disc(disc)
-                .ok()
-                .filter(|r| r.id != "generic")
-        });
         let launch = Launch::of(recipe, ready.framed());
         if let Some(recipe) = recipe.filter(|r| r.revision != ready.revision()) {
             if disc.exists() {
@@ -1905,5 +1928,33 @@ mod tests {
         assert!(err.contains("was ended"), "{err}");
         assert!(started.elapsed().as_secs() < 5);
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_cd_drive_of_a_game_is_right_only_when_it_points_where_its_recipe_says() {
+        let root = temp("cd-right");
+        let (game, cdroot) = (root.join("game"), root.join("cdroot"));
+        std::fs::create_dir_all(&game).unwrap();
+        std::fs::create_dir_all(root.join("prefix/dosdevices")).unwrap();
+        let prefix = root.join("prefix");
+        let road_rash = pc_recipes::by_id("road-rash");
+        let generic = pc_recipes::by_id("generic");
+        // no drive at all
+        assert!(!cd_drive_is_right(&prefix, road_rash, &game, &cdroot));
+        // the drive of a game of unknown recipe (the files themselves) is wrong for Road Rash,
+        // whose files are under a folder of the drive
+        setup_cd_drive(&prefix, generic, &game, &cdroot, "x").unwrap();
+        assert!(cd_drive_is_right(&prefix, generic, &game, &cdroot));
+        assert!(!cd_drive_is_right(&prefix, road_rash, &game, &cdroot));
+        // made again for Road Rash, it is right for it and wrong for the other
+        setup_cd_drive(&prefix, road_rash, &game, &cdroot, "x").unwrap();
+        assert!(cd_drive_is_right(&prefix, road_rash, &game, &cdroot));
+        assert!(!cd_drive_is_right(&prefix, generic, &game, &cdroot));
+        assert!(
+            cdroot.join("ROADRASH").exists()
+                || std::fs::symlink_metadata(cdroot.join("ROADRASH")).is_ok()
+        );
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
