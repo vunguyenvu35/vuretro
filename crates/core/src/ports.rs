@@ -210,6 +210,9 @@ pub trait NativeInstaller: Send + Sync {
     /// Make a Windows game from a disc image ready to start (the first time: an environment
     /// for it and its files from the disc; later: nothing to do) and say how to start it.
     fn prepare_pc_game(&self, disc: &Path, log: &dyn Fn(&str)) -> Result<NativeSpec, String>;
+    /// Run the installer of a Windows game's disc (the user follows it in its window) and make the
+    /// program that it leaves the one that Play starts. Gives the name of that program.
+    fn run_pc_installer(&self, disc: &Path, log: &dyn Fn(&str)) -> Result<String, String>;
 }
 
 /// Measures the computer the app runs on.

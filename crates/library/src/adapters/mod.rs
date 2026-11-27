@@ -10,6 +10,7 @@ mod launcher;
 mod locator;
 mod machine;
 mod native_installer;
+mod pc_recipes;
 mod screenscraper;
 mod store;
 mod windows_pc;

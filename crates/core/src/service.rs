@@ -1425,6 +1425,36 @@ impl App {
         result.map(|_| true)
     }
 
+    /// Run the installer of the disc of a Windows game, which the user follows in its window, and
+    /// make the program that it leaves the one that Play starts. Gives the name of that program.
+    /// Slow (as long as the installer): run it on a thread. One at a time for a game.
+    pub fn run_pc_installer(&self, path: &str, log: impl Fn(&str)) -> Result<String, String> {
+        let rom_dir = self
+            .settings
+            .lock()
+            .unwrap()
+            .rom_dir
+            .clone()
+            .unwrap_or_default();
+        let is_pc = detect::detect_system(Path::new(&rom_dir), Path::new(path))
+            .is_some_and(|s| s.runtime == "wine");
+        let installer = self
+            .native_installer
+            .as_ref()
+            .filter(|_| is_pc)
+            .ok_or("this is not a Windows game")?;
+        if !installer.pc_ready() {
+            return Err("Wine is not set up yet: press Play on a Windows game to get it".into());
+        }
+        let key = format!("pc:{path}");
+        if !self.installing.lock().unwrap().insert(key.clone()) {
+            return Err("this game is already being set up".into());
+        }
+        let result = installer.run_pc_installer(Path::new(path), &log);
+        self.installing.lock().unwrap().remove(&key);
+        result
+    }
+
     /// Start a Windows game from a disc image: made ready the first time (slow), then run
     /// under Wine like any other game of the library.
     fn launch_pc(&self, path: &str) -> Result<Option<Running>, String> {

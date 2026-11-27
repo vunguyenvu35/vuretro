@@ -1,5 +1,5 @@
 <script>
-  import { chooseCover, resetCover, regenerateCovers } from '../lib/store.svelte.js';
+  import { chooseCover, resetCover, regenerateCovers, runInstaller } from '../lib/store.svelte.js';
 import { gameScope } from '../lib/scope.js';
 import { lazyCover } from '../lib/lazyCovers.js';
 import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, applyPatch, covers, setLayout, pinCovers, pickRomFiles, pickRomFolder, clearRecent, setSort } from '../lib/store.svelte.js';
@@ -455,6 +455,9 @@ import { app, play, refresh, importRoms, removeRom, removeMany, toggleFavorite, 
     <button class="btn primary wide" disabled={!!selected.blocked} onclick={() => play(selected)}>
       {selected.blocked ? `🔒 ${selected.blocked}` : '▶ Play'}
     </button>
+    {#if selected.system === 'windows'}
+      <button class="btn wide" onclick={() => runInstaller(selected)}>Run the disc’s installer…</button>
+    {/if}
     <button class="btn wide" onclick={() => chooseCover(selected)}>Set cover image…</button>
     <button class="btn wide" onclick={() => resetCover(selected)}>Reset cover</button>
     <button class="btn wide" onclick={() => fav(selected)}>{selected.favorite ? '★ Favorite' : '☆ Add to favorites'}</button>

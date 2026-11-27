@@ -75,6 +75,27 @@ pub async fn launch_game(
     Ok(())
 }
 
+/// Run the installer of a Windows game's disc. The user follows it in its window; the program it
+/// leaves becomes the one that Play starts. Gives the name of that program.
+#[tauri::command]
+pub async fn run_pc_installer(
+    app: AppHandle,
+    shell: State<'_, Shell>,
+    path: String,
+) -> Result<String, String> {
+    let core = shell.app.clone();
+    let events = app.clone();
+    blocking(move || {
+        let _ = events.emit("pc-preparing", "Starting");
+        let done = core.run_pc_installer(&path, |line| {
+            let _ = events.emit("pc-preparing", line.trim());
+        });
+        let _ = events.emit("pc-prepared", ());
+        done
+    })
+    .await?
+}
+
 /// End the game that is open (a Windows game has no window of its own to close).
 #[tauri::command]
 pub fn stop_game(shell: State<'_, Shell>) -> bool {

@@ -181,6 +181,7 @@ fn main() {
             remove_roms,
             launch_game,
             stop_game,
+            run_pc_installer,
             launch_demo,
             get_controls,
             set_controls,

@@ -2440,6 +2440,17 @@ impl NativeInstaller for FakeNative {
         self.runs.lock().unwrap().push("runtime".into());
         Ok(())
     }
+    fn run_pc_installer(&self, disc: &Path, log: &dyn Fn(&str)) -> Result<String, String> {
+        log("running the installer");
+        if self.fail {
+            return Err("no installer".into());
+        }
+        self.runs
+            .lock()
+            .unwrap()
+            .push(format!("installer {}", disc.display()));
+        Ok("GAME.EXE".into())
+    }
     fn prepare_pc_game(&self, disc: &Path, log: &dyn Fn(&str)) -> Result<NativeSpec, String> {
         log("copying the game");
         self.runs
@@ -2713,4 +2724,32 @@ fn stopping_the_open_game_ends_it_and_frees_the_place() {
     assert!(app
         .launch_game("/roms/pc/roadrash.iso".into(), None)
         .is_ok());
+}
+
+#[test]
+fn the_installer_of_a_windows_disc_is_run_once_at_a_time_and_only_for_windows_games() {
+    let (app, _, runs) = pc_world(false);
+    let rom = "/roms/pc/game.iso";
+    // Wine is needed first
+    assert!(app
+        .run_pc_installer(rom, |_| {})
+        .unwrap_err()
+        .contains("Wine"));
+    app.install_core("wine", |_| {}).unwrap();
+    let told = Mutex::new(Vec::new());
+    let program = app
+        .run_pc_installer(rom, |l| told.lock().unwrap().push(l.to_string()))
+        .unwrap();
+    assert_eq!(program, "GAME.EXE");
+    assert_eq!(*told.lock().unwrap(), vec!["running the installer"]);
+    assert!(runs
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|r| r == "installer /roms/pc/game.iso"));
+    // a game of another system has no such installer
+    assert!(app
+        .run_pc_installer("/roms/psx/a.cue", |_| {})
+        .unwrap_err()
+        .contains("not a Windows game"));
 }

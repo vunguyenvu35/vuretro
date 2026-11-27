@@ -207,6 +207,10 @@ impl NativeInstaller for RoadRashInstaller {
         super::wine_installer::install_runtime(&self.paths, log)
     }
 
+    fn run_pc_installer(&self, disc: &Path, log: &dyn Fn(&str)) -> Result<String, String> {
+        super::wine_installer::run_installer(&self.paths, disc, self.pc_icon.as_deref(), log)
+    }
+
     fn prepare_pc_game(&self, disc: &Path, log: &dyn Fn(&str)) -> Result<NativeSpec, String> {
         super::wine_installer::prepare(&self.paths, disc, self.pc_icon.as_deref(), log)
     }

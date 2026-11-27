@@ -8,9 +8,9 @@
 //! reading of what they say) is tested; the rest has not been run.
 
 use super::native_installer::run;
+use super::pc_recipes;
 use super::wine_installer::{
-    add_window_frame, aweman32_stub, copy_game, find_program, game_id, patch_road_rash, recipe_for,
-    road_rash_registry, Recipe,
+    add_window_frame, copy_root, find_program, game_id, patch_program, write_stubs,
 };
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -85,8 +85,9 @@ fn on_drive(program: &str, letter: char) -> PathBuf {
     PathBuf::from(format!("{letter}:{}", program.trim_start_matches("D:")))
 }
 
-/// Make the game on `disc` ready to start and say how to start it. The first time Road Rash is
-/// set up (its files are copied and the registry is written); every time the image is mounted.
+/// Make the game on `disc` ready to start and say how to start it. The first time a game that
+/// has a recipe is set up (its files are copied and the registry is written); every time the
+/// image is mounted.
 pub fn prepare(
     paths: &Paths,
     disc: &Path,
@@ -99,50 +100,74 @@ pub fn prepare(
                 .into(),
         );
     }
-    let recipe = recipe_for(disc)?;
+    let recipe = pc_recipes::for_disc(disc)?;
     let root = paths.native_dir().join("pc").join(game_id(disc));
     let game = root.join("game");
     let done = root.join("ready");
 
-    let (exe, cwd) = match recipe {
-        Recipe::RoadRash => {
-            if !done.is_file() {
-                std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
-                log("Copying the game's files from the disc");
-                if game.exists() {
-                    std::fs::remove_dir_all(&game).map_err(|e| e.to_string())?;
-                }
-                copy_game(disc, &game, log)?;
-                std::fs::write(game.join("AWEMAN32.DLL"), aweman32_stub())
-                    .map_err(|e| e.to_string())?;
-                patch_road_rash(&game.join("ROADRASH.EXE"), icon, false, log);
-                add_window_frame(paths, &game, "640x480", log);
-                log("Writing the settings of the game");
-                let here = format!("{}\\", game.display());
-                for (i, command) in road_rash_registry(&here).iter().enumerate() {
-                    // the first half is for the current user and must work; the machine's
-                    // half needs an administrator and is a convenience
-                    let hkcu = !command[2].starts_with("HKLM");
-                    let done = run(Command::new(&command[0]).args(&command[1..]), &|_| {});
-                    if hkcu && done.is_err() {
-                        return Err(format!(
-                            "could not write the settings of the game (step {i}): {}",
-                            done.unwrap_err()
-                        ));
-                    }
-                }
-                std::fs::write(&done, "windows\n").map_err(|e| e.to_string())?;
+    // a game with a recipe runs from a copy of its files, with what the recipe puts in it
+    let installed = if recipe.id == "generic" {
+        None
+    } else {
+        let program = match &recipe.program {
+            Some(p) => p.clone(),
+            None if done.is_file() => std::fs::read_to_string(&done)
+                .map_err(|e| e.to_string())?
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .to_string(),
+            None => String::new(),
+        };
+        if !done.is_file() {
+            std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+            log("Copying the game's files from the disc");
+            if game.exists() {
+                std::fs::remove_dir_all(&game).map_err(|e| e.to_string())?;
             }
-            (game.join("ROADRASH.EXE"), game.clone())
+            copy_root(disc, &pc_recipes::root_on(disc, recipe)?, &game, log)?;
+            write_stubs(recipe, &game)?;
+            let program = match &recipe.program {
+                Some(p) => p.clone(),
+                None => find_program(&game)?,
+            };
+            if let Some(exe) = recipe.program_in_game(&game, &program) {
+                patch_program(&exe, recipe, icon, false, log);
+            }
+            add_window_frame(paths, &game, &recipe.screen, log);
+            log("Writing the settings of the game");
+            let here = format!("{}\\", game.display());
+            for (i, command) in pc_recipes::registry_commands(recipe, &here)
+                .iter()
+                .enumerate()
+            {
+                // the current user's half must work; the machine's half needs an
+                // administrator and is a convenience
+                let hkcu = !command[2].starts_with("HKLM");
+                let result = run(Command::new(&command[0]).args(&command[1..]), &|_| {});
+                if let (true, Err(e)) = (hkcu, result) {
+                    return Err(format!(
+                        "could not write the settings of the game (step {i}): {e}"
+                    ));
+                }
+            }
+            std::fs::write(&done, format!("{program}\n")).map_err(|e| e.to_string())?;
+            Some(program)
+        } else {
+            Some(program)
         }
-        Recipe::Generic => (PathBuf::new(), PathBuf::new()),
     };
 
     log("Mounting the disc image");
     let letter = mount(disc)?;
-    let (exe, cwd) = match recipe {
-        Recipe::RoadRash => (exe, cwd),
-        Recipe::Generic => {
+    let (exe, cwd) = match installed {
+        Some(program) => {
+            let exe = recipe
+                .program_in_game(&game, &program)
+                .ok_or("the program of the game is not in its files")?;
+            (exe, game)
+        }
+        None => {
             let drive = PathBuf::from(format!("{letter}:\\"));
             // the same search as under Wine, on the drive that the disc is mounted as
             let program = find_program(&drive)?;

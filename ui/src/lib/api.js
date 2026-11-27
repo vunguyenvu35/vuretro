@@ -75,6 +75,7 @@ export const api = {
   // running games
   launchGame: (path, slot = null) => call('launch_game', { path, slot }),
   stopGame: () => call('stop_game'),
+  runPcInstaller: (path) => call('run_pc_installer', { path }),
   saveSlots: (path) => call('get_save_slots', { path }),
   slotThumbnail: (path, slot) => call('get_slot_thumbnail', { path, slot }),
   launchDemo: () => call('launch_demo'),

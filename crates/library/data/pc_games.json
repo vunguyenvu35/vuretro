@@ -1,0 +1,31 @@
+[
+  {
+    "id": "road-rash",
+    "name": "Road Rash (1996)",
+    "revision": 3,
+    "detect": ["ROADRASH/ROADRASH.EXE", "ROADRASH.EXE"],
+    "root": "ROADRASH",
+    "drive_folder": "ROADRASH",
+    "label": "ROADRASH",
+    "install_dir": "RoadRash",
+    "program": "D:\\RoadRash\\ROADRASH.EXE",
+    "screen": "640x480",
+    "stubs": [{ "file": "AWEMAN32.DLL", "kind": "aweman32" }],
+    "registry": [
+      {
+        "key": "Software\\Electronic Arts\\RoadRash 95",
+        "hives": ["HKCU", "HKLM"],
+        "view32": true,
+        "values": [
+          { "name": "Path", "type": "REG_SZ", "data": "{install}" },
+          { "name": "HiRes", "type": "REG_DWORD", "data": "1" },
+          { "name": "HiResBikers", "type": "REG_DWORD", "data": "1" },
+          { "name": "HiResCars", "type": "REG_DWORD", "data": "1" },
+          { "name": "Inset", "type": "REG_DWORD", "data": "0" },
+          { "name": "Intro", "type": "REG_DWORD", "data": "0" }
+        ]
+      }
+    ],
+    "title": { "from": "Road Rash", "to": "Road Rash \u0097 Wine" }
+  }
+]

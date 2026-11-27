@@ -282,6 +282,18 @@ export async function play(game, slot = null) {
   refresh();
 }
 
+/** Run the installer of the disc of a Windows game; Play then starts what it installed. */
+export async function runInstaller(game) {
+  try {
+    toast('The installer opens in its own window: follow it, then close it');
+    const program = await api.runPcInstaller(game.path);
+    toast(`Installed ${program}: press Play to start it`);
+  } catch (e) {
+    toast(String(e), 'error');
+  }
+  refresh();
+}
+
 export async function loadNative() {
   try {
     app.native = await api.nativeGames();

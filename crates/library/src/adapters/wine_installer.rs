@@ -11,6 +11,7 @@
 //! - a virtual desktop of 640x480, because the game changes the screen mode to 256 colours.
 
 use super::native_installer::{find_tool, run, search_path};
+use super::pc_recipes::{self, Recipe};
 use crate::iso::Iso;
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
@@ -133,32 +134,6 @@ pub fn aweman32_stub() -> Vec<u8> {
     h
 }
 
-/// The folder of the game in a folder of files: the folder itself, or the `ROADRASH` folder in it.
-pub(super) fn game_folder(folder: &Path) -> Option<PathBuf> {
-    let has_exe = |d: &Path| {
-        std::fs::read_dir(d).is_ok_and(|rd| {
-            rd.flatten().any(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .eq_ignore_ascii_case("ROADRASH.EXE")
-            })
-        })
-    };
-    if has_exe(folder) {
-        return Some(folder.to_path_buf());
-    }
-    std::fs::read_dir(folder)
-        .ok()?
-        .flatten()
-        .map(|e| e.path())
-        .find(|p| {
-            p.is_dir()
-                && p.file_name()
-                    .is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("ROADRASH"))
-                && has_exe(p)
-        })
-}
-
 fn copy_tree(from: &Path, to: &Path, count: &mut usize, log: &dyn Fn(&str)) -> Result<(), String> {
     std::fs::create_dir_all(to).map_err(|e| e.to_string())?;
     for e in std::fs::read_dir(from)
@@ -179,29 +154,31 @@ fn copy_tree(from: &Path, to: &Path, count: &mut usize, log: &dyn Fn(&str)) -> R
     Ok(())
 }
 
-/// Copy the game's files (the `ROADRASH` folder of the disc) from a disc image or a folder.
-pub(super) fn copy_game(disc: &Path, dest: &Path, log: &dyn Fn(&str)) -> Result<usize, String> {
+/// Copy the files of a disc (an image, or a folder it was unpacked to) into `dest`: the folder
+/// `root` of it, or the whole disc when that is empty.
+pub(super) fn copy_root(
+    disc: &Path,
+    root: &str,
+    dest: &Path,
+    log: &dyn Fn(&str),
+) -> Result<usize, String> {
     let mut count = 0;
     if disc.is_dir() {
-        let root = game_folder(disc).ok_or(
-            "that folder does not hold the game (no ROADRASH.EXE in it or in a ROADRASH folder)",
-        )?;
-        copy_tree(&root, dest, &mut count, log)?;
+        let from = if root.is_empty() {
+            disc.to_path_buf()
+        } else {
+            super::pc_recipes::find_ci(disc, root)
+                .ok_or(format!("there is no {root} on the disc"))?
+        };
+        copy_tree(&from, dest, &mut count, log)?;
         return Ok(count);
     }
     let iso = Iso::open(disc)?;
-    let prefix = if iso.find("ROADRASH.EXE").is_ok() {
-        ""
-    } else if iso.find("ROADRASH/ROADRASH.EXE").is_ok() {
-        "ROADRASH"
-    } else {
-        return Err("this disc image does not hold Road Rash (no ROADRASH.EXE)".into());
-    };
-    for file in iso.files_under(prefix)? {
-        let from = if prefix.is_empty() {
+    for file in iso.files_under(root)? {
+        let from = if root.is_empty() {
             file.clone()
         } else {
-            format!("{prefix}/{file}")
+            format!("{root}/{file}")
         };
         let target = dest.join(&file);
         if let Some(dir) = target.parent() {
@@ -308,12 +285,45 @@ fn fetch_wine(paths: &Paths, log: &dyn Fn(&str)) -> Result<PathBuf, String> {
     }
 }
 
+/// The folder of a program that was installed on `C:` (`C:\\Games\\X\\X.EXE`), where the program is
+/// started from: games look for their data beside them. `None` for a program on the CD drive.
+fn program_folder(root: &Path, program: &str) -> Option<PathBuf> {
+    let rel = program.get(..2).filter(|d| d.eq_ignore_ascii_case("C:"))?;
+    let rel = program[rel.len()..].trim_start_matches(['\\', '/']);
+    let (folder, _) = rel.rsplit_once(['\\', '/'])?;
+    pc_recipes::find_ci(&root.join("prefix").join("drive_c"), folder).filter(|d| d.is_dir())
+}
+
+/// What a game is started with, besides Wine and its program.
+struct Launch {
+    /// The game draws in a window of its own (cnc-ddraw), not on a virtual desktop.
+    framed: bool,
+    /// DXVK draws its Direct3D 10 and 11.
+    dxvk: bool,
+    /// More entries for `WINEDLLOVERRIDES`.
+    overrides: Vec<String>,
+}
+
+impl Launch {
+    /// How a game of this recipe is started, on a window with a frame or not.
+    fn of(recipe: Option<&Recipe>, framed: bool) -> Launch {
+        Launch {
+            framed,
+            dxvk: recipe.is_some_and(|r| r.renderer == "dxvk"),
+            overrides: recipe.map(|r| r.overrides.clone()).unwrap_or_default(),
+        }
+    }
+}
+
 /// How to start the game: Wine, in the game's folder. `program` is a Windows path on the CD
-/// drive. With `framed` the game draws in a window of its own (cnc-ddraw); without, Wine puts it
-/// on a virtual desktop of `size`, which has no title bar.
-fn spec(wine: &Path, root: &Path, program: &str, size: &str, framed: bool) -> NativeSpec {
-    let (args, overrides) = if framed {
-        (vec![program.to_string()], "mscoree,mshtml=;ddraw=n,b")
+/// drive. With `launch.framed` the game draws in a window of its own (cnc-ddraw); without, Wine
+/// puts it on a virtual desktop of `size`, which has no title bar.
+fn spec(wine: &Path, root: &Path, program: &str, size: &str, launch: &Launch) -> NativeSpec {
+    let (args, mut overrides) = if launch.framed {
+        (
+            vec![program.to_string()],
+            "mscoree,mshtml=;ddraw=n,b".to_string(),
+        )
     } else {
         (
             vec![
@@ -321,19 +331,29 @@ fn spec(wine: &Path, root: &Path, program: &str, size: &str, framed: bool) -> Na
                 format!("/desktop=Game,{size}"),
                 program.to_string(),
             ],
-            "mscoree,mshtml=",
+            "mscoree,mshtml=".to_string(),
         )
     };
+    if launch.dxvk {
+        overrides.push_str(";d3d11,d3d10core=n,b");
+    }
+    for o in &launch.overrides {
+        overrides.push(';');
+        overrides.push_str(o);
+    }
     NativeSpec {
         exe: wine.to_path_buf(),
-        args,
-        cwd: Some(root.join("game")),
+        args: args
+            .into_iter()
+            .map(|a| pc_recipes::on_cd_drive(&a))
+            .collect(),
+        cwd: Some(program_folder(root, program).unwrap_or_else(|| root.join("game"))),
         env: vec![
             (
                 "WINEPREFIX".into(),
                 root.join("prefix").to_string_lossy().into_owned(),
             ),
-            ("WINEDLLOVERRIDES".into(), overrides.into()),
+            ("WINEDLLOVERRIDES".into(), overrides),
             ("WINEDEBUG".into(), "-all".into()),
         ],
         // the server that Wine keeps for the prefix outlives the program
@@ -344,6 +364,86 @@ fn spec(wine: &Path, root: &Path, program: &str, size: &str, framed: bool) -> Na
     }
 }
 
+/// Fetch `url` (at most `max` bytes) and check its SHA-256: the whole file, or why not.
+fn download_checked(url: &str, max: u64, sha256: &str) -> Result<Vec<u8>, String> {
+    let mut resp = ureq::get(url)
+        .call()
+        .map_err(|e| format!("download failed: {e}"))?;
+    let mut bytes = Vec::new();
+    resp.body_mut()
+        .as_reader()
+        .take(max + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("download failed: {e}"))?;
+    if bytes.len() as u64 > max {
+        return Err("the download is bigger than it should be".into());
+    }
+    let digest: String = Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    if digest != sha256 {
+        return Err(format!("not the file expected (SHA-256 {digest})"));
+    }
+    Ok(bytes)
+}
+
+/// DXVK for macOS (github.com/Gcenx/DXVK-macOS, zlib licence): Direct3D 10 and 11 over Vulkan
+/// (MoltenVK), as the `d3d10core.dll` and `d3d11.dll` that replace Wine's. Pinned to one release
+/// and checked against its SHA-256.
+const DXVK_URL: &str = "https://github.com/Gcenx/DXVK-macOS/releases/download/v1.10.3-20230507-repack/dxvk-macOS-async-v1.10.3-20230507-repack.tar.gz";
+const DXVK_SHA256: &str = "acd1520ad105d8ef124a09c8e11a259a5dc8bdc565ad18e0e52693f9807b2477";
+const DXVK_MAX_BYTES: u64 = 8 << 20;
+/// The libraries of DXVK that are put in a game's Windows, and where they go from the folders
+/// `x64` and `x32` of the release: 64-bit ones in `system32`, 32-bit ones in `syswow64`.
+const DXVK_DLLS: [&str; 2] = ["d3d10core.dll", "d3d11.dll"];
+
+/// The folder with the release of DXVK (`x32` and `x64` in it), fetched once.
+fn dxvk_dir(paths: &Paths, log: &dyn Fn(&str)) -> Result<PathBuf, String> {
+    let dir = paths.native_dir().join("wine").join("dxvk");
+    if DXVK_DLLS.iter().all(|d| dir.join("x64").join(d).is_file()) {
+        return Ok(dir);
+    }
+    log("Getting DXVK (Direct3D 11 for the game)");
+    let bytes = download_checked(DXVK_URL, DXVK_MAX_BYTES, DXVK_SHA256)?;
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let archive = dir.join("dxvk.tar.gz");
+    std::fs::write(&archive, bytes).map_err(|e| e.to_string())?;
+    run(
+        Command::new("tar")
+            .arg("-xzf")
+            .arg(&archive)
+            .arg("--strip-components=1")
+            .arg("-C")
+            .arg(&dir),
+        &|_| {},
+    )?;
+    let _ = std::fs::remove_file(&archive);
+    if DXVK_DLLS.iter().all(|d| dir.join("x64").join(d).is_file()) {
+        Ok(dir)
+    } else {
+        Err("DXVK was unpacked but its libraries are not where they should be".into())
+    }
+}
+
+/// Put DXVK in the Windows of a game (`prefix`): the libraries replace those of Wine for the
+/// game, with `WINEDLLOVERRIDES` saying so (see `spec`).
+fn install_dxvk(prefix: &Path, dxvk: &Path) -> Result<(), String> {
+    let windows = prefix.join("drive_c").join("windows");
+    for (from, to) in [("x64", "system32"), ("x32", "syswow64")] {
+        let target = windows.join(to);
+        if !target.is_dir() {
+            continue; // a Windows of one kind only
+        }
+        for dll in DXVK_DLLS {
+            std::fs::copy(dxvk.join(from).join(dll), target.join(dll))
+                .map_err(|e| format!("{dll}: {e}"))?;
+        }
+    }
+    Ok(())
+}
+
 /// The `ddraw.dll` of cnc-ddraw, fetched once into `<data dir>/native/wine/cnc-ddraw`.
 fn ddraw_dll(paths: &Paths, log: &dyn Fn(&str)) -> Result<PathBuf, String> {
     let dir = paths.native_dir().join("wine").join("cnc-ddraw");
@@ -352,25 +452,7 @@ fn ddraw_dll(paths: &Paths, log: &dyn Fn(&str)) -> Result<PathBuf, String> {
         return Ok(dll);
     }
     log("Getting cnc-ddraw (a window for the game)");
-    let mut resp = ureq::get(DDRAW_URL)
-        .call()
-        .map_err(|e| format!("download failed: {e}"))?;
-    let mut bytes = Vec::new();
-    resp.body_mut()
-        .as_reader()
-        .take(DDRAW_MAX_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|e| format!("download failed: {e}"))?;
-    if bytes.len() as u64 > DDRAW_MAX_BYTES {
-        return Err("the download is bigger than it should be".into());
-    }
-    let digest: String = Sha256::digest(&bytes)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
-    if digest != DDRAW_SHA256 {
-        return Err(format!("not the file expected (SHA-256 {digest})"));
-    }
+    let bytes = download_checked(DDRAW_URL, DDRAW_MAX_BYTES, DDRAW_SHA256)?;
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
     let mut file = zip.by_name("ddraw.dll").map_err(|e| e.to_string())?;
     let mut out = Vec::new();
@@ -406,54 +488,9 @@ pub(super) fn add_window_frame(paths: &Paths, game: &Path, size: &str, log: &dyn
     done.is_ok()
 }
 
-/// What is known about the disc: Road Rash needs a few things done for it (found by running
-/// it); any other disc is tried as it is.
-#[derive(Debug, PartialEq)]
-pub(super) enum Recipe {
-    RoadRash,
-    Generic,
-}
-
-pub(super) fn recipe_for(disc: &Path) -> Result<Recipe, String> {
-    let road_rash = if disc.is_dir() {
-        game_folder(disc).is_some()
-    } else {
-        let iso = Iso::open(disc)?;
-        iso.find("ROADRASH.EXE").is_ok() || iso.find("ROADRASH/ROADRASH.EXE").is_ok()
-    };
-    Ok(if road_rash {
-        Recipe::RoadRash
-    } else {
-        Recipe::Generic
-    })
-}
-
-/// The whole disc (an image or a folder) copied into `dest`.
-pub(super) fn copy_disc(disc: &Path, dest: &Path, log: &dyn Fn(&str)) -> Result<usize, String> {
-    let mut count = 0;
-    if disc.is_dir() {
-        copy_tree(disc, dest, &mut count, log)?;
-        return Ok(count);
-    }
-    let iso = Iso::open(disc)?;
-    for file in iso.files_under("")? {
-        let target = dest.join(&file);
-        if let Some(dir) = target.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-        }
-        std::fs::write(&target, iso.read(&file)?)
-            .map_err(|e| format!("{}: {e}", target.display()))?;
-        count += 1;
-        if count % 50 == 0 {
-            log(&format!("  {count} files"));
-        }
-    }
-    Ok(count)
-}
-
 /// `rel` (with `\` or `/`) inside `root`, matched without regard to letter case; the names as
 /// they are on disk.
-fn resolve_ci(root: &Path, rel: &str) -> Option<Vec<String>> {
+pub(super) fn resolve_ci(root: &Path, rel: &str) -> Option<Vec<String>> {
     let mut dir = root.to_path_buf();
     let mut names = Vec::new();
     for part in rel
@@ -510,98 +547,44 @@ pub(super) fn find_program(game: &Path) -> Result<String, String> {
     }
 }
 
-/// `reg add` with its arguments (the program is `reg`): the value `name` of `key`, always
-/// overwritten. Games of 32 bits read the 32-bit view of the registry, so `view32` asks for it.
-pub(super) fn reg_add(key: &str, rest: &[&str], view32: bool) -> Vec<String> {
-    let mut c: Vec<String> = vec!["reg".into(), "add".into(), key.into()];
-    c.extend(rest.iter().map(|s| s.to_string()));
-    c.push("/f".into());
-    if view32 {
-        c.push("/reg:32".into());
-    }
-    c
-}
-
-/// The entries of the registry that the installer of Road Rash writes: where its files are
-/// (`path`, with a backslash at the end) and how it looks. For the current user first, then the
-/// whole machine.
-pub(super) fn road_rash_registry(path: &str) -> Vec<Vec<String>> {
-    let mut commands = Vec::new();
-    for root in ["HKCU", "HKLM"] {
-        let key = format!("{root}\\Software\\Electronic Arts\\RoadRash 95");
-        commands.push(reg_add(
-            &key,
-            &["/v", "Path", "/t", "REG_SZ", "/d", path],
-            true,
-        ));
-        for (name, value) in [
-            ("HiRes", "1"),
-            ("HiResBikers", "1"),
-            ("HiResCars", "1"),
-            ("Inset", "0"),
-            // no video at the start: its window has no title bar and the game cannot be closed
-            // while it plays
-            ("Intro", "0"),
-        ] {
-            commands.push(reg_add(
-                &key,
-                &["/v", name, "/t", "REG_DWORD", "/d", value],
-                true,
-            ));
-        }
-    }
-    commands
-}
-
-/// The arguments of `wine reg add` for the entries that the installer of the disc writes.
-fn registry_commands(recipe: &Recipe) -> Vec<Vec<String>> {
-    // the CD-ROM drive
-    let mut commands = vec![reg_add(
-        "HKLM\\Software\\Wine\\Drives",
-        &["/v", "d:", "/d", "cdrom"],
-        false,
-    )];
-    if *recipe == Recipe::RoadRash {
-        commands.extend(road_rash_registry("C:\\RoadRash\\"));
-    }
-    commands
-}
-
-/// The program of Road Rash as it is on the disc (an image, or a folder it was unpacked to).
-pub(super) fn fresh_road_rash_exe(disc: &Path) -> Result<Vec<u8>, String> {
+/// A file of the disc as it is there (an image, or a folder it was unpacked to): `root` is the
+/// folder of the game, `rel` the path in it.
+pub(super) fn fresh_file(disc: &Path, root: &str, rel: &str) -> Result<Vec<u8>, String> {
+    let path = if root.is_empty() {
+        rel.to_string()
+    } else {
+        format!("{root}/{rel}")
+    };
     if disc.is_dir() {
-        let folder = game_folder(disc).ok_or("the disc folder does not hold the game")?;
-        let names = resolve_ci(&folder, "ROADRASH.EXE").ok_or("ROADRASH.EXE is not there")?;
-        return std::fs::read(folder.join(names.join("/"))).map_err(|e| e.to_string());
+        let at = super::pc_recipes::find_ci(disc, &path).ok_or(format!("{path} is not there"))?;
+        return std::fs::read(at).map_err(|e| e.to_string());
     }
-    let iso = Iso::open(disc)?;
-    let path = ["ROADRASH/ROADRASH.EXE", "ROADRASH.EXE"]
-        .into_iter()
-        .find(|p| iso.find(p).is_ok())
-        .ok_or("ROADRASH.EXE is not on the disc")?;
-    iso.read(path)
+    Iso::open(disc)?.read(&path)
 }
 
-/// What marks, in the `ready` file, a game whose program has the patches below.
-const PATCHED: &str = "patched-3";
-
-/// The title of the window of Road Rash, and what it becomes: the title says what runs it.
-const TITLE: &str = "Road Rash";
-const TITLE_IN_WINE: &[u8] = b"Road Rash \x97 Wine";
-
-/// The patches of the program of Road Rash, each best effort (the game works without them): its
-/// Dock icon (the app's, or one drawn from its own) and the title of its window.
-pub(super) fn patch_road_rash(exe: &Path, icon: Option<&[u8]>, in_wine: bool, log: &dyn Fn(&str)) {
+/// The patches of the program of a game, each best effort (the game works without them): its Dock
+/// icon (the app's, or one drawn from its own) and, under Wine, the title of its window when the
+/// recipe has one.
+pub(super) fn patch_program(
+    exe: &Path,
+    recipe: &Recipe,
+    icon: Option<&[u8]>,
+    in_wine: bool,
+    log: &dyn Fn(&str),
+) {
     if let Err(e) = mac_icon_for(exe, icon) {
         log(&format!("The game keeps its old icon: {e}"));
     }
+    let Some((from, to)) = recipe.title_bytes() else {
+        return;
+    };
     if !in_wine {
         return; // the title says what runs the game: nothing does on Windows
     }
     let titled = std::fs::read(exe)
         .map_err(|e| e.to_string())
         .and_then(|mut bytes| {
-            crate::pe_icon::set_window_title(&mut bytes, TITLE, TITLE_IN_WINE)?;
+            crate::pe_icon::set_window_title(&mut bytes, &from, &to)?;
             std::fs::write(exe, bytes).map_err(|e| e.to_string())
         });
     if let Err(e) = titled {
@@ -609,7 +592,18 @@ pub(super) fn patch_road_rash(exe: &Path, icon: Option<&[u8]>, in_wine: bool, lo
     }
 }
 
-/// Give the program in `exe` an icon that looks like a Mac icon (see [`crate::pe_icon`]).
+/// Put the stand-ins of a recipe in the folder of the game's files.
+pub(super) fn write_stubs(recipe: &Recipe, game: &Path) -> Result<(), String> {
+    for stub in &recipe.stubs {
+        let bytes = match stub.kind.as_str() {
+            "aweman32" => aweman32_stub(),
+            other => return Err(format!("no stand-in called {other}")),
+        };
+        std::fs::write(game.join(&stub.file), bytes).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 pub(super) fn mac_icon_for(exe: &Path, icon: Option<&[u8]>) -> Result<(), String> {
     let mut bytes = std::fs::read(exe).map_err(|e| e.to_string())?;
     match icon {
@@ -623,23 +617,6 @@ pub(super) fn mac_icon_for(exe: &Path, icon: Option<&[u8]>) -> Result<(), String
         let _ = std::fs::remove_file(&part);
         e.to_string()
     })
-}
-
-/// The icon of the program of any game (`program` is a path on the CD drive, and the files of
-/// the disc are in `game`): the app's with the badge of the system. The program may be packed or
-/// protected, or not a Windows program of 32 bits: then it is left as it was and keeps its icon.
-pub(super) fn patch_program_icon(
-    game: &Path,
-    program: &str,
-    icon: Option<&[u8]>,
-    log: &dyn Fn(&str),
-) {
-    let Some(names) = resolve_ci(game, program.trim_start_matches("D:")) else {
-        return;
-    };
-    if let Err(e) = mac_icon_for(&game.join(names.join("/")), icon) {
-        log(&format!("The game keeps its icon: {e}"));
-    }
 }
 
 /// Whether a Wine is on this computer (the one this app fetched, or another).
@@ -687,6 +664,199 @@ pub(super) fn game_id(disc: &Path) -> String {
     }
 }
 
+/// Make the CD drive of a game: `R:` of its Wine, which is the files of the disc (or, for a recipe
+/// that names the folder of the game on the disc, a folder that holds it under that name).
+#[cfg(unix)]
+fn setup_cd_drive(
+    prefix: &Path,
+    recipe: &Recipe,
+    game: &Path,
+    cdroot: &Path,
+    id: &str,
+) -> Result<(), String> {
+    use std::os::unix::fs::symlink;
+    let drive = prefix
+        .join("dosdevices")
+        .join(format!("{}:", pc_recipes::CD_DRIVE.to_ascii_lowercase()));
+    let _ = std::fs::remove_file(&drive);
+    let label = recipe.label.clone().unwrap_or_else(|| id.to_uppercase());
+    match &recipe.drive_folder {
+        Some(folder) => {
+            // the game's folder shows up on the drive under the name the disc gives it
+            let _ = std::fs::remove_dir_all(cdroot);
+            std::fs::create_dir_all(cdroot).map_err(|e| e.to_string())?;
+            symlink("../game", cdroot.join(folder)).map_err(|e| e.to_string())?;
+            std::fs::write(cdroot.join(".windows-label"), &label).map_err(|e| e.to_string())?;
+            symlink(cdroot, &drive).map_err(|e| e.to_string())
+        }
+        None => {
+            std::fs::write(game.join(".windows-label"), &label).map_err(|e| e.to_string())?;
+            symlink(game, &drive).map_err(|e| e.to_string())
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn setup_cd_drive(_: &Path, _: &Recipe, _: &Path, _: &Path, _: &str) -> Result<(), String> {
+    Ok(())
+}
+
+/// The Windows of a game and its files: Wine's environment, the files of the disc, and the CD
+/// drive. Done once (`environment` marks it): a game that cannot be started yet (its program is
+/// not known) keeps it for its installer.
+fn build_environment(
+    env: &WineEnv,
+    recipe: &Recipe,
+    disc: &Path,
+    root: &Path,
+    log: &dyn Fn(&str),
+) -> Result<(), String> {
+    let (game, cdroot) = (root.join("game"), root.join("cdroot"));
+    let marker = root.join("environment");
+    if marker.is_file() && game.is_dir() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(root).map_err(|e| e.to_string())?;
+    log("Making a Windows environment for the game (about a minute)");
+    if !env.prefix.join("system.reg").is_file() {
+        env.run(&["wineboot".into(), "--init".into()])?;
+    }
+    log("Copying the game's files from the disc");
+    if game.exists() {
+        std::fs::remove_dir_all(&game).map_err(|e| e.to_string())?;
+    }
+    copy_root(disc, &pc_recipes::root_on(disc, recipe)?, &game, log)?;
+    log("Setting up the CD drive");
+    setup_cd_drive(&env.prefix, recipe, &game, &cdroot, &game_id(disc))?;
+    // the CD-ROM drive, for Wine
+    env.run(&pc_recipes::drive_command())?;
+    std::fs::write(&marker, "").map_err(|e| e.to_string())
+}
+
+/// What a set-up game remembers, in its `ready` file, a line each: the program to start (a path on
+/// the CD drive), the size of the screen it asks for, whether it has a window frame (`framed` or
+/// `desktop`), then marks: `recipe:<id>` and `rev-<n>` for the recipe it was set up with.
+struct Ready {
+    program: String,
+    size: String,
+    mode: String,
+    marks: Vec<String>,
+}
+
+impl Ready {
+    fn read(file: &Path) -> Option<Ready> {
+        let text = std::fs::read_to_string(file).ok()?;
+        let mut lines = text.lines().map(String::from);
+        Some(Ready {
+            program: lines.next()?,
+            size: lines.next()?,
+            mode: lines.next().unwrap_or_default(),
+            marks: lines.collect(),
+        })
+    }
+
+    fn write(&self, file: &Path) -> Result<(), String> {
+        let mut text = format!("{}\n{}\n{}\n", self.program, self.size, self.mode);
+        for m in &self.marks {
+            text.push_str(m);
+            text.push('\n');
+        }
+        std::fs::write(file, text).map_err(|e| e.to_string())
+    }
+
+    fn framed(&self) -> bool {
+        self.mode == "framed"
+    }
+
+    /// The recipe it was set up with. A game set up before recipes were data carries the mark
+    /// `patched-3`: that is Road Rash at its revision 3.
+    fn recipe(&self) -> Option<&'static Recipe> {
+        self.marks
+            .iter()
+            .find_map(|m| m.strip_prefix("recipe:"))
+            .map(pc_recipes::by_id)
+            .or_else(|| {
+                self.marks
+                    .iter()
+                    .any(|m| m == "patched-3")
+                    .then(|| pc_recipes::by_id("road-rash"))
+            })
+    }
+
+    fn revision(&self) -> u32 {
+        self.marks
+            .iter()
+            .find_map(|m| m.strip_prefix("rev-").and_then(|n| n.parse().ok()))
+            .or_else(|| self.marks.iter().any(|m| m == "patched-3").then_some(3))
+            .unwrap_or(0)
+    }
+
+    fn set_recipe(&mut self, recipe: &Recipe) {
+        self.marks
+            .retain(|m| !m.starts_with("recipe:") && !m.starts_with("rev-") && m != "patched-3");
+        self.marks.push(format!("recipe:{}", recipe.id));
+        self.marks.push(format!("rev-{}", recipe.revision));
+    }
+}
+
+/// A Wine and the environment of one game to run its programs in.
+struct WineEnv {
+    wine: PathBuf,
+    prefix: PathBuf,
+}
+
+impl WineEnv {
+    fn run(&self, args: &[String]) -> Result<(), String> {
+        run(
+            Command::new(&self.wine)
+                .args(args)
+                .env("WINEPREFIX", &self.prefix)
+                .env("WINEDLLOVERRIDES", "mscoree,mshtml=")
+                .env("WINEDEBUG", "-all"),
+            &|_| {},
+        )
+    }
+}
+
+/// What a recipe puts into a game's folder and the environment: the stand-ins, the patches of
+/// the program and the entries of the registry. Gives the program to start.
+fn apply_recipe(
+    paths: &Paths,
+    env: &WineEnv,
+    recipe: &Recipe,
+    game: &Path,
+    icon: Option<&[u8]>,
+    log: &dyn Fn(&str),
+) -> Result<String, String> {
+    write_stubs(recipe, game)?;
+    if recipe.renderer == "dxvk" {
+        install_dxvk(&env.prefix, &dxvk_dir(paths, log)?)?;
+    }
+    let program = match &recipe.program {
+        Some(p) => p.clone(),
+        None => find_program(game)?,
+    };
+    if let Some(exe) = recipe.program_in_game(game, &program) {
+        patch_program(&exe, recipe, icon, true, log);
+    }
+    if !recipe.registry.is_empty() {
+        // the folder the game says it is installed in is empty: its files are on the CD drive
+        std::fs::create_dir_all(
+            env.prefix.join("drive_c").join(
+                recipe
+                    .install_path()
+                    .trim_start_matches("C:\\")
+                    .trim_end_matches('\\'),
+            ),
+        )
+        .map_err(|e| e.to_string())?;
+        for command in pc_recipes::registry_commands(recipe, &recipe.install_path()) {
+            env.run(&command)?;
+        }
+    }
+    Ok(program)
+}
+
 /// Make the game on `disc` ready to start under Wine, and say how to start it. The first time
 /// this builds an environment and copies the game's files (a minute or two); later it only
 /// finds them again.
@@ -702,113 +872,388 @@ pub fn prepare(
     }
     let wine = locate_wine(paths).ok_or("Wine is not on this computer")?;
     let root = paths.native_dir().join("pc").join(game_id(disc));
-    let done = root.join("ready");
-    // `ready` holds the program to start, the size of the screen it asks for and whether it
-    // has a window frame
-    let ready_lines: Vec<String> = std::fs::read_to_string(&done)
-        .map(|t| t.lines().map(String::from).collect())
-        .unwrap_or_default();
-    if let [program, size, rest @ ..] = ready_lines.as_slice() {
-        let mut framed = rest.first().is_some_and(|m| m == "framed");
-        if rest.is_empty() {
-            // set up before the frame existed: add it without doing the rest again
-            framed = add_window_frame(paths, &root.join("game"), size, log);
-            let mode = if framed { "framed" } else { "desktop" };
-            let _ = std::fs::write(&done, format!("{program}\n{size}\n{mode}\n"));
-        }
-        // a game whose program was patched in an earlier way (or not at all) gets the current
-        // patch: the program is taken from the disc again, as the patches are written over it
-        let is_road_rash = program.to_ascii_uppercase().ends_with("ROADRASH.EXE");
-        if is_road_rash && !rest.iter().any(|f| f == PATCHED) {
-            let exe = root.join("game").join("ROADRASH.EXE");
-            let patched = fresh_road_rash_exe(disc)
-                .and_then(|bytes| std::fs::write(&exe, bytes).map_err(|e| e.to_string()))
-                .map(|_| patch_road_rash(&exe, icon, true, log));
-            if patched.is_ok() {
-                let mode = if framed { "framed" } else { "desktop" };
-                let _ = std::fs::write(&done, format!("{program}\n{size}\n{mode}\n{PATCHED}\n"));
-            }
-        }
-        return Ok(spec(&wine, &root, program, size, framed));
-    }
-    let recipe = recipe_for(disc)?;
     let (game, prefix, cdroot) = (root.join("game"), root.join("prefix"), root.join("cdroot"));
+    let done = root.join("ready");
+    let env = WineEnv {
+        wine: wine.clone(),
+        prefix: prefix.clone(),
+    };
+
+    if let Some(mut ready) = Ready::read(&done) {
+        if ready.mode.is_empty() {
+            // set up before the frame existed: add it without doing the rest again
+            let framed = add_window_frame(paths, &game, &ready.size, log);
+            ready.mode = if framed { "framed" } else { "desktop" }.into();
+            let _ = ready.write(&done);
+        }
+        // a game set up when the CD drive was `D:` gets `R:` (see `pc_recipes::CD_DRIVE`)
+        let drive_link = prefix
+            .join("dosdevices")
+            .join(format!("{}:", pc_recipes::CD_DRIVE.to_ascii_lowercase()));
+        if !drive_link.exists() && game.is_dir() {
+            let recipe = ready
+                .recipe()
+                .unwrap_or_else(|| pc_recipes::by_id("generic"));
+            let done = setup_cd_drive(&prefix, recipe, &game, &cdroot, &game_id(disc))
+                .and_then(|_| env.run(&pc_recipes::drive_command()));
+            if let Err(e) = done {
+                log(&format!("Could not set up the CD drive: {e}"));
+            }
+        }
+        // a game set up with an older revision of its recipe gets what changed: the program is
+        // taken from the disc again, as the patches are written over it
+        let recipe = ready.recipe().or_else(|| {
+            pc_recipes::for_disc(disc)
+                .ok()
+                .filter(|r| r.id != "generic")
+        });
+        let launch = Launch::of(recipe, ready.framed());
+        if let Some(recipe) = recipe.filter(|r| r.revision != ready.revision()) {
+            if disc.exists() {
+                match refresh(paths, &env, recipe, disc, &game, icon, &mut ready, log) {
+                    Ok(()) => {
+                        ready.set_recipe(recipe);
+                        let _ = ready.write(&done);
+                    }
+                    Err(e) => log(&format!("The game keeps what it had: {e}")),
+                }
+            }
+        }
+        return Ok(spec(&wine, &root, &ready.program, &ready.size, &launch));
+    }
+
+    let recipe = pc_recipes::for_disc(disc)?;
     std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
-    let env = [
-        ("WINEPREFIX", prefix.to_string_lossy().into_owned()),
-        ("WINEDLLOVERRIDES", "mscoree,mshtml=".to_string()),
-        ("WINEDEBUG", "-all".to_string()),
+
+    build_environment(&env, recipe, disc, &root, log)?;
+    let program = apply_recipe(paths, &env, recipe, &game, icon, log)?;
+    let mut marks = Vec::new();
+    apply_winetricks(&env, recipe, &mut marks, log)?;
+
+    let framed = add_window_frame(paths, &game, &recipe.screen, log);
+    let mut ready = Ready {
+        program,
+        size: recipe.screen.clone(),
+        mode: if framed { "framed" } else { "desktop" }.into(),
+        marks,
+    };
+    if recipe.id != "generic" {
+        ready.set_recipe(recipe);
+    }
+    ready.write(&done)?;
+    Ok(spec(
+        &wine,
+        &root,
+        &ready.program,
+        &ready.size,
+        &Launch::of(Some(recipe).filter(|r| r.id != "generic"), framed),
+    ))
+}
+
+/// The verbs of `winetricks` that a recipe lists and that were not run yet (`marks` says which
+/// were: `winetricks:<verb>`).
+fn pending_verbs<'a>(recipe: &'a Recipe, marks: &[String]) -> Vec<&'a str> {
+    recipe
+        .winetricks
+        .iter()
+        .map(String::as_str)
+        .filter(|v| {
+            !marks
+                .iter()
+                .any(|m| m.strip_prefix("winetricks:") == Some(v))
+        })
+        .collect()
+}
+
+/// `winetricks` run without questions on the Windows of a game, with this Wine.
+fn winetricks_command(tool: &Path, wine: &Path, prefix: &Path, verbs: &[&str]) -> Command {
+    let mut path = wine
+        .parent()
+        .map(|d| d.as_os_str().to_os_string())
+        .unwrap_or_default();
+    path.push(":");
+    path.push(search_path());
+    let mut command = Command::new(tool);
+    command
+        .arg("-q")
+        .args(verbs)
+        .env("WINE", wine)
+        .env("WINEPREFIX", prefix)
+        .env("PATH", path);
+    command
+}
+
+/// Run the verbs of `winetricks` of a recipe that were not run yet, with the `winetricks` that is on
+/// this computer (it is not fetched: it runs a good deal of other programs). Each is marked when
+/// done, so that it is not run twice.
+fn apply_winetricks(
+    env: &WineEnv,
+    recipe: &Recipe,
+    marks: &mut Vec<String>,
+    log: &dyn Fn(&str),
+) -> Result<(), String> {
+    let verbs = pending_verbs(recipe, marks);
+    if verbs.is_empty() {
+        return Ok(());
+    }
+    let tool = find_tool("winetricks").ok_or(format!(
+        "{} needs {} from winetricks: install it first (brew install winetricks)",
+        recipe.name,
+        verbs.join(", ")
+    ))?;
+    log(&format!("Installing {} (winetricks)", verbs.join(", ")));
+    run(
+        &mut winetricks_command(&tool, &env.wine, &env.prefix, &verbs),
+        log,
+    )?;
+    let done: Vec<String> = verbs.iter().map(|v| format!("winetricks:{v}")).collect();
+    marks.extend(done);
+    Ok(())
+}
+
+/// The names under which the installer of a disc is looked for, in this order.
+const INSTALLER_NAMES: [&str; 6] = [
+    "SETUP.EXE",
+    "INSTALL.EXE",
+    "SETUP/SETUP.EXE",
+    "INSTALL/INSTALL.EXE",
+    "SETUP/INSTALL.EXE",
+    "INSTALL/SETUP.EXE",
+];
+
+/// The installer of a disc (a path on the CD drive): the one the recipe names, else the one that
+/// `autorun.inf` names if it looks like an installer, else a program with a usual name.
+fn find_installer(game: &Path, recipe: &Recipe) -> Option<String> {
+    let on_drive = |names: Vec<String>| format!("D:\\{}", names.join("\\"));
+    let in_game = |rel: &str| match &recipe.drive_folder {
+        // the files are under the folder of the recipe on the drive
+        Some(folder) => resolve_ci(game, rel).map(|n| {
+            let mut v = vec![folder.clone()];
+            v.extend(n);
+            v
+        }),
+        None => resolve_ci(game, rel),
+    };
+    if let Some(rel) = &recipe.installer {
+        let rel = rel.trim_start_matches("D:").trim_start_matches(['\\', '/']);
+        return in_game(rel).map(on_drive);
+    }
+    if let Some(autorun) = resolve_ci(game, "autorun.inf") {
+        let text = std::fs::read(game.join(autorun.join("/")))
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+            .unwrap_or_default();
+        for line in text.lines() {
+            let Some((key, value)) = line.split_once('=') else {
+                continue;
+            };
+            let lower = value.to_ascii_lowercase();
+            if key.trim().eq_ignore_ascii_case("open")
+                && (lower.contains("setup") || lower.contains("install"))
+            {
+                if let Some(end) = lower.find(".exe").map(|i| i + 4) {
+                    if let Some(found) = in_game(&value.trim()[..end]) {
+                        return Some(on_drive(found));
+                    }
+                }
+            }
+        }
+    }
+    INSTALLER_NAMES
+        .iter()
+        .find_map(|name| in_game(name))
+        .map(on_drive)
+}
+
+/// The programs under a folder with their sizes (to see which ones an installer added).
+fn programs_under(dir: &Path) -> std::collections::BTreeMap<PathBuf, u64> {
+    let mut found = std::collections::BTreeMap::new();
+    let mut todo = vec![dir.to_path_buf()];
+    while let Some(d) = todo.pop() {
+        let Ok(entries) = std::fs::read_dir(&d) else {
+            continue;
+        };
+        for e in entries.flatten() {
+            let path = e.path();
+            let Ok(kind) = e.file_type() else {
+                continue;
+            };
+            if kind.is_dir() {
+                // Windows' own folder holds the programs of Windows
+                if !(d == dir && e.file_name().eq_ignore_ascii_case("windows")) {
+                    todo.push(path);
+                }
+            } else if path
+                .extension()
+                .is_some_and(|x| x.eq_ignore_ascii_case("exe"))
+            {
+                found.insert(path, e.metadata().map(|m| m.len()).unwrap_or(0));
+            }
+        }
+    }
+    found
+}
+
+/// Which program an installer left for the game: of the programs that were not there before,
+/// those that are not helpers (uninstallers, installers, redistributables, settings) are
+/// kept; the one whose name is like the game's, else the biggest.
+fn choose_installed(
+    before: &std::collections::BTreeMap<PathBuf, u64>,
+    after: &std::collections::BTreeMap<PathBuf, u64>,
+    game: &str,
+) -> Result<PathBuf, String> {
+    const HELPERS: [&str; 11] = [
+        "unins", "uninst", "setup", "install", "update", "patch", "config", "readme", "dxsetup",
+        "vcredist", "redist",
     ];
-    let wine_run = |args: &[String]| {
-        run(
-            Command::new(&wine)
-                .args(args)
-                .envs(env.iter().map(|(k, v)| (*k, v))),
-            &|_| {},
-        )
+    let new: Vec<(&PathBuf, u64)> = after
+        .iter()
+        .filter(|(p, _)| !before.contains_key(*p))
+        .map(|(p, n)| (p, *n))
+        .collect();
+    if new.is_empty() {
+        return Err("the installer did not leave any program: was it finished?".into());
+    }
+    let name = |p: &PathBuf| {
+        p.file_stem()
+            .map(|n| n.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default()
     };
-
-    log("Making a Windows environment for the game (about a minute)");
-    if !prefix.join("system.reg").is_file() {
-        wine_run(&["wineboot".into(), "--init".into()])?;
+    let mut kept: Vec<(&PathBuf, u64)> = new
+        .iter()
+        .copied()
+        .filter(|(p, _)| !HELPERS.iter().any(|h| name(p).contains(h)))
+        .collect();
+    if kept.is_empty() {
+        kept = new;
     }
-
-    log("Copying the game's files from the disc");
-    if game.exists() {
-        std::fs::remove_dir_all(&game).map_err(|e| e.to_string())?;
-    }
-    let (program, size) = match recipe {
-        Recipe::RoadRash => {
-            copy_game(disc, &game, log)?;
-            std::fs::write(game.join("AWEMAN32.DLL"), aweman32_stub())
-                .map_err(|e| e.to_string())?;
-            patch_road_rash(&game.join("ROADRASH.EXE"), icon, true, log);
-            ("D:\\RoadRash\\ROADRASH.EXE".to_string(), "640x480")
-        }
-        Recipe::Generic => {
-            copy_disc(disc, &game, log)?;
-            let program = find_program(&game)?;
-            patch_program_icon(&game, &program, icon, log);
-            (program, "800x600")
-        }
+    let flat = |s: &str| {
+        s.chars()
+            .filter(char::is_ascii_alphanumeric)
+            .collect::<String>()
+            .to_ascii_lowercase()
     };
+    let game = flat(game);
+    let like: Vec<(&PathBuf, u64)> = kept
+        .iter()
+        .copied()
+        .filter(|(p, _)| {
+            let n = flat(&name(p));
+            !n.is_empty() && !game.is_empty() && (game.contains(&n) || n.contains(&game))
+        })
+        .collect();
+    let pool = if like.is_empty() { kept } else { like };
+    pool.into_iter()
+        .max_by_key(|(_, size)| *size)
+        .map(|(p, _)| p.clone())
+        .ok_or_else(|| "no program was found".to_string())
+}
 
-    log("Setting up the CD drive");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::symlink;
-        let drive = prefix.join("dosdevices").join("d:");
-        let _ = std::fs::remove_file(&drive);
-        match recipe {
-            Recipe::RoadRash => {
-                // the disc's game folder shows up as D:\RoadRash
-                let _ = std::fs::remove_dir_all(&cdroot);
-                std::fs::create_dir_all(&cdroot).map_err(|e| e.to_string())?;
-                symlink("../game", cdroot.join("ROADRASH")).map_err(|e| e.to_string())?;
-                std::fs::write(cdroot.join(".windows-label"), "ROADRASH")
-                    .map_err(|e| e.to_string())?;
-                symlink(&cdroot, &drive).map_err(|e| e.to_string())?;
-            }
-            Recipe::Generic => {
-                std::fs::write(game.join(".windows-label"), game_id(disc).to_uppercase())
-                    .map_err(|e| e.to_string())?;
-                symlink(&game, &drive).map_err(|e| e.to_string())?;
-            }
-        }
+/// The Windows path (`C:\...`) of a file in the `C:` drive of a game.
+fn windows_path(drive_c: &Path, file: &Path) -> Result<String, String> {
+    let rel = file.strip_prefix(drive_c).map_err(|e| e.to_string())?;
+    Ok(format!(
+        "C:\\{}",
+        rel.components()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join("\\")
+    ))
+}
+
+/// Run the installer of the disc of a game under Wine (the user follows it in its window), and
+/// make the program that it leaves the one that Play starts. Gives the name of that program.
+pub fn run_installer(
+    paths: &Paths,
+    disc: &Path,
+    icon: Option<&[u8]>,
+    log: &dyn Fn(&str),
+) -> Result<String, String> {
+    if cfg!(windows) {
+        return Err("On Windows run the installer from the mounted disc yourself".into());
     }
-    for command in registry_commands(&recipe) {
-        wine_run(&command)?;
-    }
-    let framed = add_window_frame(paths, &game, size, log);
-    let mode = if framed { "framed" } else { "desktop" };
-    let flags = if recipe == Recipe::RoadRash {
-        format!("{PATCHED}\n")
-    } else {
-        String::new()
+    let wine = locate_wine(paths).ok_or("Wine is not on this computer")?;
+    let recipe = pc_recipes::for_disc(disc)?;
+    let root = paths.native_dir().join("pc").join(game_id(disc));
+    let (game, prefix) = (root.join("game"), root.join("prefix"));
+    let env = WineEnv {
+        wine: wine.clone(),
+        prefix: prefix.clone(),
     };
-    std::fs::write(&done, format!("{program}\n{size}\n{mode}\n{flags}"))
-        .map_err(|e| e.to_string())?;
-    Ok(spec(&wine, &root, &program, size, framed))
+    build_environment(&env, recipe, disc, &root, log)?;
+    let installer = find_installer(&game, recipe).ok_or("this disc has no installer to run")?;
+    let drive_c = prefix.join("drive_c");
+    let before = programs_under(&drive_c);
+
+    log("Running the installer of the disc: follow it in the window that opens");
+    let status = Command::new(&wine)
+        .args([
+            "explorer".to_string(),
+            "/desktop=Installer,800x600".to_string(),
+            pc_recipes::on_cd_drive(&installer),
+        ])
+        .current_dir(&game)
+        .env("WINEPREFIX", &prefix)
+        .env("WINEDLLOVERRIDES", "mscoree,mshtml=")
+        .env("WINEDEBUG", "-all")
+        .status()
+        .map_err(|e| format!("cannot start Wine: {e}"))?;
+    log(&format!("The installer ended ({status})"));
+    // an installer may start the program that does the work and end: wait for all of it
+    if let Some(server) = wine.parent().map(|bin| bin.join("wineserver")) {
+        let _ = Command::new(server)
+            .arg("-w")
+            .env("WINEPREFIX", &prefix)
+            .status();
+    }
+
+    let installed = choose_installed(&before, &programs_under(&drive_c), &game_id(disc))?;
+    let program = windows_path(&drive_c, &installed)?;
+    log(&format!("The game is {program}"));
+    if let Some(folder) = installed.parent() {
+        // the window frame is the library that sits beside the program
+        add_window_frame(paths, folder, "800x600", log);
+    }
+    patch_program(&installed, recipe, icon, true, log);
+    let mut ready = Ready {
+        program,
+        size: "800x600".into(),
+        mode: "framed".into(),
+        marks: vec!["installed".into()],
+    };
+    if recipe.id != "generic" {
+        ready.set_recipe(recipe);
+    }
+    ready.write(&root.join("ready"))?;
+    Ok(installed
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default())
+}
+
+/// Bring a game set up with an older revision of its recipe up to date: the stand-ins, the program
+/// from the disc with the patches, and the registry.
+#[allow(clippy::too_many_arguments)]
+fn refresh(
+    paths: &Paths,
+    env: &WineEnv,
+    recipe: &Recipe,
+    disc: &Path,
+    game: &Path,
+    icon: Option<&[u8]>,
+    ready: &mut Ready,
+    log: &dyn Fn(&str),
+) -> Result<(), String> {
+    if let Some(exe) = recipe.program_in_game(game, &ready.program) {
+        let rel = exe
+            .strip_prefix(game)
+            .map_err(|e| e.to_string())?
+            .to_string_lossy()
+            .replace('\\', "/");
+        let bytes = fresh_file(disc, &pc_recipes::root_on(disc, recipe)?, &rel)?;
+        std::fs::write(&exe, bytes).map_err(|e| e.to_string())?;
+    }
+    apply_recipe(paths, env, recipe, game, icon, log)?;
+    apply_winetricks(env, recipe, &mut ready.marks, log)
 }
 
 #[cfg(test)]
@@ -834,23 +1279,31 @@ mod tests {
         assert_eq!(dll.len(), 0x400);
     }
 
+    fn launch(framed: bool, dxvk: bool) -> Launch {
+        Launch {
+            framed,
+            dxvk,
+            overrides: Vec::new(),
+        }
+    }
+
     #[test]
     fn the_game_starts_wine_in_its_own_folder_framed_or_on_a_virtual_desktop() {
         let root = Path::new("/data/pc/road-rash");
         let wine = Path::new("/opt/wine/bin/wine");
-        let desktop = spec(wine, root, "D:\\GAME.EXE", "800x600", false);
+        let desktop = spec(wine, root, "D:\\GAME.EXE", "800x600", &launch(false, false));
         assert_eq!(desktop.exe, wine);
         assert_eq!(
             desktop.args,
-            ["explorer", "/desktop=Game,800x600", "D:\\GAME.EXE"]
+            ["explorer", "/desktop=Game,800x600", "R:\\GAME.EXE"]
         );
         assert_eq!(desktop.cwd.as_deref(), Some(root.join("game").as_path()));
         assert!(desktop
             .env
             .iter()
             .any(|(k, v)| k == "WINEPREFIX" && v == "/data/pc/road-rash/prefix"));
-        let framed = spec(wine, root, "D:\\GAME.EXE", "800x600", true);
-        assert_eq!(framed.args, ["D:\\GAME.EXE"]);
+        let framed = spec(wine, root, "D:\\GAME.EXE", "800x600", &launch(true, false));
+        assert_eq!(framed.args, ["R:\\GAME.EXE"]);
         assert!(framed
             .env
             .iter()
@@ -881,31 +1334,6 @@ mod tests {
         assert_eq!(game_id(Path::new("/x/().iso")), "game");
     }
 
-    #[test]
-    fn the_registry_entries_cover_the_drive_and_the_settings_the_game_reads() {
-        let commands = registry_commands(&Recipe::RoadRash);
-        let text: Vec<String> = commands.iter().map(|c| c.join(" ")).collect();
-        assert!(text
-            .iter()
-            .any(|c| c.contains("Wine\\Drives") && c.contains("d: ") && c.contains("cdrom")));
-        for root in ["HKCU", "HKLM"] {
-            assert!(text.iter().any(|c| c.starts_with(&format!(
-                "reg add {root}\\Software\\Electronic Arts\\RoadRash 95"
-            )) && c.contains("Path")));
-        }
-        assert!(
-            text.iter().all(|c| c.contains(" /f")),
-            "never asks a question"
-        );
-        assert!(text
-            .iter()
-            .filter(|c| c.contains("RoadRash 95"))
-            .all(|c| c.ends_with("/reg:32")));
-        assert!(text
-            .iter()
-            .any(|c| c.contains("HiResBikers") && c.contains("REG_DWORD")));
-    }
-
     fn temp(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("vuretro-wine-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
@@ -914,7 +1342,7 @@ mod tests {
     }
 
     #[test]
-    fn the_games_files_are_copied_from_a_folder_or_from_its_roadrash_folder() {
+    fn the_files_of_a_game_are_copied_from_its_folder_or_from_the_whole_disc() {
         let disc = temp("disc");
         std::fs::create_dir_all(disc.join("RoadRash/DATA")).unwrap();
         std::fs::write(disc.join("RoadRash/ROADRASH.EXE"), "exe").unwrap();
@@ -922,17 +1350,19 @@ mod tests {
         std::fs::create_dir_all(disc.join("SETUP")).unwrap();
         std::fs::write(disc.join("SETUP/OTHER.DLL"), "no").unwrap();
         let dest = temp("dest");
-        assert_eq!(copy_game(&disc, &dest.join("g"), &|_| {}).unwrap(), 2);
+        assert_eq!(
+            copy_root(&disc, "ROADRASH", &dest.join("g"), &|_| {}).unwrap(),
+            2
+        );
         assert!(dest.join("g/DATA/X.BIN").is_file());
         assert!(!dest.join("g/SETUP").exists(), "only the game's own folder");
-        // the folder itself
-        let direct = disc.join("RoadRash");
+        // the whole disc
         let dest2 = temp("dest2");
-        assert_eq!(copy_game(&direct, &dest2.join("g"), &|_| {}).unwrap(), 2);
-        // a folder that is not the game
-        let other = temp("other");
-        assert!(copy_game(&other, &other.join("g"), &|_| {}).is_err());
-        for d in [disc, dest, dest2, other] {
+        assert_eq!(copy_root(&disc, "", &dest2.join("g"), &|_| {}).unwrap(), 3);
+        assert!(dest2.join("g/SETUP/OTHER.DLL").is_file());
+        // a folder that is not there
+        assert!(copy_root(&disc, "NOPE", &dest2.join("h"), &|_| {}).is_err());
+        for d in [disc, dest, dest2] {
             std::fs::remove_dir_all(d).unwrap();
         }
     }
@@ -942,7 +1372,7 @@ mod tests {
         let dir = temp("notiso");
         let file = dir.join("x.iso");
         std::fs::write(&file, vec![0u8; 40 * 2048]).unwrap();
-        assert!(copy_game(&file, &dir.join("g"), &|_| {}).is_err());
+        assert!(copy_root(&file, "", &dir.join("g"), &|_| {}).is_err());
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -963,23 +1393,6 @@ mod tests {
         prepare(&paths, &iso, None, &|_| {}).unwrap();
         assert!(t.elapsed().as_secs() < 2);
         println!("kept in {}", dir.display());
-    }
-
-    #[test]
-    fn a_disc_is_road_rash_only_when_it_holds_its_program_and_anything_else_is_tried_as_it_is() {
-        let rr = temp("rr");
-        std::fs::create_dir_all(rr.join("ROADRASH")).unwrap();
-        std::fs::write(rr.join("ROADRASH/ROADRASH.EXE"), "x").unwrap();
-        assert_eq!(recipe_for(&rr).unwrap(), Recipe::RoadRash);
-        let other = temp("other-disc");
-        std::fs::write(other.join("GAME.EXE"), "x").unwrap();
-        assert_eq!(recipe_for(&other).unwrap(), Recipe::Generic);
-        assert!(recipe_for(&other.join("nothing.iso")).is_err());
-        // only Road Rash gets its registry entries
-        assert_eq!(registry_commands(&Recipe::Generic).len(), 1);
-        for d in [rr, other] {
-            std::fs::remove_dir_all(d).unwrap();
-        }
     }
 
     #[test]
@@ -1018,7 +1431,7 @@ mod tests {
         std::fs::write(disc.join("GAME.EXE"), "x").unwrap();
         std::fs::write(disc.join("DATA/A.DAT"), "x").unwrap();
         let dest = temp("whole-dest");
-        assert_eq!(copy_disc(&disc, &dest.join("g"), &|_| {}).unwrap(), 2);
+        assert_eq!(copy_root(&disc, "", &dest.join("g"), &|_| {}).unwrap(), 2);
         assert!(dest.join("g/DATA/A.DAT").is_file());
         for d in [disc, dest] {
             std::fs::remove_dir_all(d).unwrap();
@@ -1057,19 +1470,21 @@ mod tests {
         let iso = PathBuf::from(std::env::var("VURETRO_ROADRASH_ISO").unwrap());
         prepare(&paths, &iso, Some(&icon), &|l| println!("{l}")).unwrap();
         let ready = std::fs::read_to_string(paths.native_dir().join("pc/roadrash/ready")).unwrap();
-        assert!(ready.ends_with("patched-3\n"), "{ready}");
+        assert!(ready.ends_with("rev-3\n"), "{ready}");
     }
 
     #[test]
-    fn the_icon_of_any_games_program_is_replaced_in_the_copy_and_a_bad_one_is_left_alone() {
+    fn the_icon_of_a_games_program_is_replaced_in_the_copy_and_a_bad_one_is_left_alone() {
         let game = temp("any-icon");
         std::fs::create_dir_all(game.join("Bin")).unwrap();
         std::fs::write(game.join("Bin/Play.EXE"), crate::pe_icon::tests::program()).unwrap();
         let lines = std::cell::RefCell::new(Vec::new());
         let log = |l: &str| lines.borrow_mut().push(l.to_string());
+        let generic = Recipe::generic();
         let before = std::fs::read(game.join("Bin/Play.EXE")).unwrap();
         // the path on the CD drive is matched without regard to letter case
-        patch_program_icon(&game, "D:\\bin\\play.exe", None, &log);
+        let exe = generic.program_in_game(&game, "D:\\bin\\play.exe").unwrap();
+        patch_program(&exe, &generic, None, true, &log);
         let after = std::fs::read(game.join("Bin/Play.EXE")).unwrap();
         assert!(
             after.len() > before.len(),
@@ -1079,15 +1494,322 @@ mod tests {
         assert!(!game.join("Bin/Play.part").exists(), "no leftover");
         // a file that is not a program is left as it was, and the log says so
         std::fs::write(game.join("Bad.EXE"), b"not a program").unwrap();
-        patch_program_icon(&game, "D:\\Bad.EXE", None, &log);
+        patch_program(&game.join("Bad.EXE"), &generic, None, true, &log);
         assert_eq!(
             std::fs::read(game.join("Bad.EXE")).unwrap(),
             b"not a program"
         );
         assert_eq!(lines.borrow().len(), 1);
-        // a program that is not there is not an error
-        patch_program_icon(&game, "D:\\Nowhere.EXE", None, &log);
-        assert_eq!(lines.borrow().len(), 1);
         std::fs::remove_dir_all(game).unwrap();
+    }
+
+    #[test]
+    fn a_ready_file_is_read_and_written_and_an_old_one_is_road_rash_at_revision_3() {
+        let dir = temp("ready");
+        let file = dir.join("ready");
+        // as written before recipes were data: the program, the screen, the mode, one mark
+        std::fs::write(
+            &file,
+            "D:\\RoadRash\\ROADRASH.EXE\n640x480\nframed\npatched-3\n",
+        )
+        .unwrap();
+        let r = Ready::read(&file).unwrap();
+        assert!(r.framed());
+        assert_eq!(r.recipe().unwrap().id, "road-rash");
+        assert_eq!(r.revision(), 3);
+        // set up again with the recipe now: its own marks replace the old one
+        let mut r = r;
+        r.set_recipe(pc_recipes::by_id("road-rash"));
+        assert_eq!(r.marks, ["recipe:road-rash", "rev-3"]);
+        r.write(&file).unwrap();
+        let again = Ready::read(&file).unwrap();
+        assert_eq!(again.revision(), 3);
+        assert_eq!(again.program, "D:\\RoadRash\\ROADRASH.EXE");
+        // a game that no recipe knows has no recipe and revision 0
+        std::fs::write(&file, "D:\\GAME.EXE\n800x600\ndesktop\n").unwrap();
+        let g = Ready::read(&file).unwrap();
+        assert!(g.recipe().is_none());
+        assert_eq!(g.revision(), 0);
+        // a file with fewer than two lines is no state at all
+        std::fs::write(&file, "D:\\GAME.EXE\n").unwrap();
+        assert!(Ready::read(&file).is_none());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Prepares (or finds again) the game in a data folder (`VURETRO_DATA`) from its disc image,
+    /// and says how to start it: for trying a game that was set up earlier.
+    #[test]
+    #[ignore]
+    fn prepares_the_game_in_a_data_folder() {
+        let paths = Paths::new(&std::env::var("VURETRO_DATA").unwrap());
+        let iso = PathBuf::from(std::env::var("VURETRO_ROADRASH_ISO").unwrap());
+        let spec = prepare(&paths, &iso, None, &|l| println!("{l}")).unwrap();
+        println!("SPEC {spec:?}");
+    }
+
+    #[test]
+    fn a_path_on_the_cd_drive_is_changed_to_the_drive_that_is_really_used() {
+        assert_eq!(
+            pc_recipes::on_cd_drive("D:\\RoadRash\\X.EXE"),
+            "R:\\RoadRash\\X.EXE"
+        );
+        assert_eq!(pc_recipes::on_cd_drive("d:\\x.exe"), "R:\\x.exe");
+        assert_eq!(pc_recipes::on_cd_drive("C:\\x.exe"), "C:\\x.exe");
+        assert_eq!(pc_recipes::on_cd_drive("explorer"), "explorer");
+        assert_eq!(
+            pc_recipes::on_cd_drive("/desktop=Game,800x600"),
+            "/desktop=Game,800x600"
+        );
+        assert_eq!(pc_recipes::drive_command()[4], "r:");
+    }
+
+    #[test]
+    fn dxvk_is_a_override_of_the_direct3d_libraries_only_when_the_game_asks_for_it() {
+        let wine = Path::new("/opt/wine/bin/wine");
+        let root = Path::new("/data/pc/g");
+        let overrides = |s: &NativeSpec| {
+            s.env
+                .iter()
+                .find(|(k, _)| k == "WINEDLLOVERRIDES")
+                .unwrap()
+                .1
+                .clone()
+        };
+        let plain = spec(wine, root, "R:\\G.EXE", "800x600", &launch(true, false));
+        assert!(!overrides(&plain).contains("d3d11"));
+        let dxvk = spec(wine, root, "R:\\G.EXE", "800x600", &launch(true, true));
+        assert_eq!(
+            overrides(&dxvk),
+            "mscoree,mshtml=;ddraw=n,b;d3d11,d3d10core=n,b"
+        );
+        let on_desktop = spec(wine, root, "R:\\G.EXE", "800x600", &launch(false, true));
+        assert_eq!(
+            overrides(&on_desktop),
+            "mscoree,mshtml=;d3d11,d3d10core=n,b"
+        );
+    }
+
+    #[test]
+    fn dxvk_is_copied_where_each_kind_of_windows_looks_for_its_libraries() {
+        let dxvk = temp("dxvk-release");
+        for arch in ["x32", "x64"] {
+            std::fs::create_dir_all(dxvk.join(arch)).unwrap();
+            for dll in DXVK_DLLS {
+                std::fs::write(dxvk.join(arch).join(dll), arch).unwrap();
+            }
+        }
+        let prefix = temp("dxvk-prefix");
+        let windows = prefix.join("drive_c/windows");
+        std::fs::create_dir_all(windows.join("system32")).unwrap();
+        std::fs::create_dir_all(windows.join("syswow64")).unwrap();
+        install_dxvk(&prefix, &dxvk).unwrap();
+        assert_eq!(
+            std::fs::read(windows.join("system32/d3d11.dll")).unwrap(),
+            b"x64"
+        );
+        assert_eq!(
+            std::fs::read(windows.join("syswow64/d3d10core.dll")).unwrap(),
+            b"x32"
+        );
+        // a Windows with no syswow64 gets the 64-bit ones only
+        let small = temp("dxvk-small");
+        std::fs::create_dir_all(small.join("drive_c/windows/system32")).unwrap();
+        install_dxvk(&small, &dxvk).unwrap();
+        assert!(small.join("drive_c/windows/system32/d3d11.dll").is_file());
+        for d in [dxvk, prefix, small] {
+            std::fs::remove_dir_all(d).unwrap();
+        }
+    }
+
+    /// Needs the network: DXVK is fetched, checked against its SHA-256 and unpacked.
+    #[test]
+    #[ignore]
+    fn fetches_the_real_dxvk() {
+        let dir = temp("dxvk-real");
+        let paths = Paths::new(dir.to_str().unwrap());
+        let found = dxvk_dir(&paths, &|l| println!("{l}")).unwrap();
+        for arch in ["x32", "x64"] {
+            for dll in DXVK_DLLS {
+                assert!(found.join(arch).join(dll).metadata().unwrap().len() > 100_000);
+            }
+        }
+        // the second time nothing is fetched
+        assert_eq!(
+            dxvk_dir(&paths, &|_| panic!("fetched again")).unwrap(),
+            found
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn the_overrides_of_a_recipe_are_added_to_those_of_wine() {
+        let recipe = pc_recipes::parse(
+            r#"[{"id":"a","name":"A","detect":["X"],"overrides":["quartz=n,b","msvcrt=n"],"renderer":"dxvk"}]"#,
+        )
+        .unwrap();
+        let l = Launch::of(recipe.first(), true);
+        let s = spec(
+            Path::new("/w/bin/wine"),
+            Path::new("/d"),
+            "R:\\G.EXE",
+            "640x480",
+            &l,
+        );
+        let o = &s
+            .env
+            .iter()
+            .find(|(k, _)| k == "WINEDLLOVERRIDES")
+            .unwrap()
+            .1;
+        assert_eq!(
+            o,
+            "mscoree,mshtml=;ddraw=n,b;d3d11,d3d10core=n,b;quartz=n,b;msvcrt=n"
+        );
+        // a game that no recipe knows has none
+        let none = Launch::of(None, false);
+        assert!(!none.dxvk && none.overrides.is_empty());
+    }
+
+    #[test]
+    fn winetricks_runs_only_the_verbs_that_were_not_run_and_without_questions() {
+        let recipe = pc_recipes::parse(
+            r#"[{"id":"a","name":"A","detect":["X"],"winetricks":["vcrun2015","corefonts"]}]"#,
+        )
+        .unwrap();
+        let marks = vec!["winetricks:corefonts".to_string(), "rev-1".to_string()];
+        assert_eq!(pending_verbs(&recipe[0], &marks), ["vcrun2015"]);
+        assert!(pending_verbs(
+            &recipe[0],
+            &["winetricks:vcrun2015".into(), "winetricks:corefonts".into()]
+        )
+        .is_empty());
+        let c = winetricks_command(
+            Path::new("/usr/local/bin/winetricks"),
+            Path::new("/w/bin/wine"),
+            Path::new("/data/prefix"),
+            &["vcrun2015"],
+        );
+        let args: Vec<_> = c
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(args, ["-q", "vcrun2015"]);
+        let env = |k: &str| {
+            c.get_envs()
+                .find(|(n, _)| *n == k)
+                .and_then(|(_, v)| v)
+                .map(|v| v.to_string_lossy().into_owned())
+        };
+        assert_eq!(env("WINE").as_deref(), Some("/w/bin/wine"));
+        assert_eq!(env("WINEPREFIX").as_deref(), Some("/data/prefix"));
+        assert!(
+            env("PATH").unwrap().starts_with("/w/bin:"),
+            "Wine's own programs first"
+        );
+    }
+
+    #[test]
+    fn the_installer_of_a_disc_is_found_by_the_recipe_by_autorun_or_by_its_name() {
+        let game = temp("installer");
+        std::fs::create_dir_all(game.join("Install")).unwrap();
+        std::fs::write(game.join("Install/Setup.exe"), "x").unwrap();
+        std::fs::write(game.join("GAME.EXE"), "x").unwrap();
+        let generic = Recipe::generic();
+        // a usual name, in any letter case
+        assert_eq!(
+            find_installer(&game, &generic).unwrap(),
+            "D:\\Install\\Setup.exe"
+        );
+        // autorun names an installer: it wins over the usual names
+        std::fs::write(game.join("SETUP.EXE"), "x").unwrap();
+        std::fs::write(
+            game.join("autorun.inf"),
+            "[autorun]\nopen=install\\setup.exe /a\n",
+        )
+        .unwrap();
+        assert_eq!(
+            find_installer(&game, &generic).unwrap(),
+            "D:\\Install\\Setup.exe"
+        );
+        // autorun that names the game itself is not an installer
+        std::fs::write(game.join("autorun.inf"), "[autorun]\nopen=game.exe\n").unwrap();
+        assert_eq!(find_installer(&game, &generic).unwrap(), "D:\\SETUP.EXE");
+        // a recipe names its own, and its folder on the drive comes first
+        let recipe = pc_recipes::parse(
+            r#"[{"id":"a","name":"A","detect":["X"],"drive_folder":"GAMEDIR","installer":"D:\\install\\setup.exe"}]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            find_installer(&game, &recipe[0]).unwrap(),
+            "D:\\GAMEDIR\\Install\\Setup.exe"
+        );
+        // a disc with none
+        let none = temp("noinstaller");
+        std::fs::write(none.join("GAME.EXE"), "x").unwrap();
+        assert!(find_installer(&none, &generic).is_none());
+        for d in [game, none] {
+            std::fs::remove_dir_all(d).unwrap();
+        }
+    }
+
+    fn programs(list: &[(&str, u64)]) -> std::collections::BTreeMap<PathBuf, u64> {
+        list.iter().map(|(p, n)| (PathBuf::from(p), *n)).collect()
+    }
+
+    #[test]
+    fn of_the_programs_an_installer_adds_the_game_is_chosen_not_its_helpers() {
+        let before = programs(&[("/c/Old/old.exe", 5)]);
+        let after = programs(&[
+            ("/c/Old/old.exe", 5),
+            ("/c/Games/Cool Game/unins000.exe", 900),
+            ("/c/Games/Cool Game/COOLGAME.EXE", 300),
+            ("/c/Games/Cool Game/editor.exe", 700),
+            ("/c/Games/Cool Game/config.exe", 800),
+        ]);
+        // the one with the name of the game, though a bigger one is there
+        let chosen = choose_installed(&before, &after, "cool-game-1999").unwrap();
+        assert_eq!(chosen, PathBuf::from("/c/Games/Cool Game/COOLGAME.EXE"));
+        // no name in common: the biggest that is not a helper
+        let chosen = choose_installed(&before, &after, "zzz").unwrap();
+        assert_eq!(chosen, PathBuf::from("/c/Games/Cool Game/editor.exe"));
+        // only helpers were added: one of them rather than nothing
+        let only = programs(&[("/c/Old/old.exe", 5), ("/c/G/unins000.exe", 9)]);
+        assert!(choose_installed(&before, &only, "g").is_ok());
+        // nothing was added: the installer was not finished
+        assert!(choose_installed(&before, &before, "g")
+            .unwrap_err()
+            .contains("finished"));
+    }
+
+    #[test]
+    fn the_programs_of_windows_itself_are_not_what_an_installer_added() {
+        let c = temp("drive-c");
+        std::fs::create_dir_all(c.join("windows/system32")).unwrap();
+        std::fs::create_dir_all(c.join("Games/X")).unwrap();
+        std::fs::write(c.join("windows/system32/notepad.exe"), "x").unwrap();
+        std::fs::write(c.join("Games/X/x.EXE"), "x").unwrap();
+        std::fs::write(c.join("Games/X/readme.txt"), "x").unwrap();
+        let found = programs_under(&c);
+        assert_eq!(found.len(), 1);
+        let (file, _) = found.iter().next().unwrap();
+        assert_eq!(windows_path(&c, file).unwrap(), "C:\\Games\\X\\x.EXE");
+        std::fs::remove_dir_all(c).unwrap();
+    }
+
+    #[test]
+    fn a_program_installed_on_c_is_started_from_its_own_folder() {
+        let root = temp("started-from");
+        std::fs::create_dir_all(root.join("prefix/drive_c/Games/X")).unwrap();
+        std::fs::create_dir_all(root.join("game")).unwrap();
+        let wine = Path::new("/w/bin/wine");
+        let l = Launch::of(None, true);
+        let installed = spec(wine, &root, "C:\\games\\x\\x.exe", "800x600", &l);
+        assert_eq!(installed.cwd.unwrap(), root.join("prefix/drive_c/Games/X"));
+        // one on the CD drive, or one whose folder is not there, starts in the game's files
+        let on_cd = spec(wine, &root, "D:\\X.EXE", "800x600", &l);
+        assert_eq!(on_cd.cwd.unwrap(), root.join("game"));
+        let missing = spec(wine, &root, "C:\\Nope\\x.exe", "800x600", &l);
+        assert_eq!(missing.cwd.unwrap(), root.join("game"));
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

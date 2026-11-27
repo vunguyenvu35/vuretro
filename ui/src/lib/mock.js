@@ -76,6 +76,7 @@ const mock = {
   import_bios: async ({ paths }) => paths.map((p) => ({ source: p, ok: false, message: 'Not available in browser preview' })),
   launch_game: async () => {},
   stop_game: async () => true,
+  run_pc_installer: async () => 'GAME.EXE',
   launch_demo: async () => {},
 };
 
