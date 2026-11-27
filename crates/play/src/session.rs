@@ -253,6 +253,8 @@ impl Session {
 
     /// One pass of the loop: handle input, then either show the paused picture or run the core.
     fn frame(&mut self) -> Result<()> {
+        // what was typed while the last frame waited is read now, not a frame later
+        self.screen.refresh_input();
         let now = Instant::now();
         // a long gap (the computer slept, a dialog) is not play time
         let gap = now
@@ -982,6 +984,8 @@ mod tests {
         titles: Vec<String>,
         /// What the State menu was told: the slot labels and the current slot.
         slot_menus: Vec<(Vec<String>, u8)>,
+        /// How many times the session asked the window to take in what was typed.
+        refreshed: usize,
         presented: usize,
         /// Size of each picture sent to the window.
         presented_dims: Vec<(usize, usize)>,
@@ -1050,6 +1054,9 @@ mod tests {
         }
         fn idle(&mut self) {
             self.0.borrow_mut().idled += 1;
+        }
+        fn refresh_input(&mut self) {
+            self.0.borrow_mut().refreshed += 1;
         }
         fn set_title(&mut self, t: &str) {
             self.0.borrow_mut().titles.push(t.to_string());
@@ -2224,5 +2231,15 @@ mod tests {
             (1024, 956, 1024 * 956),
             "a large one is left as it is"
         );
+    }
+
+    #[test]
+    fn each_frame_takes_in_the_typed_keys_before_it_reads_them() {
+        let (mut s, r) = rig(100);
+        assert_eq!(r.log.borrow().refreshed, 0);
+        for n in 1..=3 {
+            s.frame().unwrap();
+            assert_eq!(r.log.borrow().refreshed, n, "once per frame, paused or not");
+        }
     }
 }

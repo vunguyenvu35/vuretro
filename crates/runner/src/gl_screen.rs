@@ -660,6 +660,12 @@ impl Screen for GlScreen {
     fn menu_pressed(&mut self) -> Option<usize> {
         GameMenu::next_choice()
     }
+    fn refresh_input(&mut self) {
+        // like `pump`, but the presses nobody has read yet stay in the set
+        let _ = self
+            .event_loop
+            .pump_app_events(Some(Duration::ZERO), &mut self.app);
+    }
     fn is_active(&mut self) -> bool {
         self.app.active
     }

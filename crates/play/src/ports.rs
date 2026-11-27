@@ -48,6 +48,11 @@ pub trait Screen: Keyboard {
     fn key_pressed(&self, key: Key) -> bool;
     /// Next chosen menu item (its id), if any.
     fn menu_pressed(&mut self) -> Option<usize>;
+    /// Take in what was typed or clicked since the window last looked, keeping the presses
+    /// nobody has read yet. A window looks only when a picture goes out, and then the session
+    /// waits for the next frame; without this a key pressed during that wait is seen one whole
+    /// frame later than it could be.
+    fn refresh_input(&mut self) {}
     fn is_active(&mut self) -> bool;
     fn present(&mut self, frame: &[u32], w: usize, h: usize) -> Result<()>;
     /// Keep the window alive without a new picture.
