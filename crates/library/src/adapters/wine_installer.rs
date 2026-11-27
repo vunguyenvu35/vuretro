@@ -543,6 +543,9 @@ fn registry_commands(recipe: &Recipe) -> Vec<Vec<String>> {
             ("HiResBikers", "1"),
             ("HiResCars", "1"),
             ("Inset", "0"),
+            // no video at the start: its window has no title bar and the game cannot be closed
+            // while it plays
+            ("Intro", "0"),
         ] {
             commands.push(add(
                 &key,
@@ -554,10 +557,28 @@ fn registry_commands(recipe: &Recipe) -> Vec<Vec<String>> {
     commands
 }
 
+/// The program of Road Rash as it is on the disc (an image, or a folder it was unpacked to).
+fn fresh_road_rash_exe(disc: &Path) -> Result<Vec<u8>, String> {
+    if disc.is_dir() {
+        let folder = game_folder(disc).ok_or("the disc folder does not hold the game")?;
+        let names = resolve_ci(&folder, "ROADRASH.EXE").ok_or("ROADRASH.EXE is not there")?;
+        return std::fs::read(folder.join(names.join("/"))).map_err(|e| e.to_string());
+    }
+    let iso = Iso::open(disc)?;
+    let path = ["ROADRASH/ROADRASH.EXE", "ROADRASH.EXE"]
+        .into_iter()
+        .find(|p| iso.find(p).is_ok())
+        .ok_or("ROADRASH.EXE is not on the disc")?;
+    iso.read(path)
+}
+
 /// Give the program in `exe` an icon that looks like a Mac icon (see [`crate::pe_icon`]).
-fn mac_icon_for(exe: &Path) -> Result<(), String> {
+fn mac_icon_for(exe: &Path, icon: Option<&[u8]>) -> Result<(), String> {
     let mut bytes = std::fs::read(exe).map_err(|e| e.to_string())?;
-    crate::pe_icon::mac_style_icon(&mut bytes)?;
+    match icon {
+        Some(rgba) => crate::pe_icon::set_icon(&mut bytes, rgba)?,
+        None => crate::pe_icon::mac_style_icon(&mut bytes)?,
+    }
     std::fs::write(exe, bytes).map_err(|e| e.to_string())
 }
 
@@ -608,7 +629,12 @@ fn game_id(disc: &Path) -> String {
 /// Make the game on `disc` ready to start under Wine, and say how to start it. The first time
 /// this builds an environment and copies the game's files (a minute or two); later it only
 /// finds them again.
-pub fn prepare(paths: &Paths, disc: &Path, log: &dyn Fn(&str)) -> Result<NativeSpec, String> {
+pub fn prepare(
+    paths: &Paths,
+    disc: &Path,
+    icon: Option<&[u8]>,
+    log: &dyn Fn(&str),
+) -> Result<NativeSpec, String> {
     let wine = locate_wine(paths).ok_or("Wine is not on this computer")?;
     let root = paths.native_dir().join("pc").join(game_id(disc));
     let done = root.join("ready");
@@ -624,6 +650,26 @@ pub fn prepare(paths: &Paths, disc: &Path, log: &dyn Fn(&str)) -> Result<NativeS
             framed = add_window_frame(paths, &root.join("game"), size, log);
             let mode = if framed { "framed" } else { "desktop" };
             let _ = std::fs::write(&done, format!("{program}\n{size}\n{mode}\n"));
+        }
+        // a game set up with the icon of the program (or none) gets the app's icon with the
+        // badge of the system: the program is taken from the disc again, as the icon is
+        // written over its own
+        let is_road_rash = program.to_ascii_uppercase().ends_with("ROADRASH.EXE");
+        if let (Some(icon), true) = (icon, is_road_rash) {
+            if !rest.iter().any(|f| f == "appicon") {
+                let exe = root.join("game").join("ROADRASH.EXE");
+                let done_icon = fresh_road_rash_exe(disc)
+                    .and_then(|bytes| std::fs::write(&exe, bytes).map_err(|e| e.to_string()))
+                    .and_then(|_| mac_icon_for(&exe, Some(icon)));
+                match done_icon {
+                    Ok(()) => {
+                        let mode = if framed { "framed" } else { "desktop" };
+                        let _ =
+                            std::fs::write(&done, format!("{program}\n{size}\n{mode}\nappicon\n"));
+                    }
+                    Err(e) => log(&format!("The game keeps its old icon: {e}")),
+                }
+            }
         }
         return Ok(spec(&wine, &root, program, size, framed));
     }
@@ -659,7 +705,7 @@ pub fn prepare(paths: &Paths, disc: &Path, log: &dyn Fn(&str)) -> Result<NativeS
             std::fs::write(game.join("AWEMAN32.DLL"), aweman32_stub())
                 .map_err(|e| e.to_string())?;
             // its Dock icon: the program's own, drawn as a Mac icon (best effort)
-            if let Err(e) = mac_icon_for(&game.join("ROADRASH.EXE")) {
+            if let Err(e) = mac_icon_for(&game.join("ROADRASH.EXE"), icon) {
                 log(&format!("The game keeps its old icon: {e}"));
             }
             std::fs::create_dir_all(prefix.join("drive_c").join("RoadRash"))
@@ -700,7 +746,13 @@ pub fn prepare(paths: &Paths, disc: &Path, log: &dyn Fn(&str)) -> Result<NativeS
     }
     let framed = add_window_frame(paths, &game, size, log);
     let mode = if framed { "framed" } else { "desktop" };
-    std::fs::write(&done, format!("{program}\n{size}\n{mode}\n")).map_err(|e| e.to_string())?;
+    let flags = if recipe == Recipe::RoadRash && icon.is_some() {
+        "appicon\n"
+    } else {
+        ""
+    };
+    std::fs::write(&done, format!("{program}\n{size}\n{mode}\n{flags}"))
+        .map_err(|e| e.to_string())?;
     Ok(spec(&wine, &root, &program, size, framed))
 }
 
@@ -848,12 +900,12 @@ mod tests {
         let dir = temp("real");
         let paths = Paths::new(dir.to_str().unwrap());
         assert!(ready(&paths));
-        let spec = prepare(&paths, &iso, &|l| println!("{l}")).unwrap();
+        let spec = prepare(&paths, &iso, None, &|l| println!("{l}")).unwrap();
         println!("{spec:?}");
         assert!(spec.cwd.unwrap().join("ROADRASH.EXE").is_file());
         // the second time it is only found again
         let t = std::time::Instant::now();
-        prepare(&paths, &iso, &|_| {}).unwrap();
+        prepare(&paths, &iso, None, &|_| {}).unwrap();
         assert!(t.elapsed().as_secs() < 2);
         println!("kept in {}", dir.display());
     }
@@ -928,7 +980,7 @@ mod tests {
         let root = paths.native_dir().join("pc").join("g");
         std::fs::create_dir_all(root.join("game")).unwrap();
         std::fs::write(root.join("ready"), "D:\\X.EXE\n640x480\n").unwrap();
-        let spec = prepare(&paths, Path::new("/x/g.iso"), &|l| println!("{l}")).unwrap();
+        let spec = prepare(&paths, Path::new("/x/g.iso"), None, &|l| println!("{l}")).unwrap();
         assert_eq!(spec.args, ["D:\\X.EXE"]);
         assert!(root.join("game/ddraw.dll").metadata().unwrap().len() > 100_000);
         assert!(std::fs::read_to_string(root.join("game/ddraw.ini"))
@@ -938,5 +990,18 @@ mod tests {
             .unwrap()
             .ends_with("framed\n"));
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// A game set up before the app icon was used gets it (`VURETRO_ICON_RGBA`: 256x256 RGBA
+    /// bytes; `VURETRO_DATA` and `VURETRO_ROADRASH_ISO` as for the other ignored tests).
+    #[test]
+    #[ignore]
+    fn the_app_icon_reaches_the_program_of_a_game_set_up_earlier() {
+        let icon = std::fs::read(std::env::var("VURETRO_ICON_RGBA").unwrap()).unwrap();
+        let paths = Paths::new(&std::env::var("VURETRO_DATA").unwrap());
+        let iso = PathBuf::from(std::env::var("VURETRO_ROADRASH_ISO").unwrap());
+        prepare(&paths, &iso, Some(&icon), &|l| println!("{l}")).unwrap();
+        let ready = std::fs::read_to_string(paths.native_dir().join("pc/roadrash/ready")).unwrap();
+        assert!(ready.ends_with("appicon\n"), "{ready}");
     }
 }

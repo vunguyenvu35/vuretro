@@ -6,6 +6,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod front;
 mod gamepad;
 mod menu;
 mod platform;
@@ -17,13 +18,42 @@ use std::sync::{Arc, Mutex};
 use vuretro_core::paths::Paths;
 use vuretro_core::service::App;
 use vuretro_library::adapters::{
-    BuildbotInstaller, DevLogin, FsCatalog, FsLocator, JsonStore, ProcessLauncher, RoadRashInstaller,
-    ScreenScraperArt, SysMachine, ThumbnailsArt, ZipBackup,
+    BuildbotInstaller, DevLogin, FsCatalog, FsLocator, JsonStore, ProcessLauncher,
+    RoadRashInstaller, ScreenScraperArt, SysMachine, ThumbnailsArt, ZipBackup,
 };
 
 fn app_paths() -> Paths {
     vuretro_library::adapters::system_paths()
         .unwrap_or_else(|| Paths::new(PathBuf::from("vuretro-data")))
+}
+
+/// The Dock icon of Windows games: the app's own icon with the badge of the system, as the
+/// games of the other systems have (see the runner's `appicon`).
+fn pc_icon() -> Option<Vec<u8>> {
+    const ICON_PNG: &[u8] = include_bytes!("../icons/128x128@2x.png");
+    let mut reader = png::Decoder::new(ICON_PNG).read_info().ok()?;
+    let mut buf = vec![0; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut buf).ok()?;
+    let size = info.width as usize;
+    if info.color_type != png::ColorType::Rgba
+        || info.bit_depth != png::BitDepth::Eight
+        || info.width != info.height
+        || size != 256
+    {
+        return None;
+    }
+    buf.truncate(size * size * 4);
+    let badge = vuretro_play::badge::for_system("windows")?;
+    vuretro_play::badge::draw(&mut buf, size, &badge);
+    Some(buf)
+}
+
+fn pc_installer(paths: Paths) -> RoadRashInstaller {
+    let installer = RoadRashInstaller::new(paths);
+    match pc_icon() {
+        Some(icon) => installer.with_pc_icon(icon),
+        None => installer,
+    }
 }
 
 fn build_app() -> App {
@@ -36,7 +66,7 @@ fn build_app() -> App {
         Box::new(ProcessLauncher::new(paths.clone())),
     )
     .with_installer(Box::new(BuildbotInstaller::new(paths.clone())))
-    .with_native_installer(Box::new(RoadRashInstaller::new(paths.clone())))
+    .with_native_installer(Box::new(pc_installer(paths.clone())))
     .with_archive(Box::new(ZipBackup::new(paths)))
     .with_machine(Box::new(SysMachine))
     .with_art_source(Box::new(ThumbnailsArt::new()));
@@ -166,4 +196,28 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running vuretro");
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_icon_of_windows_games_is_the_app_icon_with_the_badge_of_the_system() {
+        let icon = super::pc_icon().expect("the app icon decodes");
+        assert_eq!(icon.len(), 256 * 256 * 4);
+        // for trying the icon on a real game (see the ignored test of the library)
+        if let Some(out) = std::env::var_os("VURETRO_DUMP_ICON") {
+            std::fs::write(out, &icon).unwrap();
+        }
+        let plain = {
+            let mut reader =
+                png::Decoder::new(include_bytes!("../icons/128x128@2x.png").as_slice())
+                    .read_info()
+                    .unwrap();
+            let mut buf = vec![0; reader.output_buffer_size()];
+            reader.next_frame(&mut buf).unwrap();
+            buf.truncate(256 * 256 * 4);
+            buf
+        };
+        assert_ne!(icon, plain, "the badge is drawn on it");
+    }
 }

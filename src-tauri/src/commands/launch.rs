@@ -66,7 +66,12 @@ pub async fn launch_game(
         core.launch_game(path, slot)
     })
     .await??;
+    let started = running.is_some();
     watch(&app, &shell, running);
+    if started {
+        // a Wine game's window opens behind the app unless it is handed the front
+        std::thread::spawn(crate::front::raise_wine_game);
+    }
     Ok(())
 }
 

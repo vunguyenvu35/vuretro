@@ -130,11 +130,23 @@ pub(super) fn run(cmd: &mut Command, log: &dyn Fn(&str)) -> Result<(), String> {
 /// Builds the native Road Rash port from its source into `<data dir>/native/road-rash`.
 pub struct RoadRashInstaller {
     paths: Paths,
+    /// The Dock icon of Windows games: 256x256 red, green, blue, alpha bytes.
+    pc_icon: Option<Vec<u8>>,
 }
 
 impl RoadRashInstaller {
     pub fn new(paths: Paths) -> Self {
-        RoadRashInstaller { paths }
+        RoadRashInstaller {
+            paths,
+            pc_icon: None,
+        }
+    }
+
+    /// The icon that Windows games get in the Dock (256x256 pixels of red, green, blue and alpha
+    /// bytes), instead of one drawn from the icon inside the game's program.
+    pub fn with_pc_icon(mut self, rgba: Vec<u8>) -> Self {
+        self.pc_icon = Some(rgba);
+        self
     }
 }
 
@@ -196,7 +208,7 @@ impl NativeInstaller for RoadRashInstaller {
     }
 
     fn prepare_pc_game(&self, disc: &Path, log: &dyn Fn(&str)) -> Result<NativeSpec, String> {
-        super::wine_installer::prepare(&self.paths, disc, log)
+        super::wine_installer::prepare(&self.paths, disc, self.pc_icon.as_deref(), log)
     }
 
     fn install_road_rash(&self, disc: &Path, log: &dyn Fn(&str)) -> Result<(), String> {

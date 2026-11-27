@@ -395,4 +395,28 @@ mod tests {
         assert_eq!(lines[1], "/some/prefix");
         std::fs::remove_dir_all(dir).unwrap();
     }
+
+    /// With a real Wine and the game set up in the app's data folder (`VURETRO_DATA`): the
+    /// game starts, and stopping it ends it and everything Wine started for it.
+    #[test]
+    #[ignore]
+    fn stopping_the_real_game_ends_it() {
+        let data = std::env::var("VURETRO_DATA").unwrap();
+        let paths = Paths::new(&data);
+        let disc = PathBuf::from("/x/roadrash.iso");
+        let spec = crate::adapters::wine_installer::prepare(&paths, &disc, None, &|_| {}).unwrap();
+        println!("{spec:?}");
+        let launcher = ProcessLauncher::new(paths);
+        let mut p = launcher.spawn_native(&spec).unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(20));
+        assert!(p.poll().unwrap().is_none(), "the game is running");
+        p.stop();
+        for _ in 0..20 {
+            if p.poll().unwrap().is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }
+        assert!(p.poll().unwrap().is_some(), "the game ended");
+    }
 }

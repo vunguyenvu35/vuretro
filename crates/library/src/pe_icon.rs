@@ -351,6 +351,28 @@ fn icon_bitmap(bgra: &[u8]) -> Vec<u8> {
 
 /// Give the program in `exe` the icon of its own biggest icon drawn as a Mac icon.
 pub fn mac_style_icon(exe: &mut Vec<u8>) -> Result<(), String> {
+    replace_icon(exe, |source| Ok(mac_tile(source)))
+}
+
+/// Give the program in `exe` the 256x256 picture `rgba` (red, green, blue, alpha bytes, top row
+/// first) as its icon: an icon that is made for the purpose, such as the app's own with the badge
+/// of a system.
+pub fn set_icon(exe: &mut Vec<u8>, rgba: &[u8]) -> Result<(), String> {
+    if rgba.len() != SIDE * SIDE * 4 {
+        return Err("the icon must be 256 by 256 pixels".into());
+    }
+    let bgra: Vec<u8> = rgba
+        .chunks_exact(4)
+        .flat_map(|p| [p[2], p[1], p[0], p[3]])
+        .collect();
+    replace_icon(exe, |_| Ok(bgra))
+}
+
+/// Write the icon that `draw` makes (from the program's biggest icon) as the program's icon.
+fn replace_icon(
+    exe: &mut Vec<u8>,
+    draw: impl FnOnce(&Image) -> Result<Vec<u8>, String>,
+) -> Result<(), String> {
     let pe = Pe::parse(exe)?;
     let (_, group) = find(exe, &pe, 14, None)?.ok_or("the program has no icon")?;
     let at = {
@@ -380,7 +402,7 @@ pub fn mac_style_icon(exe: &mut Vec<u8>) -> Result<(), String> {
     let (_, biggest) = find(exe, &pe, 3, Some(biggest_id))?.ok_or("an icon is missing")?;
     let source = decode_icon(leaf_data(exe, &pe, &biggest)?)?;
     let (_, target) = find(exe, &pe, 3, Some(first_id))?.ok_or("an icon is missing")?;
-    let bitmap = icon_bitmap(&mac_tile(&source));
+    let bitmap = icon_bitmap(&draw(&source)?);
 
     // a new section at the end for the bitmap
     let last = pe.sections.last().ok_or("the program has no sections")?;
@@ -594,6 +616,25 @@ mod tests {
         // no resources: the directory points at nothing
         exe[0x58 + 96 + 16..0x58 + 96 + 20].copy_from_slice(&0u32.to_le_bytes());
         assert!(mac_style_icon(&mut exe).is_err());
+    }
+
+    #[test]
+    fn a_made_icon_replaces_the_programs_own() {
+        let mut exe = program();
+        let mut rgba = vec![0u8; SIDE * SIDE * 4];
+        for p in rgba.chunks_exact_mut(4) {
+            p.copy_from_slice(&[10, 20, 30, 255]);
+        }
+        set_icon(&mut exe, &rgba).unwrap();
+        let pe = Pe::parse(&exe).unwrap();
+        let (_, leaf) = find(&exe, &pe, 3, Some(1)).unwrap().unwrap();
+        let img = decode_icon(leaf_data(&exe, &pe, &leaf).unwrap()).unwrap();
+        assert_eq!(
+            &img.rgba[..4],
+            [10, 20, 30, 255],
+            "the colours keep their order"
+        );
+        assert!(set_icon(&mut program(), &[0; 4]).is_err());
     }
 
     /// With the real program of the game (`VURETRO_ROADRASH_EXE`), writing the result where

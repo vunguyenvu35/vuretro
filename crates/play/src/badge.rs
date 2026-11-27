@@ -18,6 +18,7 @@ const ATARI: [u8; 3] = [225, 85, 35];
 const NEC: [u8; 3] = [30, 160, 90];
 const ARCADE: [u8; 3] = [130, 70, 200];
 const BANDAI: [u8; 3] = [200, 70, 160];
+const MICROSOFT: [u8; 3] = [0, 120, 215];
 
 /// The badge of a system (by its id in the registry).
 pub fn for_system(id: &str) -> Option<Badge> {
@@ -48,6 +49,7 @@ pub fn for_system(id: &str) -> Option<Badge> {
         "lynx" => ("LYNX", ATARI),
         "wonderswan" => ("WS", BANDAI),
         "arcade" => ("MAME", ARCADE),
+        "windows" => ("PC", MICROSOFT),
         _ => return None,
     };
     Some(Badge { label, color })
