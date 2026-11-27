@@ -135,6 +135,10 @@ pub struct NativeSpec {
     /// program started besides itself, for when the game is stopped from the app: Wine keeps a
     /// server running for the game.
     pub stop: Option<Vec<String>>,
+    /// The window of the program is made as big as the screen allows (like a double click on its
+    /// title bar) once it is open: for a game that takes the size of the whole display for its
+    /// window. The app does it, for it is the app that has the permission to.
+    pub zoom: bool,
 }
 
 /// A request to make a preview image without opening a window.

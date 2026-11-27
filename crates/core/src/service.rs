@@ -93,9 +93,16 @@ pub struct Running {
     played_secs: Option<u64>,
     /// Reports that came in while the start was being watched, for `watch` to hand over.
     pending: Vec<Event>,
+    /// The window of the game is to be made as big as the screen allows (see `NativeSpec::zoom`).
+    zoom: bool,
 }
 
 impl Running {
+    /// Whether the window of the game is to be made as big as the screen allows once it is open.
+    pub fn zoom(&self) -> bool {
+        self.zoom
+    }
+
     /// Take in what the runner reported.
     fn note(&mut self, event: &Event) {
         if let Event::Progress { played_secs } | Event::Exit { played_secs } = event {
@@ -1491,10 +1498,16 @@ impl App {
             .file_stem()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| path.to_string());
-        self.begin(title, Some(path.to_string()), false, || {
+        let zoom = std::cell::Cell::new(false);
+        let mut running = self.begin(title, Some(path.to_string()), false, || {
             let spec = installer.prepare_pc_game(Path::new(path), &|_| {})?;
+            zoom.set(spec.zoom);
             self.launcher.spawn_native(&spec)
-        })
+        })?;
+        if let Some(r) = running.as_mut() {
+            r.zoom = zoom.get();
+        }
+        Ok(running)
     }
 
     // ---------- native games ----------
@@ -1692,6 +1705,7 @@ impl App {
                 cwd: None,
                 env: Vec::new(),
                 stop: None,
+                zoom: false,
             })
         })
     }
@@ -1821,6 +1835,7 @@ impl App {
             started,
             played_secs: None,
             pending: Vec::new(),
+            zoom: false,
         };
         for event in &early {
             running.note(event);

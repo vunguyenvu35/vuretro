@@ -102,9 +102,10 @@ pub struct Recipe {
     #[serde(default)]
     pub overrides: Vec<String>,
     /// How the game's window is made: `frame` (a window of its own with the title bar of the Mac,
-    /// by cnc-ddraw: for games that draw with DirectDraw) or `desktop` (Wine's virtual desktop of
-    /// the size of `screen`: for games that draw with Direct3D and take the size of the whole
-    /// screen for their window).
+    /// by cnc-ddraw: for games that draw with DirectDraw), `desktop` (Wine's virtual desktop of the
+    /// size of `screen`) or `zoom` (a window of its own that the app makes as big as the screen
+    /// allows once it is open: for games that draw with Direct3D and take the size of the whole
+    /// display for their window).
     #[serde(default = "default_window")]
     pub window: String,
     /// What draws Direct3D: `wined3d` (Wine's own, for Direct3D up to 9) or `dxvk` (Direct3D 10
@@ -246,8 +247,11 @@ pub fn parse(json: &str) -> Result<Vec<Recipe>, String> {
         }) {
             return Err(format!("recipe {}: \"{o}\" is not a DLL override", r.id));
         }
-        if r.window != "frame" && r.window != "desktop" {
-            return Err(format!("recipe {}: a window is frame or desktop", r.id));
+        if !["frame", "desktop", "zoom"].contains(&r.window.as_str()) {
+            return Err(format!(
+                "recipe {}: a window is frame, desktop or zoom",
+                r.id
+            ));
         }
         if r.renderer != "wined3d" && r.renderer != "dxvk" {
             return Err(format!("recipe {}: a renderer is wined3d or dxvk", r.id));

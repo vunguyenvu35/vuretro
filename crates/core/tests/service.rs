@@ -2463,6 +2463,7 @@ impl NativeInstaller for FakeNative {
             cwd: Some(self.root.join("pc/g/game")),
             env: vec![("WINEPREFIX".into(), "/p".into())],
             stop: None,
+            zoom: false,
         })
     }
 

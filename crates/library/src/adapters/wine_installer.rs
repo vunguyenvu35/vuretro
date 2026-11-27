@@ -298,6 +298,8 @@ fn program_folder(root: &Path, program: &str) -> Option<PathBuf> {
 struct Launch {
     /// The game draws in a window of its own (cnc-ddraw), not on a virtual desktop.
     framed: bool,
+    /// The app makes the window as big as the screen allows once the game is open.
+    zoom: bool,
     /// DXVK draws its Direct3D 10 and 11.
     dxvk: bool,
     /// More entries for `WINEDLLOVERRIDES`.
@@ -308,8 +310,10 @@ impl Launch {
     /// How a game of this recipe is started, on a window with a frame or not.
     fn of(recipe: Option<&Recipe>, framed: bool) -> Launch {
         Launch {
-            // a recipe that asks for the desktop has no frame, whatever was set up before
-            framed: framed && recipe.is_none_or(|r| r.window != "desktop"),
+            // a recipe that asks for something else than the frame has none, whatever was set up
+            // before
+            framed: framed && recipe.is_none_or(|r| r.window == "frame"),
+            zoom: recipe.is_some_and(|r| r.window == "zoom"),
             dxvk: recipe.is_some_and(|r| r.renderer == "dxvk"),
             overrides: recipe.map(|r| r.overrides.clone()).unwrap_or_default(),
         }
@@ -325,6 +329,9 @@ fn spec(wine: &Path, root: &Path, program: &str, size: &str, launch: &Launch) ->
             vec![program.to_string()],
             "mscoree,mshtml=;ddraw=n,b".to_string(),
         )
+    } else if launch.zoom {
+        // a window of its own, which the app zooms
+        (vec![program.to_string()], "mscoree,mshtml=".to_string())
     } else {
         (
             // `cmd /c` takes the whole program, which may have a space in its name
@@ -365,6 +372,7 @@ fn spec(wine: &Path, root: &Path, program: &str, size: &str, launch: &Launch) ->
             .parent()
             .map(|bin| bin.join("wineserver").to_string_lossy().into_owned())
             .map(|server| vec![server, "-k".into()]),
+        zoom: launch.zoom,
     }
 }
 
@@ -1074,7 +1082,7 @@ pub fn prepare(
     apply_setup_programs(&env, recipe, &game, &mut marks, log)?;
     apply_winetricks(&env, recipe, &mut marks, log)?;
 
-    let framed = recipe.window != "desktop" && add_window_frame(paths, &game, &recipe.screen, log);
+    let framed = recipe.window == "frame" && add_window_frame(paths, &game, &recipe.screen, log);
     let mut ready = Ready {
         program,
         size: recipe.screen.clone(),
@@ -1476,6 +1484,7 @@ mod tests {
     fn launch(framed: bool, dxvk: bool) -> Launch {
         Launch {
             framed,
+            zoom: false,
             dxvk,
             overrides: Vec::new(),
         }
@@ -2165,10 +2174,10 @@ mod tests {
         assert_eq!(mega.setup, ["SetupReg.exe"]);
         assert_eq!(drive_prefix(mega), "");
         assert_eq!(drive_prefix(pc_recipes::by_id("road-rash")), "ROADRASH\\");
-        // the game asks for the desktop, so it has no frame even when it was set up with one; the
-        // program has a space in its name, which `cmd /c` takes as it is
+        // the game asks for a window that the app zooms, so it has no frame even when it was set up
+        // with one, and no virtual desktop either
         let l = Launch::of(Some(mega), true);
-        assert!(!l.framed);
+        assert!(!l.framed && l.zoom);
         assert!(Launch::of(Some(pc_recipes::by_id("road-rash")), true).framed);
         let s = spec(
             Path::new("/w/bin/wine"),
@@ -2177,15 +2186,15 @@ mod tests {
             &mega.screen,
             &l,
         );
-        assert_eq!(
-            s.args,
-            [
-                "explorer",
-                "/desktop=Game,800x600",
-                "cmd",
-                "/c",
-                "R:\\Megaman X8.exe"
-            ]
+        assert_eq!(s.args, ["R:\\Megaman X8.exe"]);
+        assert!(s.zoom, "the app is told to zoom its window");
+        let other = spec(
+            Path::new("/w/bin/wine"),
+            Path::new("/d"),
+            "R:\\G.EXE",
+            "800x600",
+            &Launch::of(None, true),
         );
+        assert!(!other.zoom);
     }
 }

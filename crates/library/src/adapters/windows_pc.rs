@@ -193,6 +193,7 @@ pub fn prepare(
             cwd: Some(game),
             env: Vec::new(),
             stop: None,
+            zoom: false,
         });
     }
     log("Mounting the disc image");
@@ -217,6 +218,7 @@ pub fn prepare(
         cwd: Some(cwd),
         env: Vec::new(),
         stop: Some(dismount_command(disc)),
+        zoom: false,
     })
 }
 

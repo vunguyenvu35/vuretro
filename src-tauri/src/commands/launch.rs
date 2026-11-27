@@ -70,10 +70,15 @@ pub async fn launch_game(
     })
     .await??;
     let started = running.is_some();
+    let zoom = running.as_ref().is_some_and(|r| r.zoom());
     watch(&app, &shell, running);
     if started {
         // a Wine game's window opens behind the app unless it is handed the front
         std::thread::spawn(crate::front::raise_wine_game);
+    }
+    if zoom {
+        // a game that takes the whole display for its window is zoomed to what the screen holds
+        std::thread::spawn(crate::front::zoom_wine_window);
     }
     Ok(())
 }

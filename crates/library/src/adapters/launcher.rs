@@ -389,6 +389,7 @@ mod tests {
                 args: vec!["-c".into(), "exit 0".into()],
                 cwd: None,
                 env: Vec::new(),
+                zoom: false,
                 stop: Some(vec![
                     "/bin/sh".into(),
                     "-c".into(),
@@ -422,6 +423,7 @@ mod tests {
                 cwd: Some(dir.clone()),
                 env: vec![("WINEPREFIX".into(), "/some/prefix".into())],
                 stop: None,
+                zoom: false,
             })
             .unwrap();
         process.wait();
