@@ -1,8 +1,9 @@
 //! Ride a bike along a course of a Road Rash disc.
 //! Usage: rr-ride <ROADRASH.iso or its unpacked folder> [course: NAPA CITY HIWAY CANYN MEDLY]
 //!        [--rider 0..14] [--music NAME] [--shots picture.png] [--sound-test sound.wav] [--busted-test picture.png]
-//! Keys: Up or W to speed up, Down or S to brake, Left and Right or A and D to steer, Z and X
-//! to hit a rider on the left or on the right, Esc to quit. After a while the police come
+//! Keys: Up or W to speed up, Down or S to brake, Left and Right or A and D to steer, 1 2 3 to
+//! take the fists, the chain or the club, Z and X to strike to the left or to the right, Esc to
+//! quit. After a while the police come
 //! after you: stay fast, or the BUSTED video plays and the ride starts again.
 //! With --shots nothing opens: a scripted ride is played and six pictures of it are written.
 //! With --sound-test nothing opens either: four seconds of engine (the revs rising) and a
@@ -15,7 +16,8 @@ use vuretro_roadrash::disc::Disc;
 use vuretro_roadrash::image::{sheet, write_png, Rgb};
 use vuretro_roadrash::palette::{Order, Palette};
 use vuretro_roadrash::ride::{
-    collide, punch, render, step, step_rivals, Bike, Chase, Chased, Input, Look, Rival, TOP_SPEED,
+    collide, render, step, step_rivals, strike, Attack, Bike, Chase, Chased, Input, Look, Rival,
+    Weapon, TOP_SPEED,
 };
 use vuretro_roadrash::scenery::Scenery;
 use vuretro_roadrash::sound::{Audio, Mixer};
@@ -124,12 +126,15 @@ fn main() -> Result<(), String> {
     let remaps = exe::rider_remaps(&read("ROADRASH.EXE".into())?)?;
     let dash = hud::panel(&read("IMAGES/BIKES/RAT/KHIDASH.BOB".into())?)?;
     let samples = course.route_samples();
-    // the sounds: this bike's engine, and the effects 0 crash, 1 siren, 2 punch
+    // the sounds: this bike's engine, and the effects 0 crash, 1 siren, 2 fist, 3 hard fist,
+    // 4 chain, 5 club, 6 swish of the chain and the club, 7 swish of the fist
     let engine = wav::parse(&read("AUDIO/EFFECTS/ENGRAT.WAV".into())?)?;
-    let effects = ["CRASHLIT", "SIREN", "PUNCHLIG"]
-        .iter()
-        .map(|n| wav::parse(&read(format!("AUDIO/EFFECTS/{n}.WAV"))?))
-        .collect::<Result<Vec<_>, String>>()?;
+    let effects = [
+        "CRASHLIT", "SIREN", "PUNCHLIG", "PUNCHHEA", "CHAINIMP", "CLUBIMPA", "SWISHCHA", "SWISHGEN",
+    ]
+    .iter()
+    .map(|n| wav::parse(&read(format!("AUDIO/EFFECTS/{n}.WAV"))?))
+    .collect::<Result<Vec<_>, String>>()?;
     // the music: a track of the disc (a WAV file of its own), one for each course unless
     // another is asked for with --music
     let track = music_name.unwrap_or_else(|| {
@@ -157,6 +162,8 @@ fn main() -> Result<(), String> {
         horizon: Some(&backdrop),
         headings: &headings,
         police: None,
+        attack: None,
+        weapon: Some(Weapon::Fists),
         scenery: Some(&scenery),
         ground: Some(&ground),
     };
@@ -229,6 +236,23 @@ fn main() -> Result<(), String> {
             step(&mut bike, input, &samples, dt);
             step_rivals(&mut rivals, &samples, dt);
             collide(&mut bike, &rivals);
+            // a blow shortly before each picture, with another weapon and on another side
+            if frame % 60 == 55 {
+                let n = frame / 60;
+                look.weapon = Some(Weapon::ALL[n % 3]);
+                look.attack = Some(Attack::start(
+                    Weapon::ALL[n % 3],
+                    if n % 2 == 0 { 1.0 } else { -1.0 },
+                ));
+            }
+            if let Some(a) = &mut look.attack {
+                if a.advance(dt) {
+                    strike(&bike, &mut rivals, a);
+                }
+                if a.done() {
+                    look.attack = None;
+                }
+            }
             look.police = match chase.step(&bike, dt) {
                 Chased::Behind(gap) => Some(gap),
                 Chased::Busted => {
@@ -272,7 +296,8 @@ fn main() -> Result<(), String> {
     let mut busted: Option<Busted> = None;
     let mut busts = 0usize;
     let mut touching = false;
-    let mut punch_wait = 0.0f32;
+    let mut weapon = Weapon::Fists;
+    let mut attack: Option<Attack> = None;
     let down =
         |window: &minifb::Window, keys: &[minifb::Key]| keys.iter().any(|&k| window.is_key_down(k));
     while window.is_open() && !window.is_key_down(minifb::Key::Escape) {
@@ -309,12 +334,32 @@ fn main() -> Result<(), String> {
         step(&mut bike, input, &samples, dt);
         step_rivals(&mut rivals, &samples, dt);
         let hit = collide(&mut bike, &rivals);
-        punch_wait = (punch_wait - dt).max(0.0);
+        // the weapon in hand, and a blow when a key asks for one and none is going on
+        for (key, w) in [
+            (Key1, Weapon::Fists),
+            (Key2, Weapon::Chain),
+            (Key3, Weapon::Club),
+        ] {
+            if window.is_key_down(key) {
+                weapon = w;
+            }
+        }
         let side = down(&window, &[X]) as i32 as f32 - down(&window, &[Z]) as i32 as f32;
-        let punched = side != 0.0 && punch_wait == 0.0 && {
-            punch_wait = 0.4;
-            punch(&bike, &mut rivals, side)
-        };
+        let swung = side != 0.0 && attack.is_none();
+        if swung {
+            attack = Some(Attack::start(weapon, side));
+        }
+        let mut landed = false;
+        if let Some(a) = &mut attack {
+            if a.advance(dt) {
+                landed = strike(&bike, &mut rivals, a);
+            }
+            if a.done() {
+                attack = None;
+            }
+        }
+        look.attack = attack;
+        look.weapon = Some(weapon);
         let chased = chase.step(&bike, dt);
         look.police = match chased {
             Chased::Behind(gap) => Some(gap),
@@ -330,8 +375,11 @@ fn main() -> Result<(), String> {
             if hit && !touching {
                 m.play(0);
             }
-            if punched {
-                m.play(2);
+            if swung {
+                m.play(weapon.swing_sound());
+            }
+            if landed {
+                m.play(weapon.impact_sound());
             }
             m.set_loop(match chased {
                 Chased::Behind(gap) => Some((1, (1.0 - gap / 40.0).clamp(0.1, 1.0) * 0.5)),

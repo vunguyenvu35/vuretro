@@ -71,7 +71,7 @@ fn needle(picture: &mut Rgb, hub: (f32, f32), length: f32, degrees: f32, c: [u8;
     }
 }
 
-const GLYPHS: [(char, [&str; 7]); 22] = [
+const GLYPHS: [(char, [&str; 7]); 26] = [
     (
         '0',
         [
@@ -204,9 +204,33 @@ const GLYPHS: [(char, [&str; 7]); 22] = [
             "11110", "10001", "10001", "10001", "10001", "10001", "11110",
         ],
     ),
+    (
+        'F',
+        [
+            "11111", "10000", "10000", "11110", "10000", "10000", "10000",
+        ],
+    ),
+    (
+        'H',
+        [
+            "10001", "10001", "10001", "11111", "10001", "10001", "10001",
+        ],
+    ),
+    (
+        'A',
+        [
+            "01110", "10001", "10001", "11111", "10001", "10001", "10001",
+        ],
+    ),
+    (
+        'N',
+        [
+            "10001", "11001", "10101", "10101", "10011", "10001", "10001",
+        ],
+    ),
 ];
 
-/// Write letters (`0-9 / P O S L I C E B U T D` and spaces) with a dark shadow, each dot `size` pixels wide.
+/// Write letters (`0-9 / P O S L I C E B U T D F H A N` and spaces) with a dark shadow, each dot `size` pixels wide.
 pub fn text(picture: &mut Rgb, x: i64, y: i64, size: i64, words: &str, c: [u8; 3]) {
     let mut left = x;
     for ch in words.chars() {

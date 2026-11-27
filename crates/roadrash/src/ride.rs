@@ -242,20 +242,139 @@ impl Chase {
     }
 }
 
-/// Hit a rival beside the bike, to the left (`side` -1) or the right (1): it is slowed and
-/// knocked sideways. True when there was one to hit.
-pub fn punch(bike: &Bike, rivals: &mut [Rival], side: f32) -> bool {
+/// What the rider fights with.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Weapon {
+    Fists,
+    Chain,
+    Club,
+}
+
+impl Weapon {
+    pub const ALL: [Weapon; 3] = [Weapon::Fists, Weapon::Chain, Weapon::Club];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Weapon::Fists => "FISTS",
+            Weapon::Chain => "CHAIN",
+            Weapon::Club => "CLUB",
+        }
+    }
+
+    /// How far to the side the weapon reaches, in world units.
+    pub fn reach(self) -> f32 {
+        match self {
+            Weapon::Fists => 320.0,
+            Weapon::Chain => 460.0,
+            Weapon::Club => 400.0,
+        }
+    }
+
+    /// What is left of the speed of a rider that is hit.
+    fn slows_to(self) -> f32 {
+        match self {
+            Weapon::Fists => 0.6,
+            Weapon::Chain => 0.5,
+            Weapon::Club => 0.4,
+        }
+    }
+
+    /// The frames of the rider set (`HIBOB.DAT`) for the wind-up and the blow, to the left or to
+    /// the right. They were found by looking at the frames of the set.
+    fn frames(self, side: f32) -> (usize, usize) {
+        match (self, side > 0.0) {
+            (Weapon::Fists, true) => (44, 45),
+            (Weapon::Fists, false) => (51, 52),
+            (Weapon::Chain, true) => (101, 102),
+            (Weapon::Chain, false) => (105, 106),
+            (Weapon::Club, true) => (141, 143),
+            (Weapon::Club, false) => (140, 142),
+        }
+    }
+
+    /// The sound effects (numbers in the list of the ride) for the swing and for a hit.
+    pub fn swing_sound(self) -> usize {
+        match self {
+            Weapon::Fists => 7,
+            _ => 6,
+        }
+    }
+    pub fn impact_sound(self) -> usize {
+        match self {
+            Weapon::Fists => 2,
+            Weapon::Chain => 4,
+            Weapon::Club => 5,
+        }
+    }
+}
+
+/// How long the rider winds up before the blow, until the blow ends, and until the next may begin.
+pub const WIND_UP: f32 = 0.12;
+const BLOW_ENDS: f32 = 0.30;
+pub const ATTACK_TIME: f32 = 0.45;
+
+/// A blow being struck.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Attack {
+    pub weapon: Weapon,
+    /// -1 to the left, 1 to the right.
+    pub side: f32,
+    /// Seconds since it began.
+    pub t: f32,
+}
+
+impl Attack {
+    pub fn start(weapon: Weapon, side: f32) -> Attack {
+        Attack {
+            weapon,
+            side: if side < 0.0 { -1.0 } else { 1.0 },
+            t: 0.0,
+        }
+    }
+
+    /// The frame of the rider to show: the wind-up, then the blow, then the ordinary one.
+    pub fn frame(&self) -> Option<usize> {
+        let (wind, blow) = self.weapon.frames(self.side);
+        if self.t < WIND_UP {
+            Some(wind)
+        } else if self.t < BLOW_ENDS {
+            Some(blow)
+        } else {
+            None
+        }
+    }
+
+    /// Go on for `dt` seconds. True at the moment the blow lands.
+    pub fn advance(&mut self, dt: f32) -> bool {
+        let before = self.t;
+        self.t += dt;
+        before < WIND_UP && self.t >= WIND_UP
+    }
+
+    pub fn done(&self) -> bool {
+        self.t >= ATTACK_TIME
+    }
+}
+
+/// Land a blow on a rival beside the bike: it is slowed (by a weapon's measure) and knocked
+/// sideways. True when there was one to hit.
+pub fn strike(bike: &Bike, rivals: &mut [Rival], attack: &Attack) -> bool {
     let mut hit = false;
     for r in rivals {
         let ahead = r.position - bike.position;
-        let across = (r.lateral - bike.lateral) * side;
-        if (-0.8..0.8).contains(&ahead) && (40.0..320.0).contains(&across) {
-            r.speed = (r.speed * 0.6).max(12.0);
-            r.lateral += side * 140.0;
+        let across = (r.lateral - bike.lateral) * attack.side;
+        if (-0.8..0.8).contains(&ahead) && (40.0..attack.weapon.reach()).contains(&across) {
+            r.speed = (r.speed * attack.weapon.slows_to()).max(12.0);
+            r.lateral += attack.side * 140.0;
             hit = true;
         }
     }
     hit
+}
+
+/// A punch: a blow with the fists.
+pub fn punch(bike: &Bike, rivals: &mut [Rival], side: f32) -> bool {
+    strike(bike, rivals, &Attack::start(Weapon::Fists, side))
 }
 
 /// What is needed to draw riders: their sprites, the palette and the colour tables.
@@ -274,6 +393,9 @@ pub struct Look<'a> {
     pub scenery: Option<&'a Scenery>,
     /// The hills and the buildings at the side of the road.
     pub ground: Option<&'a Ground>,
+    /// The blow the rider is striking and the weapon it holds (shown on the panel).
+    pub attack: Option<Attack>,
+    pub weapon: Option<Weapon>,
 }
 
 /// Draw a sprite so that the wheel touches the picture at (`x`, `bottom`), `scale` times its
@@ -471,12 +593,18 @@ pub fn render(
             (place, rivals.len() + 1),
         );
     }
+    if let Some(weapon) = look.weapon {
+        hud::text(&mut picture, 12, 44, 2, weapon.name(), [250, 230, 60]);
+    }
     if look.police.is_some() && (bike.position * 0.5) as i64 % 2 == 0 {
         // flashing, with the road's own pace
         hud::text(&mut picture, 232, 10, 4, "POLICE", [235, 40, 40]);
     }
-    if let (Some(sprite), Some(remap)) = (look.riders.get(lean_frame(bike.lean)), remap_of(colour))
-    {
+    let own_frame = look
+        .attack
+        .and_then(|a| a.frame())
+        .unwrap_or_else(|| lean_frame(bike.lean));
+    if let (Some(sprite), Some(remap)) = (look.riders.get(own_frame), remap_of(colour)) {
         let (w, h) = (picture.width as f32, picture.height as f32);
         draw_sprite(&mut picture, sprite, look, remap, w / 2.0, h - 8.0, 1.0);
     }
@@ -632,6 +760,8 @@ mod tests {
             police: None,
             scenery: None,
             ground: None,
+            attack: None,
+            weapon: None,
         };
         let with = render(&road, &Bike::start(), &[], &look, 0);
         assert_eq!((with.width, with.height), (640, 480));
@@ -647,6 +777,8 @@ mod tests {
             police: None,
             scenery: None,
             ground: None,
+            attack: None,
+            weapon: None,
         };
         let without = render(&road, &Bike::start(), &[], &nobody, 0);
         assert_ne!(with.pixels, without.pixels);
@@ -721,6 +853,8 @@ mod tests {
             police: None,
             scenery: None,
             ground: None,
+            attack: None,
+            weapon: None,
         };
         let red = |p: &Rgb| {
             p.pixels
@@ -848,5 +982,80 @@ mod tests {
             !punch(&bike, &mut close, 1.0),
             "on top of the bike is not beside it"
         );
+    }
+
+    #[test]
+    fn a_blow_winds_up_then_lands_once_then_the_rider_is_as_before() {
+        let mut a = Attack::start(Weapon::Chain, 1.0);
+        assert_eq!(
+            a.frame(),
+            Some(101),
+            "the wind-up of the chain on the right"
+        );
+        let landings = (0..30).filter(|_| a.advance(1.0 / 30.0)).count();
+        assert_eq!(landings, 1, "the blow lands once");
+        assert!(a.done());
+        assert_eq!(a.frame(), None);
+        let mut blow = Attack::start(Weapon::Club, -1.0);
+        blow.t = 0.2;
+        assert_eq!(blow.frame(), Some(142), "the club on the left, in the blow");
+        assert_ne!(
+            Attack::start(Weapon::Fists, 1.0).frame(),
+            Attack::start(Weapon::Fists, -1.0).frame()
+        );
+    }
+
+    #[test]
+    fn a_longer_weapon_reaches_further_and_a_heavier_one_slows_more() {
+        let bike = Bike {
+            position: 10.0,
+            lateral: 0.0,
+            ..Bike::start()
+        };
+        let rival = Rival {
+            position: 10.1,
+            lateral: 420.0,
+            speed: 60.0,
+            colour: 0,
+        };
+        let mut near = [rival];
+        assert!(
+            !strike(&bike, &mut near, &Attack::start(Weapon::Fists, 1.0)),
+            "out of reach of a fist"
+        );
+        assert!(
+            strike(&bike, &mut near, &Attack::start(Weapon::Chain, 1.0)),
+            "within the chain's"
+        );
+        let beside = Rival {
+            lateral: 200.0,
+            ..rival
+        };
+        let (mut fist, mut club) = ([beside], [beside]);
+        strike(&bike, &mut fist, &Attack::start(Weapon::Fists, 1.0));
+        strike(&bike, &mut club, &Attack::start(Weapon::Club, 1.0));
+        assert!(
+            club[0].speed < fist[0].speed,
+            "{} {}",
+            club[0].speed,
+            fist[0].speed
+        );
+    }
+
+    #[test]
+    fn every_weapon_has_a_name_that_can_be_written_and_sounds_of_its_own() {
+        for w in Weapon::ALL {
+            for ch in w.name().chars() {
+                let mut p = Rgb {
+                    width: 16,
+                    height: 16,
+                    pixels: vec![0; 16 * 16 * 3],
+                };
+                hud::text(&mut p, 1, 1, 1, &ch.to_string(), [255, 255, 255]);
+                assert!(p.pixels.iter().any(|&v| v != 0), "{ch} of {}", w.name());
+            }
+        }
+        assert_ne!(Weapon::Chain.impact_sound(), Weapon::Club.impact_sound());
+        assert_ne!(Weapon::Fists.swing_sound(), Weapon::Chain.swing_sound());
     }
 }
