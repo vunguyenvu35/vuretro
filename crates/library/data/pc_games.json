@@ -35,6 +35,7 @@
     "detect": ["Megaman X8.exe"],
     "program": "D:\\Megaman X8.exe",
     "screen": "800x600",
+    "window": "desktop",
     "setup": ["SetupReg.exe"]
   }
 ]

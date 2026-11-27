@@ -101,10 +101,20 @@ pub struct Recipe {
     /// own folder and must be used instead of Wine's.
     #[serde(default)]
     pub overrides: Vec<String>,
+    /// How the game's window is made: `frame` (a window of its own with the title bar of the Mac,
+    /// by cnc-ddraw: for games that draw with DirectDraw) or `desktop` (Wine's virtual desktop of
+    /// the size of `screen`: for games that draw with Direct3D and take the size of the whole
+    /// screen for their window).
+    #[serde(default = "default_window")]
+    pub window: String,
     /// What draws Direct3D: `wined3d` (Wine's own, for Direct3D up to 9) or `dxvk` (Direct3D 10
     /// and 11 over Vulkan, which Wine's own does not do well).
     #[serde(default = "default_renderer")]
     pub renderer: String,
+}
+
+fn default_window() -> String {
+    "frame".into()
 }
 
 fn default_renderer() -> String {
@@ -141,6 +151,7 @@ impl Recipe {
             setup: Vec::new(),
             winetricks: Vec::new(),
             overrides: Vec::new(),
+            window: default_window(),
             renderer: default_renderer(),
         }
     }
@@ -234,6 +245,9 @@ pub fn parse(json: &str) -> Result<Vec<Recipe>, String> {
                 .is_none_or(|(name, mode)| !plain(name, "_.-") || !plain(mode, ",_"))
         }) {
             return Err(format!("recipe {}: \"{o}\" is not a DLL override", r.id));
+        }
+        if r.window != "frame" && r.window != "desktop" {
+            return Err(format!("recipe {}: a window is frame or desktop", r.id));
         }
         if r.renderer != "wined3d" && r.renderer != "dxvk" {
             return Err(format!("recipe {}: a renderer is wined3d or dxvk", r.id));
@@ -399,6 +413,8 @@ mod tests {
         assert!(parse(over).unwrap_err().contains("override"));
         let ok = r#"[{"id":"a","name":"A","detect":["X"],"winetricks":["vcrun2015","corefonts"],"overrides":["quartz=n,b"]}]"#;
         assert_eq!(parse(ok).unwrap()[0].winetricks, ["vcrun2015", "corefonts"]);
+        let window = r#"[{"id":"a","name":"A","detect":["X"],"window":"fullscreen"}]"#;
+        assert!(parse(window).unwrap_err().contains("window"));
         let renderer = r#"[{"id":"a","name":"A","detect":["X"],"renderer":"metal"}]"#;
         assert!(parse(renderer).unwrap_err().contains("renderer"));
         let title =

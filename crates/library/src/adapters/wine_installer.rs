@@ -308,7 +308,8 @@ impl Launch {
     /// How a game of this recipe is started, on a window with a frame or not.
     fn of(recipe: Option<&Recipe>, framed: bool) -> Launch {
         Launch {
-            framed,
+            // a recipe that asks for the desktop has no frame, whatever was set up before
+            framed: framed && recipe.is_none_or(|r| r.window != "desktop"),
             dxvk: recipe.is_some_and(|r| r.renderer == "dxvk"),
             overrides: recipe.map(|r| r.overrides.clone()).unwrap_or_default(),
         }
@@ -326,9 +327,12 @@ fn spec(wine: &Path, root: &Path, program: &str, size: &str, launch: &Launch) ->
         )
     } else {
         (
+            // `cmd /c` takes the whole program, which may have a space in its name
             vec![
                 "explorer".to_string(),
                 format!("/desktop=Game,{size}"),
+                "cmd".to_string(),
+                "/c".to_string(),
                 program.to_string(),
             ],
             "mscoree,mshtml=".to_string(),
@@ -1070,7 +1074,7 @@ pub fn prepare(
     apply_setup_programs(&env, recipe, &game, &mut marks, log)?;
     apply_winetricks(&env, recipe, &mut marks, log)?;
 
-    let framed = add_window_frame(paths, &game, &recipe.screen, log);
+    let framed = recipe.window != "desktop" && add_window_frame(paths, &game, &recipe.screen, log);
     let mut ready = Ready {
         program,
         size: recipe.screen.clone(),
@@ -1485,7 +1489,13 @@ mod tests {
         assert_eq!(desktop.exe, wine);
         assert_eq!(
             desktop.args,
-            ["explorer", "/desktop=Game,800x600", "R:\\GAME.EXE"]
+            [
+                "explorer",
+                "/desktop=Game,800x600",
+                "cmd",
+                "/c",
+                "R:\\GAME.EXE"
+            ]
         );
         assert_eq!(desktop.cwd.as_deref(), Some(root.join("game").as_path()));
         assert!(desktop
@@ -1498,10 +1508,13 @@ mod tests {
             .env
             .iter()
             .any(|(k, v)| k == "WINEDLLOVERRIDES" && v.contains("ddraw=n,b")));
+        // the command that ends what Wine left: its server, from the folder of Wine
+        let stop = framed.stop.as_deref().unwrap();
         assert_eq!(
-            framed.stop.as_deref(),
-            Some(&["/opt/wine/bin/wineserver".to_string(), "-k".to_string()][..])
+            Path::new(&stop[0]),
+            wine.parent().unwrap().join("wineserver")
         );
+        assert_eq!(stop[1], "-k");
     }
 
     #[test]
@@ -2152,8 +2165,11 @@ mod tests {
         assert_eq!(mega.setup, ["SetupReg.exe"]);
         assert_eq!(drive_prefix(mega), "");
         assert_eq!(drive_prefix(pc_recipes::by_id("road-rash")), "ROADRASH\\");
-        // the game itself is a program with a space in its name, one argument for Wine
+        // the game asks for the desktop, so it has no frame even when it was set up with one; the
+        // program has a space in its name, which `cmd /c` takes as it is
         let l = Launch::of(Some(mega), true);
+        assert!(!l.framed);
+        assert!(Launch::of(Some(pc_recipes::by_id("road-rash")), true).framed);
         let s = spec(
             Path::new("/w/bin/wine"),
             Path::new("/d"),
@@ -2161,6 +2177,15 @@ mod tests {
             &mega.screen,
             &l,
         );
-        assert_eq!(s.args, ["R:\\Megaman X8.exe"]);
+        assert_eq!(
+            s.args,
+            [
+                "explorer",
+                "/desktop=Game,800x600",
+                "cmd",
+                "/c",
+                "R:\\Megaman X8.exe"
+            ]
+        );
     }
 }
