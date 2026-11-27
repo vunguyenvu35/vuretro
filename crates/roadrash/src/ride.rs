@@ -3,6 +3,7 @@
 
 use crate::bob::Frame;
 use crate::course::Sample;
+use crate::exe::Remap;
 use crate::image::Rgb;
 use crate::palette::Palette;
 use crate::road::{self, Guess};
@@ -143,8 +144,14 @@ fn double(picture: &Rgb) -> Rgb {
     }
 }
 
-/// The picture of the ride, 640x480: the road and the rider on it.
-pub fn render(samples: &[Sample], bike: &Bike, riders: &[Frame], palette: &Palette) -> Rgb {
+/// The picture of the ride, 640x480: the road and the rider on it, coloured by `remap`.
+pub fn render(
+    samples: &[Sample],
+    bike: &Bike,
+    riders: &[Frame],
+    palette: &Palette,
+    remap: &Remap,
+) -> Rgb {
     let mut picture = double(&road::view_at(
         samples,
         bike.position,
@@ -161,7 +168,8 @@ pub fn render(samples: &[Sample], bike: &Bike, riders: &[Frame], palette: &Palet
                 let (px, py) = (left + x, top + y);
                 if index != 0 && px >= 0 && py >= 0 && px < width && py < height {
                     let at = ((py * width + px) * 3) as usize;
-                    picture.pixels[at..at + 3].copy_from_slice(&palette.0[index as usize]);
+                    picture.pixels[at..at + 3]
+                        .copy_from_slice(&palette.0[remap[index as usize] as usize]);
                 }
             }
         }
@@ -306,11 +314,12 @@ mod tests {
             height: 8,
             indices: vec![1; 32],
         };
-        let with = render(&road, &Bike::start(), &vec![rider; 20], &palette);
+        let same: Remap = std::array::from_fn(|i| i as u8);
+        let with = render(&road, &Bike::start(), &vec![rider; 20], &palette, &same);
         assert_eq!((with.width, with.height), (640, 480));
         let at = ((480 - 8 - 2) * 640 + 320) * 3;
         assert_eq!(&with.pixels[at..at + 3], &[200, 0, 0]);
-        let without = render(&road, &Bike::start(), &[], &palette);
+        let without = render(&road, &Bike::start(), &[], &palette, &same);
         assert_ne!(with.pixels, without.pixels);
     }
 }

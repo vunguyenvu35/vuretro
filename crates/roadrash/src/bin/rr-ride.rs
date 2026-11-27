@@ -1,12 +1,14 @@
 //! Ride a bike along a course of a Road Rash disc.
-//! Usage: rr-ride <ROADRASH folder> [course: NAPA CITY HIWAY CANYN MEDLY] [--shots picture.png]
+//! Usage: rr-ride <ROADRASH.iso or its unpacked folder> [course: NAPA CITY HIWAY CANYN MEDLY] [--rider 0..14]
+//!        [--shots picture.png]
 //! Keys: Up or W to speed up, Down or S to brake, Left and Right or A and D to steer, Esc quits.
 //! With --shots nothing opens: a scripted ride is played and six pictures of it are written.
 use std::path::Path;
+use vuretro_roadrash::disc::Disc;
 use vuretro_roadrash::image::{sheet, write_png, Rgb};
 use vuretro_roadrash::palette::{Order, Palette};
 use vuretro_roadrash::ride::{render, step, Bike, Input};
-use vuretro_roadrash::{bob, course};
+use vuretro_roadrash::{bob, course, exe};
 
 fn main() -> Result<(), String> {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
@@ -22,16 +24,29 @@ fn main() -> Result<(), String> {
             Ok::<_, String>(name)
         })
         .transpose()?;
+    let rider = args
+        .iter()
+        .position(|a| a == "--rider")
+        .map(|i| {
+            let n = args.get(i + 1).ok_or("--rider needs a number")?;
+            let n: usize = n.parse().map_err(|_| "--rider is a number from 0 to 14")?;
+            args.drain(i..=i + 1);
+            Ok::<_, String>(n.min(exe::RIDER_COLOURS - 1))
+        })
+        .transpose()?
+        .unwrap_or(0);
     let disc = args
         .first()
-        .ok_or("usage: rr-ride <ROADRASH folder> [course] [--shots picture.png]")?;
+        .ok_or("usage: rr-ride <ROADRASH.iso or folder> [course] [--shots picture.png]")?;
     let name = args.get(1).map_or("NAPA", String::as_str).to_uppercase();
     let disc = Path::new(disc);
 
-    let read = |p: String| std::fs::read(disc.join(&p)).map_err(|e| format!("{p}: {e}"));
+    let disc = Disc::open(disc)?;
+    let read = |p: String| disc.read(&p);
     let palette = Palette::parse(&read("DATA/PALETTE.RAW".into())?, Order::Rgbx)?;
     let riders = bob::read_frames(&read("DATA/BIKERS/HIBOB.DAT".into())?)?;
     let course = course::parse(&read(format!("DATA/COURSES/{name}.CRS"))?)?;
+    let remap = exe::rider_remaps(&read("ROADRASH.EXE".into())?)?[rider];
     let samples = course.route_samples();
     let dt = 1.0 / 30.0;
 
@@ -49,7 +64,7 @@ fn main() -> Result<(), String> {
             };
             step(&mut bike, input, &samples, dt);
             if frame % 60 == 59 {
-                views.push(render(&samples, &bike, &riders, &palette));
+                views.push(render(&samples, &bike, &riders, &palette, &remap));
             }
         }
         return write_png(&sheet(&views, 3), Path::new(&out));
@@ -78,7 +93,7 @@ fn main() -> Result<(), String> {
             steer,
         };
         step(&mut bike, input, &samples, dt);
-        let picture: Rgb = render(&samples, &bike, &riders, &palette);
+        let picture: Rgb = render(&samples, &bike, &riders, &palette, &remap);
         for (pixel, rgb) in buffer.iter_mut().zip(picture.pixels.chunks_exact(3)) {
             *pixel = (rgb[0] as u32) << 16 | (rgb[1] as u32) << 8 | rgb[2] as u32;
         }
