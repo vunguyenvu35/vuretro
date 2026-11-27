@@ -16,6 +16,8 @@ All common commands live in the [Makefile](../Makefile). Run `make` to list them
 make dev      # the app: Library, Cores & BIOS, Controls
 ```
 
+`make dev` plays with a **release** runner, because a debug one is many times slower at changing the picture (Scale2x, CRT, enlarging, reading back from the graphics card). After you change the runner's code, restart `make dev` to rebuild it. Set `VURETRO_RUNNER=/path/to/vuretro-runner` to use a runner of your own.
+
 The first run compiles the Tauri shell (a few minutes), later runs start in seconds. With no ROM folder yet you see a welcome screen; **Try the demo** launches the fake core so you can check video, audio and input without any ROM.
 
 ![Library](images/app-library.png)
@@ -91,7 +93,8 @@ make scan ROMS=~/Games/roms
 
 | Command | What it does |
 |---|---|
-| `make dev` | Open the app (Library UI); builds the runner and fake core first |
+| `make dev` | Open the app (Library UI); builds the runner (release, so games play at full speed) and the fake core first |
+| `make dev-debug` | The same with a debug runner: builds faster, but games play slowly. Use it to debug the runner |
 | `make demo` | Run the runner alone with the fake core (no UI, no ROM) |
 | `make app-build` | Build the installable app bundle |
 | `make play ROM=… [CORE=fbneo\|pcsx] [SCALE=2]` | Run a real game (release build); `CORE=fbneo|pcsx|snes|gba`; `CORE=fbneo|pcsx|snes|gba` |

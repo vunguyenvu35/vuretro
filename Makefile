@@ -51,7 +51,20 @@ toolchain:
 # Recipes below go through the shell (`export PATH` + `;`): make 3.81 execs simple
 # commands directly using the *parent* PATH, so a cargo installed during this very
 # run would not be found.
-dev: toolchain node_modules ## Open the vuretro app (Library UI); builds the runner and fake core first
+# The games run in the runner, and a debug build of it is many times slower (the pictures are
+# changed pixel by pixel: Scale2x, CRT, enlarging, reading back from the graphics card), so
+# `dev` plays with a release runner. VURETRO_RUNNER tells the app which runner to use; set it
+# yourself to use another. After changing the runner's code, restart `make dev` to rebuild it.
+RUNNER_RELEASE := $(CURDIR)/target/release/vuretro-runner
+
+dev: toolchain node_modules ## Open the vuretro app (Library UI) with a fast (release) runner
+	@export PATH="$$HOME/.cargo/bin:$$PATH"; set -e; \
+	  cargo build --release -p vuretro-runner; \
+	  cargo build -p vuretro-test-core; \
+	  VURETRO_RUNNER="$${VURETRO_RUNNER:-$(RUNNER_RELEASE)}" \
+	  npx tauri dev --additional-watch-folders crates
+
+dev-debug: toolchain node_modules ## Like dev, but with a debug runner (builds faster, plays slowly): to debug the runner
 	@export PATH="$$HOME/.cargo/bin:$$PATH"; set -e; \
 	  cargo build -p vuretro-runner -p vuretro-test-core; \
 	  npx tauri dev --additional-watch-folders crates
