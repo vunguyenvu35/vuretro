@@ -301,7 +301,6 @@ impl NativeInstaller for RoadRashInstaller {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
 
     #[test]
     fn the_usual_extra_folders_are_searched_even_when_the_path_is_short() {
@@ -336,7 +335,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn the_lines_a_command_prints_are_passed_on_and_a_failure_says_what_it_last_said() {
-        let seen = Mutex::new(Vec::new());
+        let seen = std::sync::Mutex::new(Vec::new());
         let log = |l: &str| seen.lock().unwrap().push(l.to_string());
         run(
             Command::new("sh").args(["-c", "echo one; echo two >&2"]),

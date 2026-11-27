@@ -212,7 +212,7 @@
   {
     "id": "windows", "name": "PC (Windows)", "core": "wine", "runtime": "wine", "look": "none",
     "folder_only": true,
-    "extensions": ["iso"],
+    "extensions": ["iso", "zip", "7z"],
     "folders": ["pc", "windows", "pc-games", "windows-games"]
   },
   {

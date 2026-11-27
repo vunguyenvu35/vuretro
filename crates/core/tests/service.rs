@@ -2637,6 +2637,17 @@ fn a_windows_disc_image_in_the_pc_folder_belongs_to_the_pc_system() {
     .unwrap();
     assert_eq!(sys.id, "windows");
     assert_eq!(sys.runtime, "wine");
+    // so are the archives of games, in the folder of the system
+    for name in ["Mega Man X8.zip", "game.7z"] {
+        let path = format!("/roms/pc/{name}");
+        let sys = vuretro_core::detect::detect_system(Path::new("/roms"), Path::new(&path));
+        assert_eq!(sys.map(|s| s.id), Some("windows"), "{name}");
+    }
+    // an archive outside it needs a system folder to be told from the archives of other systems
+    assert!(
+        vuretro_core::detect::detect_system(Path::new("/roms"), Path::new("/roms/game.zip"))
+            .is_none()
+    );
     // an image elsewhere is never guessed to be a Windows game
     assert!(vuretro_core::detect::detect_system(
         Path::new("/roms"),

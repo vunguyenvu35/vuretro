@@ -701,6 +701,45 @@ fn setup_cd_drive(_: &Path, _: &Recipe, _: &Path, _: &Path, _: &str) -> Result<(
     Ok(())
 }
 
+/// Whether a game comes as an archive (`.zip`, `.7z`, `.rar`) and not as a disc image.
+pub(super) fn is_archive(disc: &Path) -> bool {
+    crate::unpack::is_archive(disc)
+}
+
+/// The files of a game that comes as an archive: unpacked into the game's folder, once. An archive
+/// that holds one folder with everything in it (the usual zip) has that folder's content as the
+/// game's. Gives the folder of the game's files. Nothing is copied again after this: the game
+/// runs from the files that were unpacked.
+pub(super) fn unpack_into_game(
+    archive: &Path,
+    root: &Path,
+    log: &dyn Fn(&str),
+) -> Result<PathBuf, String> {
+    let game = root.join("game");
+    let marker = root.join("unpacked");
+    if marker.is_file() && game.is_dir() {
+        return Ok(game);
+    }
+    std::fs::create_dir_all(root).map_err(|e| e.to_string())?;
+    log("Unpacking the game's files (a minute or two)");
+    let part = root.join("game.unpacking");
+    let _ = std::fs::remove_dir_all(&part);
+    let _ = std::fs::remove_dir_all(&game);
+    crate::unpack::extract(archive, &part)?;
+    let entries: Vec<_> = std::fs::read_dir(&part)
+        .map_err(|e| e.to_string())?
+        .flatten()
+        .collect();
+    let inner = match entries.as_slice() {
+        [one] if one.path().is_dir() => one.path(),
+        _ => part.clone(),
+    };
+    std::fs::rename(&inner, &game).map_err(|e| e.to_string())?;
+    let _ = std::fs::remove_dir_all(&part);
+    std::fs::write(&marker, "").map_err(|e| e.to_string())?;
+    Ok(game)
+}
+
 /// The Windows of a game and its files: Wine's environment, the files of the disc, and the CD
 /// drive. Done once (`environment` marks it): a game that cannot be started yet (its program is
 /// not known) keeps it for its installer.
@@ -711,6 +750,7 @@ fn build_environment(
     root: &Path,
     log: &dyn Fn(&str),
 ) -> Result<(), String> {
+    let archive = is_archive(disc);
     let (game, cdroot) = (root.join("game"), root.join("cdroot"));
     let marker = root.join("environment");
     if marker.is_file() && game.is_dir() {
@@ -721,11 +761,13 @@ fn build_environment(
     if !env.prefix.join("system.reg").is_file() {
         env.run(&["wineboot".into(), "--init".into()])?;
     }
-    log("Copying the game's files from the disc");
-    if game.exists() {
-        std::fs::remove_dir_all(&game).map_err(|e| e.to_string())?;
+    if !archive {
+        log("Copying the game's files from the disc");
+        if game.exists() {
+            std::fs::remove_dir_all(&game).map_err(|e| e.to_string())?;
+        }
+        copy_root(disc, &pc_recipes::root_on(disc, recipe)?, &game, log)?;
     }
-    copy_root(disc, &pc_recipes::root_on(disc, recipe)?, &game, log)?;
     log("Setting up the CD drive");
     setup_cd_drive(&env.prefix, recipe, &game, &cdroot, &game_id(disc))?;
     // the CD-ROM drive, for Wine
@@ -864,9 +906,18 @@ fn run_bounded(
 
 impl WineEnv {
     fn run(&self, args: &[String]) -> Result<(), String> {
+        self.run_in(args, None)
+    }
+
+    /// Run a command of Wine, from a folder when one is given.
+    fn run_in(&self, args: &[String], cwd: Option<&Path>) -> Result<(), String> {
         let log = self.prefix.with_file_name("wine-command.log");
+        let mut command = Command::new(&self.wine);
+        if let Some(dir) = cwd {
+            command.current_dir(dir);
+        }
         let result = run_bounded(
-            Command::new(&self.wine)
+            command
                 .args(args)
                 .env("WINEPREFIX", &self.prefix)
                 .env("WINEDLLOVERRIDES", "mscoree,mshtml=")
@@ -1005,12 +1056,18 @@ pub fn prepare(
         return Ok(spec(&wine, &root, &ready.program, &ready.size, &launch));
     }
 
-    let recipe = pc_recipes::for_disc(disc)?;
+    // a game that comes as an archive is unpacked first: its recipe is known from its files
+    let recipe = if is_archive(disc) {
+        pc_recipes::for_disc(&unpack_into_game(disc, &root, log)?)?
+    } else {
+        pc_recipes::for_disc(disc)?
+    };
     std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
 
     build_environment(&env, recipe, disc, &root, log)?;
     let program = apply_recipe(paths, &env, recipe, &game, icon, log)?;
     let mut marks = Vec::new();
+    apply_setup_programs(&env, recipe, &game, &mut marks, log)?;
     apply_winetricks(&env, recipe, &mut marks, log)?;
 
     let framed = add_window_frame(paths, &game, &recipe.screen, log);
@@ -1031,6 +1088,46 @@ pub fn prepare(
         &ready.size,
         &Launch::of(Some(recipe).filter(|r| r.id != "generic"), framed),
     ))
+}
+
+/// Run the programs of a recipe's `setup` that were not run yet (`marks` says which were:
+/// `setup:<program>`), from the game's folder: such a program writes the settings that the game
+/// reads. Each is marked when done.
+fn apply_setup_programs(
+    env: &WineEnv,
+    recipe: &Recipe,
+    game: &Path,
+    marks: &mut Vec<String>,
+    log: &dyn Fn(&str),
+) -> Result<(), String> {
+    for program in &recipe.setup {
+        let mark = format!("setup:{program}");
+        if marks.contains(&mark) {
+            continue;
+        }
+        let exe = recipe
+            .program_in_game(game, program)
+            .ok_or_else(|| format!("{program} is not in the files of the game"))?;
+        let rel = exe
+            .strip_prefix(game)
+            .map_err(|e| e.to_string())?
+            .to_string_lossy()
+            .replace('/', "\\");
+        let on_drive = pc_recipes::on_cd_drive(&format!("D:\\{}{rel}", drive_prefix(recipe)));
+        log(&format!("Running {program} (settings of the game)"));
+        env.run_in(&[on_drive], Some(game))?;
+        marks.push(mark);
+    }
+    Ok(())
+}
+
+/// The folder of the game on the CD drive with a backslash (`ROADRASH\\`), or nothing.
+fn drive_prefix(recipe: &Recipe) -> String {
+    recipe
+        .drive_folder
+        .as_ref()
+        .map(|f| format!("{f}\\"))
+        .unwrap_or_default()
 }
 
 /// The verbs of `winetricks` that a recipe lists and that were not run yet (`marks` says which
@@ -1255,8 +1352,12 @@ pub fn run_installer(
         return Err("On Windows run the installer from the mounted disc yourself".into());
     }
     let wine = locate_wine(paths).ok_or("Wine is not on this computer")?;
-    let recipe = pc_recipes::for_disc(disc)?;
     let root = paths.native_dir().join("pc").join(game_id(disc));
+    let recipe = if is_archive(disc) {
+        pc_recipes::for_disc(&unpack_into_game(disc, &root, log)?)?
+    } else {
+        pc_recipes::for_disc(disc)?
+    };
     let (game, prefix) = (root.join("game"), root.join("prefix"));
     let env = WineEnv {
         wine: wine.clone(),
@@ -1326,7 +1427,12 @@ fn refresh(
     ready: &mut Ready,
     log: &dyn Fn(&str),
 ) -> Result<(), String> {
-    if let Some(exe) = recipe.program_in_game(game, &ready.program) {
+    // the program is taken from the disc again (a game that came as an archive has no disc to take
+    // it from, and keeps the one it was unpacked with)
+    let exe = recipe
+        .program_in_game(game, &ready.program)
+        .filter(|_| !is_archive(disc));
+    if let Some(exe) = exe {
         let rel = exe
             .strip_prefix(game)
             .map_err(|e| e.to_string())?
@@ -1336,6 +1442,7 @@ fn refresh(
         std::fs::write(&exe, bytes).map_err(|e| e.to_string())?;
     }
     apply_recipe(paths, env, recipe, game, icon, log)?;
+    apply_setup_programs(env, recipe, game, &mut ready.marks, log)?;
     apply_winetricks(env, recipe, &mut ready.marks, log)
 }
 
@@ -1956,5 +2063,104 @@ mod tests {
                 || std::fs::symlink_metadata(cdroot.join("ROADRASH")).is_ok()
         );
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// A zip with the given files (names and contents).
+    fn make_zip(path: &Path, files: &[(&str, &str)]) {
+        let mut w = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
+        for (name, body) in files {
+            w.start_file(*name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            std::io::Write::write_all(&mut w, body.as_bytes()).unwrap();
+        }
+        w.finish().unwrap();
+    }
+
+    #[test]
+    fn a_zip_with_one_folder_is_unpacked_as_the_game_and_only_once() {
+        let dir = temp("zip-game");
+        let zip = dir.join("Mega Man X8.zip");
+        make_zip(
+            &zip,
+            &[
+                ("megaman-x8/Megaman X8.exe", "exe"),
+                ("megaman-x8/SetupReg.exe", "setup"),
+                ("megaman-x8/ogg/a.ogg", "sound"),
+            ],
+        );
+        assert!(is_archive(&zip));
+        let root = dir.join("pc/mega");
+        let game = unpack_into_game(&zip, &root, &|_| {}).unwrap();
+        // the folder inside the zip is the game's folder: its files are at the top
+        assert_eq!(game, root.join("game"));
+        assert_eq!(std::fs::read(game.join("Megaman X8.exe")).unwrap(), b"exe");
+        assert!(game.join("ogg/a.ogg").is_file());
+        assert!(!root.join("game.unpacking").exists(), "no leftover");
+        // the recipe is known from the files
+        assert_eq!(pc_recipes::for_disc(&game).unwrap().id, "megaman-x8");
+        // the second time nothing is unpacked: a file that was changed stays changed
+        std::fs::write(game.join("Megaman X8.exe"), "changed").unwrap();
+        unpack_into_game(&zip, &root, &|l| panic!("unpacked again: {l}")).unwrap();
+        assert_eq!(
+            std::fs::read(game.join("Megaman X8.exe")).unwrap(),
+            b"changed"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_archive_with_files_at_the_top_is_unpacked_as_it_is_and_a_bad_one_is_refused() {
+        let dir = temp("zip-flat");
+        let zip = dir.join("flat.zip");
+        make_zip(&zip, &[("GAME.EXE", "a"), ("DATA/x.bin", "b")]);
+        let game = unpack_into_game(&zip, &dir.join("a"), &|_| {}).unwrap();
+        assert!(game.join("GAME.EXE").is_file() && game.join("DATA/x.bin").is_file());
+        // not an archive at all: refused, and nothing is left that says it was unpacked
+        let bad = dir.join("bad.zip");
+        std::fs::write(&bad, "not a zip").unwrap();
+        assert!(unpack_into_game(&bad, &dir.join("b"), &|_| {}).is_err());
+        assert!(!dir.join("b/unpacked").exists());
+        // a name that would leave the folder is refused
+        let evil = dir.join("evil.zip");
+        make_zip(&evil, &[("../evil.txt", "x")]);
+        assert!(unpack_into_game(&evil, &dir.join("c"), &|_| {}).is_err());
+        assert!(!dir.join("evil.txt").exists());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_7z_is_unpacked_like_a_zip() {
+        let dir = temp("sevenz-game");
+        let src = dir.join("src/game");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("GAME.EXE"), "x").unwrap();
+        let archive = dir.join("game.7z");
+        sevenz_rust2::compress_to_path(dir.join("src"), &archive).unwrap();
+        assert!(is_archive(&archive));
+        let game = unpack_into_game(&archive, &dir.join("pc"), &|_| {}).unwrap();
+        assert!(
+            game.join("GAME.EXE").is_file(),
+            "{:?}",
+            std::fs::read_dir(&game).map(|d| d.count())
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn the_programs_a_recipe_runs_first_are_on_the_cd_drive_where_the_game_is() {
+        let mega = pc_recipes::by_id("megaman-x8");
+        assert_eq!(mega.setup, ["SetupReg.exe"]);
+        assert_eq!(drive_prefix(mega), "");
+        assert_eq!(drive_prefix(pc_recipes::by_id("road-rash")), "ROADRASH\\");
+        // the game itself is a program with a space in its name, one argument for Wine
+        let l = Launch::of(Some(mega), true);
+        let s = spec(
+            Path::new("/w/bin/wine"),
+            Path::new("/d"),
+            mega.program.as_deref().unwrap(),
+            &mega.screen,
+            &l,
+        );
+        assert_eq!(s.args, ["R:\\Megaman X8.exe"]);
     }
 }

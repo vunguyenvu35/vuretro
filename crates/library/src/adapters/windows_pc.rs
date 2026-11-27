@@ -10,7 +10,8 @@
 use super::native_installer::run;
 use super::pc_recipes;
 use super::wine_installer::{
-    add_window_frame, copy_root, find_program, game_id, patch_program, write_stubs,
+    add_window_frame, copy_root, find_program, game_id, is_archive, patch_program,
+    unpack_into_game, write_stubs,
 };
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -100,13 +101,19 @@ pub fn prepare(
                 .into(),
         );
     }
-    let recipe = pc_recipes::for_disc(disc)?;
     let root = paths.native_dir().join("pc").join(game_id(disc));
+    let archive = is_archive(disc);
+    // a game that comes as an archive is unpacked and runs from its files: no disc to mount
+    let recipe = if archive {
+        pc_recipes::for_disc(&unpack_into_game(disc, &root, log)?)?
+    } else {
+        pc_recipes::for_disc(disc)?
+    };
     let game = root.join("game");
     let done = root.join("ready");
 
     // a game with a recipe runs from a copy of its files, with what the recipe puts in it
-    let installed = if recipe.id == "generic" {
+    let installed = if recipe.id == "generic" && !archive {
         None
     } else {
         let program = match &recipe.program {
@@ -121,11 +128,13 @@ pub fn prepare(
         };
         if !done.is_file() {
             std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
-            log("Copying the game's files from the disc");
-            if game.exists() {
-                std::fs::remove_dir_all(&game).map_err(|e| e.to_string())?;
+            if !archive {
+                log("Copying the game's files from the disc");
+                if game.exists() {
+                    std::fs::remove_dir_all(&game).map_err(|e| e.to_string())?;
+                }
+                copy_root(disc, &pc_recipes::root_on(disc, recipe)?, &game, log)?;
             }
-            copy_root(disc, &pc_recipes::root_on(disc, recipe)?, &game, log)?;
             write_stubs(recipe, &game)?;
             let program = match &recipe.program {
                 Some(p) => p.clone(),
@@ -151,6 +160,20 @@ pub fn prepare(
                     ));
                 }
             }
+            // the programs that write the settings of the game, once
+            for setup in &recipe.setup {
+                let exe = recipe
+                    .program_in_game(&game, setup)
+                    .ok_or_else(|| format!("{setup} is not in the files of the game"))?;
+                log(&format!("Running {setup} (settings of the game)"));
+                let status = Command::new(&exe)
+                    .current_dir(&game)
+                    .status()
+                    .map_err(|e| format!("cannot run {setup}: {e}"))?;
+                if !status.success() {
+                    return Err(format!("{setup} did not finish well ({status})"));
+                }
+            }
             std::fs::write(&done, format!("{program}\n")).map_err(|e| e.to_string())?;
             Some(program)
         } else {
@@ -158,6 +181,20 @@ pub fn prepare(
         }
     };
 
+    if archive {
+        // the game runs from its own files: nothing to mount or to take away afterwards
+        let program = installed.ok_or("the program of the game is not known")?;
+        let exe = recipe
+            .program_in_game(&game, &program)
+            .ok_or("the program of the game is not in its files")?;
+        return Ok(NativeSpec {
+            exe,
+            args: Vec::new(),
+            cwd: Some(game),
+            env: Vec::new(),
+            stop: None,
+        });
+    }
     log("Mounting the disc image");
     let letter = mount(disc)?;
     let (exe, cwd) = match installed {

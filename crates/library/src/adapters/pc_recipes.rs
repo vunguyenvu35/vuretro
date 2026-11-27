@@ -85,6 +85,10 @@ pub struct Recipe {
     pub registry: Vec<RegKey>,
     #[serde(default)]
     pub title: Option<Title>,
+    /// Programs of the game's own files to run once, before the game is first started (a
+    /// `SetupReg.exe` that writes the settings the game reads): paths in the game's files.
+    #[serde(default)]
+    pub setup: Vec<String>,
     /// The program of the disc that installs the game, a path on the CD drive; found by its name
     /// (`SETUP.EXE`, `INSTALL.EXE`...) when it is not given.
     #[serde(default)]
@@ -134,6 +138,7 @@ impl Recipe {
             registry: Vec::new(),
             title: None,
             installer: None,
+            setup: Vec::new(),
             winetricks: Vec::new(),
             overrides: Vec::new(),
             renderer: default_renderer(),
@@ -215,6 +220,12 @@ pub fn parse(json: &str) -> Result<Vec<Recipe>, String> {
                 && s.chars()
                     .all(|c| c.is_ascii_alphanumeric() || extra.contains(c))
         };
+        if let Some(p) = r.setup.iter().find(|p| p.is_empty() || p.contains("..")) {
+            return Err(format!(
+                "recipe {}: \"{p}\" is not a program of the game",
+                r.id
+            ));
+        }
         if let Some(v) = r.winetricks.iter().find(|v| !plain(v, "_.-")) {
             return Err(format!("recipe {}: \"{v}\" is not a winetricks verb", r.id));
         }

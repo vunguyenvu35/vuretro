@@ -27,5 +27,14 @@
       }
     ],
     "title": { "from": "Road Rash", "to": "Road Rash \u0097 Wine" }
+  },
+  {
+    "id": "megaman-x8",
+    "name": "Mega Man X8 (2005)",
+    "revision": 1,
+    "detect": ["Megaman X8.exe"],
+    "program": "D:\\Megaman X8.exe",
+    "screen": "800x600",
+    "setup": ["SetupReg.exe"]
   }
 ]
