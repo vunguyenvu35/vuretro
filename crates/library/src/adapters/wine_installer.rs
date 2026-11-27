@@ -23,6 +23,13 @@ use vuretro_core::ports::NativeSpec;
 const WINE_URL: &str = "https://github.com/Gcenx/macOS_Wine_builds/releases/download/11.21/wine-staging-11.21-osx64.tar.xz";
 const WINE_SHA256: &str = "d7bcd5abf4df27aae397a7898aef074fea4a2e0b51e0a55aa9659517bbf9d452";
 const WINE_BYTES: u64 = 228_148_688;
+/// cnc-ddraw (github.com/FunkyFr3sh/cnc-ddraw, MIT): a replacement for `ddraw.dll` that draws a
+/// DirectDraw game in an ordinary window, with the title bar and buttons of the Mac. Fetched
+/// when a game is set up, pinned to one version and checked against its SHA-256.
+const DDRAW_URL: &str =
+    "https://github.com/FunkyFr3sh/cnc-ddraw/releases/download/v7.1.0.0/cnc-ddraw.zip";
+const DDRAW_SHA256: &str = "0b13ab89a64c9918189b1dadd449ef6ed3cb3b7b19cabd96d8adbd95505bb908";
+const DDRAW_MAX_BYTES: u64 = 8 << 20;
 /// Where the program of that Wine is, from the folder it is unpacked in.
 const WINE_PROGRAM: &str = "Wine Staging.app/Contents/Resources/wine/bin/wine";
 
@@ -301,24 +308,32 @@ fn fetch_wine(paths: &Paths, log: &dyn Fn(&str)) -> Result<PathBuf, String> {
     }
 }
 
-/// How to start the game: Wine on a virtual desktop of `size`, in the game's folder. `program`
-/// is a Windows path on the CD drive.
-fn spec(wine: &Path, root: &Path, program: &str, size: &str) -> NativeSpec {
+/// How to start the game: Wine, in the game's folder. `program` is a Windows path on the CD
+/// drive. With `framed` the game draws in a window of its own (cnc-ddraw); without, Wine puts it
+/// on a virtual desktop of `size`, which has no title bar.
+fn spec(wine: &Path, root: &Path, program: &str, size: &str, framed: bool) -> NativeSpec {
+    let (args, overrides) = if framed {
+        (vec![program.to_string()], "mscoree,mshtml=;ddraw=n,b")
+    } else {
+        (
+            vec![
+                "explorer".to_string(),
+                format!("/desktop=Game,{size}"),
+                program.to_string(),
+            ],
+            "mscoree,mshtml=",
+        )
+    };
     NativeSpec {
         exe: wine.to_path_buf(),
-        args: [
-            "explorer".to_string(),
-            format!("/desktop=Game,{size}"),
-            program.to_string(),
-        ]
-        .to_vec(),
+        args,
         cwd: Some(root.join("game")),
         env: vec![
             (
                 "WINEPREFIX".into(),
                 root.join("prefix").to_string_lossy().into_owned(),
             ),
-            ("WINEDLLOVERRIDES".into(), "mscoree,mshtml=".into()),
+            ("WINEDLLOVERRIDES".into(), overrides.into()),
             ("WINEDEBUG".into(), "-all".into()),
         ],
         // the server that Wine keeps for the prefix outlives the program
@@ -327,6 +342,68 @@ fn spec(wine: &Path, root: &Path, program: &str, size: &str) -> NativeSpec {
             .map(|bin| bin.join("wineserver").to_string_lossy().into_owned())
             .map(|server| vec![server, "-k".into()]),
     }
+}
+
+/// The `ddraw.dll` of cnc-ddraw, fetched once into `<data dir>/native/wine/cnc-ddraw`.
+fn ddraw_dll(paths: &Paths, log: &dyn Fn(&str)) -> Result<PathBuf, String> {
+    let dir = paths.native_dir().join("wine").join("cnc-ddraw");
+    let dll = dir.join("ddraw.dll");
+    if dll.is_file() {
+        return Ok(dll);
+    }
+    log("Getting cnc-ddraw (a window for the game)");
+    let mut resp = ureq::get(DDRAW_URL)
+        .call()
+        .map_err(|e| format!("download failed: {e}"))?;
+    let mut bytes = Vec::new();
+    resp.body_mut()
+        .as_reader()
+        .take(DDRAW_MAX_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("download failed: {e}"))?;
+    if bytes.len() as u64 > DDRAW_MAX_BYTES {
+        return Err("the download is bigger than it should be".into());
+    }
+    let digest: String = Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    if digest != DDRAW_SHA256 {
+        return Err(format!("not the file expected (SHA-256 {digest})"));
+    }
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
+    let mut file = zip.by_name("ddraw.dll").map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    file.read_to_end(&mut out).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::write(&dll, out).map_err(|e| e.to_string())?;
+    Ok(dll)
+}
+
+/// The settings of cnc-ddraw for a game that asks for a screen of `size` (`640x480`): a window
+/// one and a half times as big, with its frame.
+fn ddraw_ini(size: &str) -> String {
+    let (w, h) = size.split_once('x').unwrap_or(("640", "480"));
+    let scaled = |n: &str| n.parse::<u32>().unwrap_or(640) * 3 / 2;
+    format!(
+        "[ddraw]\nwindowed=true\nborder=true\nfullscreen=false\nmaintas=true\nrenderer=gdi\n; the mouse is not kept inside the window\ndevmode=true\nwidth={}\nheight={}\nposX=-32000\nposY=-32000\n",
+        scaled(w),
+        scaled(h)
+    )
+}
+
+/// Put cnc-ddraw in the game's folder so it opens in a window with a frame. `false` (and a line
+/// in the log) when it cannot be had: the game then runs on a virtual desktop.
+fn add_window_frame(paths: &Paths, game: &Path, size: &str, log: &dyn Fn(&str)) -> bool {
+    let done = ddraw_dll(paths, log)
+        .and_then(|dll| std::fs::copy(dll, game.join("ddraw.dll")).map_err(|e| e.to_string()))
+        .and_then(|_| {
+            std::fs::write(game.join("ddraw.ini"), ddraw_ini(size)).map_err(|e| e.to_string())
+        });
+    if let Err(e) = &done {
+        log(&format!("No window frame this time: {e}"));
+    }
+    done.is_ok()
 }
 
 /// What is known about the disc: Road Rash needs a few things done for it (found by running
@@ -528,12 +605,20 @@ pub fn prepare(paths: &Paths, disc: &Path, log: &dyn Fn(&str)) -> Result<NativeS
     let wine = locate_wine(paths).ok_or("Wine is not on this computer")?;
     let root = paths.native_dir().join("pc").join(game_id(disc));
     let done = root.join("ready");
-    // `ready` holds the program to start and the size of the window
-    if let Some((program, size)) = std::fs::read_to_string(&done).ok().and_then(|t| {
-        t.split_once('\n')
-            .map(|(a, b)| (a.to_string(), b.trim().to_string()))
-    }) {
-        return Ok(spec(&wine, &root, &program, &size));
+    // `ready` holds the program to start, the size of the screen it asks for and whether it
+    // has a window frame
+    let ready_lines: Vec<String> = std::fs::read_to_string(&done)
+        .map(|t| t.lines().map(String::from).collect())
+        .unwrap_or_default();
+    if let [program, size, rest @ ..] = ready_lines.as_slice() {
+        let mut framed = rest.first().is_some_and(|m| m == "framed");
+        if rest.is_empty() {
+            // set up before the frame existed: add it without doing the rest again
+            framed = add_window_frame(paths, &root.join("game"), size, log);
+            let mode = if framed { "framed" } else { "desktop" };
+            let _ = std::fs::write(&done, format!("{program}\n{size}\n{mode}\n"));
+        }
+        return Ok(spec(&wine, &root, program, size, framed));
     }
     let recipe = recipe_for(disc)?;
     let (game, prefix, cdroot) = (root.join("game"), root.join("prefix"), root.join("cdroot"));
@@ -602,8 +687,10 @@ pub fn prepare(paths: &Paths, disc: &Path, log: &dyn Fn(&str)) -> Result<NativeS
     for command in registry_commands(&recipe) {
         wine_run(&command)?;
     }
-    std::fs::write(&done, format!("{program}\n{size}\n")).map_err(|e| e.to_string())?;
-    Ok(spec(&wine, &root, &program, size))
+    let framed = add_window_frame(paths, &game, size, log);
+    let mode = if framed { "framed" } else { "desktop" };
+    std::fs::write(&done, format!("{program}\n{size}\n{mode}\n")).map_err(|e| e.to_string())?;
+    Ok(spec(&wine, &root, &program, size, framed))
 }
 
 #[cfg(test)]
@@ -630,24 +717,41 @@ mod tests {
     }
 
     #[test]
-    fn the_game_starts_wine_on_a_virtual_desktop_in_its_own_folder() {
+    fn the_game_starts_wine_in_its_own_folder_framed_or_on_a_virtual_desktop() {
         let root = Path::new("/data/pc/road-rash");
-        let m = spec(
-            Path::new("/opt/wine/bin/wine"),
-            root,
-            "D:\\GAME.EXE",
-            "800x600",
-        );
-        assert_eq!(m.exe, Path::new("/opt/wine/bin/wine"));
+        let wine = Path::new("/opt/wine/bin/wine");
+        let desktop = spec(wine, root, "D:\\GAME.EXE", "800x600", false);
+        assert_eq!(desktop.exe, wine);
         assert_eq!(
-            m.args,
+            desktop.args,
             ["explorer", "/desktop=Game,800x600", "D:\\GAME.EXE"]
         );
-        assert_eq!(m.cwd.as_deref(), Some(root.join("game").as_path()));
-        assert!(m
+        assert_eq!(desktop.cwd.as_deref(), Some(root.join("game").as_path()));
+        assert!(desktop
             .env
             .iter()
             .any(|(k, v)| k == "WINEPREFIX" && v == "/data/pc/road-rash/prefix"));
+        let framed = spec(wine, root, "D:\\GAME.EXE", "800x600", true);
+        assert_eq!(framed.args, ["D:\\GAME.EXE"]);
+        assert!(framed
+            .env
+            .iter()
+            .any(|(k, v)| k == "WINEDLLOVERRIDES" && v.contains("ddraw=n,b")));
+        assert_eq!(
+            framed.stop.as_deref(),
+            Some(&["/opt/wine/bin/wineserver".to_string(), "-k".to_string()][..])
+        );
+    }
+
+    #[test]
+    fn the_window_of_a_game_is_one_and_a_half_times_its_screen() {
+        let ini = ddraw_ini("640x480");
+        assert!(ini.contains("width=960") && ini.contains("height=720"));
+        assert!(ini.contains("border=true") && ini.contains("windowed=true"));
+        assert!(
+            ini.contains("devmode=true"),
+            "the mouse can leave the window"
+        );
     }
 
     #[test]
@@ -801,5 +905,27 @@ mod tests {
         for d in [disc, dest] {
             std::fs::remove_dir_all(d).unwrap();
         }
+    }
+
+    /// Needs the network and a Wine (`VURETRO_WINE`): a game set up before the window frame
+    /// existed gets cnc-ddraw (checked against its SHA-256) without being set up again.
+    #[test]
+    #[ignore]
+    fn a_game_set_up_earlier_gets_the_window_frame() {
+        let dir = temp("upgrade");
+        let paths = Paths::new(dir.to_str().unwrap());
+        let root = paths.native_dir().join("pc").join("g");
+        std::fs::create_dir_all(root.join("game")).unwrap();
+        std::fs::write(root.join("ready"), "D:\\X.EXE\n640x480\n").unwrap();
+        let spec = prepare(&paths, Path::new("/x/g.iso"), &|l| println!("{l}")).unwrap();
+        assert_eq!(spec.args, ["D:\\X.EXE"]);
+        assert!(root.join("game/ddraw.dll").metadata().unwrap().len() > 100_000);
+        assert!(std::fs::read_to_string(root.join("game/ddraw.ini"))
+            .unwrap()
+            .contains("width=960"));
+        assert!(std::fs::read_to_string(root.join("ready"))
+            .unwrap()
+            .ends_with("framed\n"));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }
