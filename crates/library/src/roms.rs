@@ -453,4 +453,41 @@ mod tests {
         let e = import_file(&patch, lib.path(), Some("gba")).unwrap_err();
         assert!(e.contains("Apply patch"), "{e}");
     }
+
+    #[test]
+    fn a_zip_or_7z_of_a_windows_game_is_imported_into_the_pc_folder() {
+        let tmp = std::env::temp_dir().join(format!("vuretro-roms-pc-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let (src, library) = (tmp.join("src"), tmp.join("library"));
+        fs::create_dir_all(&src).unwrap();
+        // a game: files and no disc image inside, so it is not unpacked at the import
+        let zip = src.join("megaman-x8.zip");
+        let mut w = zip::ZipWriter::new(fs::File::create(&zip).unwrap());
+        w.start_file(
+            "megaman-x8/Megaman X8.exe",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        std::io::Write::write_all(&mut w, b"exe").unwrap();
+        w.finish().unwrap();
+        let got = import_file(&zip, &library, Some("windows")).unwrap();
+        assert_eq!(got.system, "windows");
+        assert!(got.dest.ends_with("pc/megaman-x8.zip"), "{:?}", got.dest);
+        assert!(got.dest.is_file());
+        // a 7z the same, and a file of another kind is still not a Windows game
+        let sevenz = src.join("game.7z");
+        fs::write(&sevenz, b"x").unwrap();
+        assert_eq!(
+            import_file(&sevenz, &library, Some("windows"))
+                .unwrap()
+                .system,
+            "windows"
+        );
+        let rom = src.join("game.nes");
+        fs::write(&rom, b"x").unwrap();
+        assert!(import_file(&rom, &library, Some("windows"))
+            .unwrap_err()
+            .contains("not a PC (Windows) file"));
+        fs::remove_dir_all(tmp).unwrap();
+    }
 }
