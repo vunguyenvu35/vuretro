@@ -12,6 +12,9 @@ const MAX_BYTES: u64 = 800 * 1024 * 1024;
 pub type Fetch =
     Box<dyn Fn(&str, &dyn Fn(u64, Option<u64>)) -> Result<Vec<u8>, String> + Send + Sync>;
 
+/// When the server says the file at `url` was last changed (a HEAD request), if it says.
+pub type Head = Box<dyn Fn(&str) -> Result<Option<std::time::SystemTime>, String> + Send + Sync>;
+
 /// Installs cores from the libretro buildbot into `<data dir>/cores`.
 ///
 /// The buildbot publishes no checksums, so integrity rests on HTTPS plus structural
@@ -20,6 +23,7 @@ pub type Fetch =
 pub struct BuildbotInstaller {
     paths: Paths,
     fetch: Fetch,
+    head: Head,
     base: String,
     /// Folders that may already hold the core's zip (an offline set), looked at first.
     offline: Vec<PathBuf>,
@@ -28,13 +32,22 @@ pub struct BuildbotInstaller {
 impl BuildbotInstaller {
     pub fn new(paths: Paths) -> Self {
         let offline = offline_dirs(&paths);
-        Self::with_fetch(paths, BASE.to_string(), Box::new(http_get)).with_offline(offline)
+        Self::with_fetch(paths, BASE.to_string(), Box::new(http_get))
+            .with_head(Box::new(http_modified))
+            .with_offline(offline)
+    }
+
+    /// How the date of a core on the server is asked (nothing by default: no update is known).
+    pub fn with_head(mut self, head: Head) -> Self {
+        self.head = head;
+        self
     }
 
     pub fn with_fetch(paths: Paths, base: String, fetch: Fetch) -> Self {
         BuildbotInstaller {
             paths,
             fetch,
+            head: Box::new(|_| Ok(None)),
             base,
             offline: Vec::new(),
         }
@@ -109,6 +122,24 @@ fn platform_dir() -> &'static str {
     }
 }
 
+/// The `Last-Modified` of the file at `url`, without downloading it.
+fn http_modified(url: &str) -> Result<Option<std::time::SystemTime>, String> {
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_connect(Some(std::time::Duration::from_secs(10)))
+        .timeout_global(Some(std::time::Duration::from_secs(20)))
+        .build()
+        .into();
+    let resp = agent
+        .head(url)
+        .call()
+        .map_err(|e| format!("cannot reach the server: {e}"))?;
+    Ok(resp
+        .headers()
+        .get("last-modified")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| httpdate::parse_http_date(v).ok()))
+}
+
 fn http_get(url: &str, progress: &dyn Fn(u64, Option<u64>)) -> Result<Vec<u8>, String> {
     // Without limits a stalled connection waits for ever, and the core stays "being
     // installed" until the app is restarted. The body has no limit of its own (it is the
@@ -180,6 +211,19 @@ fn unpack(zip_bytes: Vec<u8>, name: &str) -> Result<Vec<u8>, String> {
 }
 
 impl CoreInstaller for BuildbotInstaller {
+    /// The server's build is newer than the file that is installed (which dates from when it
+    /// was installed, so a build made before that is not an update).
+    fn update_available(&self, stem: &str) -> Result<bool, String> {
+        if stem.is_empty() || !stem.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            return Err(format!("invalid core name {stem:?}"));
+        }
+        let installed = self.paths.cores_dir().join(core_filename(stem));
+        let Ok(have) = std::fs::metadata(&installed).and_then(|m| m.modified()) else {
+            return Ok(false);
+        };
+        Ok((self.head)(&self.url(stem))?.is_some_and(|built| built > have))
+    }
+
     fn install(&self, stem: &str, progress: &dyn Fn(u8)) -> Result<PathBuf, String> {
         // The stem ends up in a URL and a file name: accept plain identifiers only.
         if stem.is_empty() || !stem.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
@@ -356,6 +400,37 @@ mod tests {
             .unwrap_err()
             .contains("offline"));
         assert!(!dir.path().join("cores").join(&name).exists());
+    }
+
+    #[test]
+    fn a_newer_build_on_the_server_is_an_update() {
+        use std::time::{Duration, SystemTime};
+        let dir = tempfile::tempdir().unwrap();
+        let name = core_filename("snes9x_libretro");
+        let (inst, _) = installer(dir.path(), Ok(zip_of(&name, &magic())));
+        // not installed: nothing to update
+        let later = Box::new(|_: &str| Ok(Some(SystemTime::now() + Duration::from_secs(3600))));
+        let inst = inst.with_head(later);
+        assert_eq!(inst.update_available("snes9x_libretro"), Ok(false));
+        inst.install("snes9x_libretro", &|_| {}).unwrap();
+        assert_eq!(inst.update_available("snes9x_libretro"), Ok(true));
+        // built before it was installed, or a server that does not say: no update
+        let earlier = Box::new(|_: &str| Ok(Some(SystemTime::now() - Duration::from_secs(3600))));
+        assert_eq!(
+            inst.with_head(earlier).update_available("snes9x_libretro"),
+            Ok(false)
+        );
+    }
+
+    #[test]
+    fn an_unreachable_server_is_an_error_not_an_update() {
+        let dir = tempfile::tempdir().unwrap();
+        let name = core_filename("snes9x_libretro");
+        let (inst, _) = installer(dir.path(), Ok(zip_of(&name, &magic())));
+        inst.install("snes9x_libretro", &|_| {}).unwrap();
+        let inst = inst.with_head(Box::new(|_| Err("offline".into())));
+        assert!(inst.update_available("snes9x_libretro").is_err());
+        assert!(inst.update_available("bad name").is_err());
     }
 
     #[test]

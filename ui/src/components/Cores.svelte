@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { app, refresh, importBios, importDats } from '../lib/store.svelte.js';
+  import { app, refresh, importBios, importDats, installCore as install, installMissingCores, checkCoreUpdates, updateCores } from '../lib/store.svelte.js';
   import { api } from '../lib/api.js';
   import { colorOf } from '../lib/systems.js';
   import Select from './Select.svelte';
@@ -10,8 +10,6 @@
   let over = $state(false);
   /** the system whose core options are open */
   let optionsFor = $state(null);
-  /** core name -> percent while it downloads */
-  let installing = $state({});
   const ov = $derived(app.overview);
 
   const statusOf = (s) =>
@@ -50,27 +48,12 @@
     }
   }
 
-  async function install(core) {
-    installing[core] = 0;
-    let stillRunning = false;
-    try {
-      await api.installCore(core);
-      toast(`Installed ${core.replace(/_libretro$/, '')}`, 'info');
-    } catch (e) {
-      if (String(e).includes('already being installed')) {
-        // a download started earlier is still running (the screen was left and reopened):
-        // show its progress instead of an error, and leave the flag to the first call
-        toast('Still downloading… the progress shows on the button', 'info');
-        stillRunning = true;
-        return; // `finally` must not clear the flag: the download is still going
-      }
-      toast(String(e), 'error');
-    } finally {
-      if (!stillRunning) {
-        delete installing[core];
-        refresh();
-      }
-    }
+  const missing = $derived((ov?.systems ?? []).filter((s) => !s.core_installed && s.renderer_ready));
+  const busy = $derived(Object.keys(app.installing).length > 0);
+
+  async function toggleAuto() {
+    await api.setAutoInstallCores(!ov.auto_install_cores);
+    await refresh();
   }
 
   let ssUser = $state('');
@@ -103,10 +86,6 @@
 
   onMount(() => {
     let off = () => {};
-    let offProgress = () => {};
-    api.onCoreProgress((p) => {
-      if (p.core in installing) installing[p.core] = p.percent;
-    }).then((f) => (offProgress = f));
     api
       .onDragDrop((p) => {
         if (p.type === 'over' || p.type === 'enter') over = true;
@@ -119,7 +98,6 @@
       .then((f) => (off = f));
     return () => {
       off();
-      offProgress();
     };
   });
 </script>
@@ -130,6 +108,20 @@
   {#if ov?.machine}
     <p class="machine">This computer: <strong>{ov.machine.cpu_name}</strong> · {ov.machine.cpu_cores} processor cores · {ov.machine.ram_gb.toFixed(0)} GB memory</p>
   {/if}
+
+  <div class="bar">
+    <button class="btn primary" disabled={busy || !missing.length} onclick={() => installMissingCores()}>
+      {busy ? 'Installing…' : missing.length ? `Install all missing cores (${missing.length})` : 'All cores installed'}
+    </button>
+    {#if app.coreUpdates.length}
+      <button class="btn primary" disabled={busy} onclick={updateCores}>Update {app.coreUpdates.length} core{app.coreUpdates.length === 1 ? '' : 's'}</button>
+    {/if}
+    <button class="btn" disabled={app.checkingUpdates || busy} onclick={() => checkCoreUpdates()}>{app.checkingUpdates ? 'Checking…' : 'Check for updates'}</button>
+    <label class="auto">
+      <input type="checkbox" checked={ov?.auto_install_cores} onchange={toggleAuto} />
+      Download missing cores in the background when Vuretro starts
+    </label>
+  </div>
 
   <div class="cards">
     {#each ov?.systems ?? [] as s (s.id)}
@@ -173,8 +165,13 @@
         </dl>
         {#if !s.core_installed}
           {@const core = s.core}
-          <button class="btn primary" disabled={core in installing} onclick={() => install(core)}>
-            {core in installing ? `Installing… ${installing[core]}%` : `Install ${core.replace(/_libretro$/, '')}`}
+          <button class="btn primary" disabled={core in app.installing} onclick={() => install(core)}>
+            {core in app.installing ? `Installing… ${app.installing[core]}%` : `Install ${core.replace(/_libretro$/, '')}`}
+          </button>
+        {/if}
+        {#if s.core_installed && app.coreUpdates.includes(s.core)}
+          <button class="btn primary" disabled={s.core in app.installing} onclick={() => install(s.core)}>
+            {s.core in app.installing ? `Updating… ${app.installing[s.core]}%` : `Update ${s.core.replace(/_libretro$/, '')}`}
           </button>
         {/if}
         {#if s.core_installed && s.core !== 'wine'}
@@ -244,6 +241,8 @@
   .status.bad, .bad { color: var(--bad); }
   .muted { color: var(--muted); }
   .machine { color: var(--muted); margin: -14px 0 20px; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 20px; }
+  .auto { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
   .three-d { font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
   .three-d ul { margin: 0; padding-left: 16px; color: var(--muted); }
   .tag { align-self: flex-start; background: var(--surface-2); border-radius: 999px; padding: 1px 8px; font-size: 11px; color: var(--muted); }

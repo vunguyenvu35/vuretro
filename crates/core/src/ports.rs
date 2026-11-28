@@ -248,6 +248,11 @@ pub trait CoreInstaller: Send + Sync {
     /// Fetch and unpack core `stem` (e.g. `snes9x_libretro`). `progress` gets 0..=100.
     /// Returns the path of the installed file.
     fn install(&self, stem: &str, progress: &dyn Fn(u8)) -> Result<PathBuf, String>;
+    /// Whether a newer build of the installed core `stem` is on offer. `Ok(false)` when it is
+    /// not installed or the source cannot tell; an error when the source cannot be reached.
+    fn update_available(&self, _stem: &str) -> Result<bool, String> {
+        Ok(false)
+    }
 }
 
 /// Backup files and exports written to a place the user chose.

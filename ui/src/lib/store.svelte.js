@@ -48,6 +48,9 @@ export const app = $state({
   playingNote: '', // what runs it, when it is not a core of the app ("wine") // the title of the game that is open, so it can be stopped from the app
   nativeInstall: { running: false, step: '', log: [] }, // setting Road Rash up from the disc
   native: [], // games that are programs of their own: { id, name, exe, args }
+  installing: {}, // core name -> percent while it downloads (here or from the Cores screen)
+  coreUpdates: [], // installed cores that have a newer build on the server
+  checkingUpdates: false,
 });
 
 const hash = typeof location !== "undefined" ? location.hash.slice(1).split(",") : [];
@@ -148,6 +151,73 @@ async function requestCovers() {
   api.generateCovers(missingCovers(games, covers).map((g) => ({ path: g.path, system: g.system }))).catch(() => {});
 }
 
+const coreName = (core) => core.replace(/_libretro$/, '');
+
+/** Download or update one core, showing its progress in `app.installing`. `true` when it was installed. */
+export async function installCore(core, { quiet = false } = {}) {
+  if (core in app.installing) return false;
+  app.installing[core] = 0;
+  try {
+    await api.installCore(core);
+    app.coreUpdates = app.coreUpdates.filter((c) => c !== core);
+    if (!quiet) toast(`Installed ${coreName(core)}`, 'info');
+    return true;
+  } catch (e) {
+    // a download started elsewhere (Play, an earlier visit) is still running: not an error
+    if (String(e).includes('already being')) return false;
+    toast(`${coreName(core)}: ${e}`, 'error');
+    return false;
+  } finally {
+    delete app.installing[core];
+    refresh();
+  }
+}
+
+/** Download the cores of the systems that are on and missing, one after the other. */
+export async function installMissingCores({ withRuntime = true, includeOff = true } = {}) {
+  let list = [];
+  try {
+    list = await api.missingCores(includeOff);
+  } catch {
+    return;
+  }
+  if (!withRuntime) list = list.filter((c) => c !== 'wine'); // Wine is a big download of its own
+  let done = 0;
+  for (const core of list) if (await installCore(core, { quiet: true })) done++;
+  if (done) toast(`Installed ${done} core${done === 1 ? '' : 's'}`, 'info');
+}
+
+/** Ask the server which installed cores have a newer build. `quiet` keeps errors and "all up to date" silent. */
+export async function checkCoreUpdates({ quiet = false } = {}) {
+  if (app.checkingUpdates) return;
+  app.checkingUpdates = true;
+  try {
+    app.coreUpdates = await api.coreUpdates();
+    if (!quiet) toast(app.coreUpdates.length ? `${app.coreUpdates.length} core update${app.coreUpdates.length === 1 ? '' : 's'} available` : 'All cores are up to date', 'info');
+  } catch (e) {
+    if (!quiet) toast(String(e), 'error');
+  } finally {
+    app.checkingUpdates = false;
+  }
+}
+
+/** Update the cores that have a newer build, one after the other. */
+export async function updateCores() {
+  for (const core of [...app.coreUpdates]) await installCore(core, { quiet: true });
+  toast(app.coreUpdates.length ? 'Some cores could not be updated' : 'Cores updated', app.coreUpdates.length ? 'error' : 'info');
+}
+
+let startedChores = false;
+/** Once, after the library first shows: fetch missing cores if the user asked, and look for updates. */
+function startCoreChores() {
+  if (startedChores || !app.overview) return;
+  startedChores = true;
+  setTimeout(async () => {
+    if (app.overview?.auto_install_cores) await installMissingCores({ withRuntime: false, includeOff: false });
+    checkCoreUpdates({ quiet: true });
+  }, 3000);
+}
+
 export async function refresh() {
   try {
     app.overview = await api.overview();
@@ -157,6 +227,7 @@ export async function refresh() {
     toast(String(e), 'error');
   }
   app.loaded = true;
+  startCoreChores();
   loadNative();
   scheduleCovers();
 }

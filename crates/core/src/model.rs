@@ -16,6 +16,9 @@ pub struct Settings {
     /// Download cover art for named games (sends game names to the libretro-thumbnails server).
     #[serde(default)]
     pub fetch_art: bool,
+    /// Download the cores of the systems that are on, in the background, when the app starts.
+    #[serde(default)]
+    pub auto_install_cores: bool,
     /// ScreenScraper account of the user (stored as plain text in settings.json).
     #[serde(default)]
     pub screenscraper: Option<ScreenScraperLogin>,
@@ -474,6 +477,7 @@ pub struct Overview {
     /// Dumps known from the user's DAT files (0 = none added).
     pub dat_entries: usize,
     pub fetch_art: bool,
+    pub auto_install_cores: bool,
     /// Cover art sources this build offers, in the order they are tried.
     pub art_sources: Vec<&'static str>,
     /// The ScreenScraper user name saved, if any (never the password).

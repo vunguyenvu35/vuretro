@@ -275,6 +275,7 @@ mod tests {
             disabled: vec!["psx".into()],
             cores: [("nes".to_string(), "mesen_libretro".to_string())].into(),
             fetch_art: true,
+            auto_install_cores: true,
             hardware_on: vec!["n64".into()],
             screenscraper: Some(vuretro_core::model::ScreenScraperLogin {
                 user: "me".into(),

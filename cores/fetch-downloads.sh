@@ -22,13 +22,14 @@ FILES=(
 fail=0
 for entry in "${FILES[@]}"; do
   url="${entry% *}"; sha="${entry##* }"
+  ln -sf "$sha" "$DEST/$(basename "$url")"   # a name that can be read; the app finds the file by its hash
   if [[ -f "$DEST/$sha" ]] && [[ "$(shasum -a 256 "$DEST/$sha" | cut -d' ' -f1)" == "$sha" ]]; then
     echo "= $(basename "$url") (already here, checked)"; continue
   fi
   echo "→ $(basename "$url")"
   curl -fSL --retry 3 "$url" -o "$DEST/$sha.part" || { rm -f "$DEST/$sha.part"; echo "  failed: $url" >&2; fail=1; continue; }
   got="$(shasum -a 256 "$DEST/$sha.part" | cut -d' ' -f1)"
-  if [[ "$got" == "$sha" ]]; then mv "$DEST/$sha.part" "$DEST/$sha"
+  if [[ "$got" == "$sha" ]]; then mv "$DEST/$sha.part" "$DEST/$sha"; ln -sf "$sha" "$DEST/$(basename "$url")"
   else rm -f "$DEST/$sha.part"; echo "  not the file expected (SHA-256 $got): $url" >&2; fail=1; fi
 done
 exit $fail

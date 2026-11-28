@@ -38,6 +38,7 @@
     api
       .onCoreProgress((p) => {
         if (app.downloading?.core === p.core) app.downloading.percent = p.percent;
+        if (p.core in app.installing) app.installing[p.core] = p.percent;
       })
       .then((f) => off.push(f));
     api.onCoversDone(() => scheduleCovers()).then((f) => off.push(f));

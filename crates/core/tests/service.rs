@@ -984,6 +984,38 @@ impl CoreInstaller for FakeInstaller {
 }
 
 #[test]
+fn the_cores_of_the_systems_that_are_on_and_missing_can_be_listed_for_one_download() {
+    let f = Fake::default(); // no core is installed
+    f.0.lock().unwrap().runner = true;
+    let installer = || {
+        Box::new(FakeInstaller {
+            fail: false,
+            calls: Arc::new(Mutex::new(Vec::new())),
+        })
+    };
+    // a build that cannot download has nothing to list
+    assert!(app(&f).missing_cores(true).is_empty());
+    let a = app(&f).with_installer(installer());
+    let all = a.missing_cores(false);
+    assert!(all.iter().any(|c| c == "fceumm_libretro"));
+    assert!(
+        all.iter().enumerate().all(|(i, c)| !all[..i].contains(c)),
+        "one entry for each core"
+    );
+    // a system that is switched off is left out, and a core that is there too
+    a.set_system_enabled("nes".into(), false);
+    f.0.lock().unwrap().cores.insert("snes9x_libretro");
+    let some = a.missing_cores(false);
+    assert!(!some
+        .iter()
+        .any(|c| c == "fceumm_libretro" || c == "snes9x_libretro"));
+    // asked for, the systems that are off count too
+    assert!(a.missing_cores(true).iter().any(|c| c == "fceumm_libretro"));
+    // the installer that cannot tell has no updates
+    assert_eq!(a.core_updates(), Ok(Vec::new()));
+}
+
+#[test]
 fn play_knows_which_core_has_to_be_downloaded_first() {
     let installer = || {
         Box::new(FakeInstaller {

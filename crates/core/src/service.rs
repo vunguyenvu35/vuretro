@@ -408,6 +408,61 @@ impl App {
         self.save_settings();
     }
 
+    pub fn set_auto_install_cores(&self, enabled: bool) {
+        self.settings.lock().unwrap().auto_install_cores = enabled;
+        self.save_settings();
+    }
+
+    /// The cores not on this computer yet, one for each (the one the user chose for the system), in
+    /// the order of the systems: those of the systems that are switched on, and with `include_off`
+    /// those of the others too (a 3D system that cannot be drawn yet is left out). A Windows
+    /// system gives its runtime (`wine`). Empty when this build cannot download.
+    pub fn missing_cores(&self, include_off: bool) -> Vec<String> {
+        if self.installer.is_none() {
+            return Vec::new();
+        }
+        let settings = self.settings.lock().unwrap().clone();
+        let mut out: Vec<String> = Vec::new();
+        for sys in systems() {
+            let on = if sys.hardware {
+                settings.hardware_on.iter().any(|d| d == sys.id)
+            } else {
+                !settings.disabled.iter().any(|d| d == sys.id)
+            };
+            let core = settings.core_for(sys);
+            let wanted = on || (include_off && (!sys.hardware || HARDWARE_RENDERER));
+            if wanted && !self.core_present(sys, core) && !out.iter().any(|c| c == core) {
+                if !sys.runtime.is_empty() && self.native_installer.is_none() {
+                    continue;
+                }
+                out.push(core.to_string());
+            }
+        }
+        out
+    }
+
+    /// The installed cores for which a newer build is on offer. Slow (asks the server about each
+    /// one): run it on a thread. An error when the server cannot be reached.
+    pub fn core_updates(&self) -> Result<Vec<String>, String> {
+        let Some(installer) = self.installer.as_ref() else {
+            return Ok(Vec::new());
+        };
+        let mut out: Vec<String> = Vec::new();
+        let mut seen: Vec<&str> = Vec::new();
+        for sys in systems().iter().filter(|s| s.runtime.is_empty()) {
+            for core in sys.all_cores() {
+                if seen.contains(&core) || self.locator.core(core).is_none() {
+                    continue;
+                }
+                seen.push(core);
+                if installer.update_available(core)? {
+                    out.push(core.to_string());
+                }
+            }
+        }
+        Ok(out)
+    }
+
     pub fn set_fetch_art(&self, enabled: bool) {
         self.settings.lock().unwrap().fetch_art = enabled;
         self.save_settings();
@@ -599,6 +654,7 @@ impl App {
             machine: self.machine.clone(),
             dat_entries: self.catalog.dat_entries(),
             fetch_art: settings.fetch_art,
+            auto_install_cores: settings.auto_install_cores,
             art_sources: self.art.iter().map(|a| a.id()).collect(),
             screenscraper_user: settings.screenscraper.as_ref().map(|l| l.user.clone()),
             collections,

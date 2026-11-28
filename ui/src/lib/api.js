@@ -62,6 +62,9 @@ export const api = {
     return (await open({ multiple: false, title: 'Choose a Vuretro backup', filters: [{ name: 'Vuretro backup', extensions: ['zip'] }] })) || null;
   },
   installCore: (core) => call('install_core', { core }),
+  setAutoInstallCores: (enabled) => call('set_auto_install_cores', { enabled }),
+  missingCores: (includeOff) => call('missing_cores', { includeOff }),
+  coreUpdates: () => call('core_updates'),
   coreOptions: (core) => call('get_core_options', { core }),
   setCoreOptions: (core, overrides) => call('set_core_options', { core, overrides }),
   toggleFavorite: (path) => call('toggle_favorite', { path }),
