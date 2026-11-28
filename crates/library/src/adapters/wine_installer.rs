@@ -1080,7 +1080,7 @@ pub fn prepare(
     let program = apply_recipe(paths, &env, recipe, &game, icon, log)?;
     let mut marks = Vec::new();
     apply_setup_programs(&env, recipe, &game, &mut marks, log)?;
-    apply_winetricks(&env, recipe, &mut marks, log)?;
+    apply_winetricks(paths, &env, recipe, &mut marks, log)?;
 
     let framed = recipe.window == "frame" && add_window_frame(paths, &game, &recipe.screen, log);
     let mut ready = Ready {
@@ -1175,31 +1175,110 @@ fn winetricks_command(tool: &Path, wine: &Path, prefix: &Path, verbs: &[&str]) -
     command
 }
 
-/// Run the verbs of `winetricks` of a recipe that were not run yet, with the `winetricks` that is on
-/// this computer (it is not fetched: it runs a good deal of other programs). Each is marked when
-/// done, so that it is not run twice.
+/// `winetricks` (github.com/Winetricks/winetricks, LGPL): a script that installs the libraries
+/// that Windows programs expect. Used from the computer when it has one, else fetched once, pinned
+/// to one release and checked against its SHA-256.
+const WINETRICKS_URL: &str =
+    "https://raw.githubusercontent.com/Winetricks/winetricks/20240105/src/winetricks";
+const WINETRICKS_SHA256: &str = "8f28985b06e9e04b5268e2aef3429b2a0f6abd4fd12c4a30472dfe66355128fa";
+const WINETRICKS_MAX_BYTES: u64 = 2 << 20;
+/// What every game of the PC system gets in its Windows, besides what its recipe asks for: the
+/// fonts and the C++ runtime that a good many programs expect. Best effort: a game is still tried
+/// when one of them cannot be installed.
+const BASE_VERBS: [&str; 2] = ["corefonts", "vcrun2015"];
+
+/// The `winetricks` of this computer, or the one fetched into the folder of Wine.
+fn winetricks_tool(paths: &Paths, log: &dyn Fn(&str)) -> Result<PathBuf, String> {
+    if let Some(tool) = find_tool("winetricks") {
+        return Ok(tool);
+    }
+    let file = paths.native_dir().join("wine").join("winetricks");
+    let digest = |b: &[u8]| -> String {
+        Sha256::digest(b)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    };
+    if std::fs::read(&file).is_ok_and(|b| digest(&b) == WINETRICKS_SHA256) {
+        return Ok(file);
+    }
+    log("Getting winetricks (libraries that Windows programs expect)");
+    let bytes = download_checked(WINETRICKS_URL, WINETRICKS_MAX_BYTES, WINETRICKS_SHA256)?;
+    if let Some(dir) = file.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&file, bytes).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(file)
+}
+
+/// The verbs of the base set that were not run yet and that the recipe does not list itself.
+fn pending_base_verbs<'a>(recipe: &Recipe, marks: &[String]) -> Vec<&'a str> {
+    BASE_VERBS
+        .iter()
+        .copied()
+        .filter(|v| !recipe.winetricks.iter().any(|r| r == v))
+        .filter(|v| {
+            !marks
+                .iter()
+                .any(|m| m.strip_prefix("winetricks:") == Some(*v))
+        })
+        .collect()
+}
+
+/// Run the verbs of `winetricks` that were not run yet: those of the recipe (an error when they
+/// fail) and the base set (a warning). Each is marked when done, so that it is not run twice.
 fn apply_winetricks(
+    paths: &Paths,
     env: &WineEnv,
     recipe: &Recipe,
     marks: &mut Vec<String>,
     log: &dyn Fn(&str),
 ) -> Result<(), String> {
     let verbs = pending_verbs(recipe, marks);
-    if verbs.is_empty() {
+    let base = pending_base_verbs(recipe, marks);
+    if verbs.is_empty() && base.is_empty() {
         return Ok(());
     }
-    let tool = find_tool("winetricks").ok_or(format!(
-        "{} needs {} from winetricks: install it first (brew install winetricks)",
-        recipe.name,
-        verbs.join(", ")
-    ))?;
-    log(&format!("Installing {} (winetricks)", verbs.join(", ")));
-    run(
-        &mut winetricks_command(&tool, &env.wine, &env.prefix, &verbs),
-        log,
-    )?;
-    let done: Vec<String> = verbs.iter().map(|v| format!("winetricks:{v}")).collect();
-    marks.extend(done);
+    let tool = match winetricks_tool(paths, log) {
+        Ok(t) => t,
+        Err(e) if verbs.is_empty() => {
+            log(&format!("winetricks could not be fetched, going on without it: {e}"));
+            return Ok(());
+        }
+        Err(e) => {
+            return Err(format!(
+                "{} needs {} from winetricks, which could not be fetched ({e}); or install it (brew install winetricks)",
+                recipe.name,
+                verbs.join(", ")
+            ))
+        }
+    };
+    if !verbs.is_empty() {
+        log(&format!("Installing {} (winetricks)", verbs.join(", ")));
+        run(
+            &mut winetricks_command(&tool, &env.wine, &env.prefix, &verbs),
+            log,
+        )?;
+        marks.extend(verbs.iter().map(|v| format!("winetricks:{v}")));
+    }
+    for verb in base {
+        log(&format!("Installing {verb} (winetricks)"));
+        match run(
+            &mut winetricks_command(&tool, &env.wine, &env.prefix, &[verb]),
+            log,
+        ) {
+            Ok(_) => marks.push(format!("winetricks:{verb}")),
+            Err(e) => log(&format!(
+                "{verb} was not installed, going on without it: {e}"
+            )),
+        }
+    }
     Ok(())
 }
 
@@ -1455,7 +1534,7 @@ fn refresh(
     }
     apply_recipe(paths, env, recipe, game, icon, log)?;
     apply_setup_programs(env, recipe, game, &mut ready.marks, log)?;
-    apply_winetricks(env, recipe, &mut ready.marks, log)
+    apply_winetricks(paths, env, recipe, &mut ready.marks, log)
 }
 
 #[cfg(test)]

@@ -177,7 +177,7 @@
             {core in installing ? `Installing… ${installing[core]}%` : `Install ${core.replace(/_libretro$/, '')}`}
           </button>
         {/if}
-        {#if s.core_installed}
+        {#if s.core_installed && s.core !== 'wine'}
           <button class="btn" onclick={() => (optionsFor = { core: s.core, name: s.name })}>Core options…</button>
         {/if}
         <button class="btn" onclick={() => toggle(s)}>{s.enabled ? 'Switch off' : 'Switch on'}</button>
