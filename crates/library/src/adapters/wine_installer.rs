@@ -10,6 +10,7 @@
 //! - the entries in the registry that the installer of the disc writes;
 //! - a virtual desktop of 640x480, because the game changes the screen mode to 256 colours.
 
+use super::installer::offline_dirs;
 use super::native_installer::{find_tool, run, search_path};
 use super::pc_recipes::{self, Recipe};
 use crate::iso::Iso;
@@ -221,6 +222,11 @@ fn fetch_wine(paths: &Paths, log: &dyn Fn(&str)) -> Result<PathBuf, String> {
         "Downloading Wine ({} MB) from github.com/Gcenx",
         WINE_BYTES / 1_000_000
     ));
+    if let Some(saved) = saved_copy(paths, WINE_SHA256) {
+        log("Using the saved copy of Wine");
+        std::fs::copy(saved, &archive).map_err(|e| e.to_string())?;
+        return unpack_wine(&archive, &dir, log);
+    }
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_connect(Some(std::time::Duration::from_secs(20)))
         .timeout_recv_response(Some(std::time::Duration::from_secs(60)))
@@ -263,15 +269,20 @@ fn fetch_wine(paths: &Paths, log: &dyn Fn(&str)) -> Result<PathBuf, String> {
         ));
     }
     log("Checked: it is the file expected. Unpacking");
+    unpack_wine(&archive, &dir, log)
+}
+
+/// Unpack the archive of Wine into `dir` and give the program of it.
+fn unpack_wine(archive: &Path, dir: &Path, log: &dyn Fn(&str)) -> Result<PathBuf, String> {
     run(
         Command::new("tar")
             .arg("-xf")
-            .arg(&archive)
+            .arg(archive)
             .arg("-C")
-            .arg(&dir),
+            .arg(dir),
         log,
     )?;
-    let _ = std::fs::remove_file(&archive);
+    let _ = std::fs::remove_file(archive);
     let _ = Command::new("xattr")
         .args(["-dr", "com.apple.quarantine"])
         .arg(dir.join("Wine Staging.app"))
@@ -376,8 +387,30 @@ fn spec(wine: &Path, root: &Path, program: &str, size: &str, launch: &Launch) ->
     }
 }
 
-/// Fetch `url` (at most `max` bytes) and check its SHA-256: the whole file, or why not.
-fn download_checked(url: &str, max: u64, sha256: &str) -> Result<Vec<u8>, String> {
+/// The SHA-256 of some bytes, in hex.
+fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// A saved copy of a download (`<offline folder>/downloads/<sha256>`, made by `make
+/// downloads-offline`), if one is there and is the file expected: this way a computer with no
+/// internet, or a site that is gone, does not stop a game from being set up.
+fn saved_copy(paths: &Paths, sha256: &str) -> Option<PathBuf> {
+    offline_dirs(paths)
+        .into_iter()
+        .map(|d| d.join("downloads").join(sha256))
+        .find(|p| std::fs::read(p).is_ok_and(|b| sha256_hex(&b) == sha256))
+}
+
+/// Fetch `url` (at most `max` bytes) and check its SHA-256: the whole file, or why not. A saved
+/// copy is used when there is one.
+fn download_checked(paths: &Paths, url: &str, max: u64, sha256: &str) -> Result<Vec<u8>, String> {
+    if let Some(bytes) = saved_copy(paths, sha256).and_then(|p| std::fs::read(p).ok()) {
+        return Ok(bytes);
+    }
     let mut resp = ureq::get(url)
         .call()
         .map_err(|e| format!("download failed: {e}"))?;
@@ -417,7 +450,7 @@ fn dxvk_dir(paths: &Paths, log: &dyn Fn(&str)) -> Result<PathBuf, String> {
         return Ok(dir);
     }
     log("Getting DXVK (Direct3D 11 for the game)");
-    let bytes = download_checked(DXVK_URL, DXVK_MAX_BYTES, DXVK_SHA256)?;
+    let bytes = download_checked(paths, DXVK_URL, DXVK_MAX_BYTES, DXVK_SHA256)?;
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let archive = dir.join("dxvk.tar.gz");
@@ -464,7 +497,7 @@ fn ddraw_dll(paths: &Paths, log: &dyn Fn(&str)) -> Result<PathBuf, String> {
         return Ok(dll);
     }
     log("Getting cnc-ddraw (a window for the game)");
-    let bytes = download_checked(DDRAW_URL, DDRAW_MAX_BYTES, DDRAW_SHA256)?;
+    let bytes = download_checked(paths, DDRAW_URL, DDRAW_MAX_BYTES, DDRAW_SHA256)?;
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
     let mut file = zip.by_name("ddraw.dll").map_err(|e| e.to_string())?;
     let mut out = Vec::new();
@@ -1203,7 +1236,12 @@ fn winetricks_tool(paths: &Paths, log: &dyn Fn(&str)) -> Result<PathBuf, String>
         return Ok(file);
     }
     log("Getting winetricks (libraries that Windows programs expect)");
-    let bytes = download_checked(WINETRICKS_URL, WINETRICKS_MAX_BYTES, WINETRICKS_SHA256)?;
+    let bytes = download_checked(
+        paths,
+        WINETRICKS_URL,
+        WINETRICKS_MAX_BYTES,
+        WINETRICKS_SHA256,
+    )?;
     if let Some(dir) = file.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }

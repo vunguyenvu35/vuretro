@@ -29,7 +29,7 @@ SCALE ?= 2
 ROMS  ?= $(HOME)/Games/roms
 
 .DEFAULT_GOAL := help
-.PHONY: help setup toolchain dev demo app-build run play options build release test fmt lint check ci cores scan screenshot smoke clean
+.PHONY: help setup toolchain dev demo app-build run play options build release test fmt lint check ci cores cores-offline downloads-offline scan screenshot smoke clean
 
 help: ## List available commands
 	@awk 'BEGIN{FS=":.*## "} /^[a-z-]+:.*## /{printf "  \033[33mmake %-12s\033[0m %s\n",$$1,$$2}' $(MAKEFILE_LIST)
@@ -125,6 +125,9 @@ cores: ## Download fbneo, pcsx_rearmed, snes9x, mgba cores into cores/bin/
 
 cores-offline: ## Download core zips into cores/offline/ so they can be installed with no internet (ARGS=--all for the alternatives too)
 	./cores/fetch-offline.sh $(ARGS)
+
+downloads-offline: ## Save copies of Wine, DXVK, cnc-ddraw and winetricks (checked against their SHA-256) into cores/offline/downloads/
+	./cores/fetch-downloads.sh
 
 check-bios: ## Tell what each BIOS file in a folder is: make check-bios DIR=docs/bios
 	cargo run -q -p vuretro-library --bin vuretro-bios-check -- "$(or $(DIR),docs/bios)"
