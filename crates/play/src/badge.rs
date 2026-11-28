@@ -19,6 +19,8 @@ const NEC: [u8; 3] = [30, 160, 90];
 const ARCADE: [u8; 3] = [130, 70, 200];
 const BANDAI: [u8; 3] = [200, 70, 160];
 const MICROSOFT: [u8; 3] = [0, 120, 215];
+const COMMODORE: [u8; 3] = [60, 110, 190];
+const MSX: [u8; 3] = [200, 40, 60];
 
 /// The badge of a system (by its id in the registry).
 pub fn for_system(id: &str) -> Option<Badge> {
@@ -43,6 +45,11 @@ pub fn for_system(id: &str) -> Option<Badge> {
         "gg" => ("GG", SEGA),
         "sega32x" => ("32X", SEGA),
         "saturn" => ("SS", SEGA),
+        "dreamcast" => ("DC", SEGA),
+        "jaguar" => ("JAG", ATARI),
+        "c64" => ("C64", COMMODORE),
+        "amiga" => ("AMI", COMMODORE),
+        "msx" => ("MSX", MSX),
         "pce" => ("PCE", NEC),
         "atari2600" => ("2600", ATARI),
         "atari7800" => ("7800", ATARI),
@@ -116,6 +123,14 @@ fn strokes(c: char) -> Option<Vec<Stroke>> {
         'G' => vec![join(&[
             arc(0.32, 0.5, 0.29, 0.5, TAU - 0.6, 0.0),
             line(&[(0.34, 0.54)]),
+        ])],
+        'I' => vec![line(&[(0.3, 0.0), (0.3, 1.0)])],
+        'J' => vec![line(&[
+            (0.5, 0.0),
+            (0.5, 0.75),
+            (0.4, 0.95),
+            (0.2, 1.0),
+            (0.05, 0.9),
         ])],
         'L' => vec![line(&[(0.0, 0.0), (0.0, 1.0), (0.5, 1.0)])],
         'M' => vec![line(&[

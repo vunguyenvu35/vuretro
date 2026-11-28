@@ -19,6 +19,23 @@ function readSidebar() {
   }
 }
 
+function readFlag(key) {
+  try {
+    return localStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function readSections() {
+  try {
+    const v = JSON.parse(localStorage.getItem('vuretro.sections') ?? '{}');
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
+}
+
 export const app = $state({
   sidebarW: readSidebar(), // px, dragged by the user
   view: 'library', // library | native | cores | controls | macros | settings
@@ -48,6 +65,9 @@ export const app = $state({
   playingNote: '', // what runs it, when it is not a core of the app ("wine") // the title of the game that is open, so it can be stopped from the app
   nativeInstall: { running: false, step: '', log: [] }, // setting Road Rash up from the disc
   native: [], // games that are programs of their own: { id, name, exe, args }
+  sidebarFolded: readFlag('vuretro.sidebarFolded'), // the sidebar is a rail of icons
+  foldMoving: false,
+  folded: readSections(), // sidebar groups the user closed: { systems: true }
   installing: {}, // core name -> percent while it downloads (here or from the Cores screen)
   coreUpdates: [], // installed cores that have a newer build on the server
   checkingUpdates: false,
@@ -530,4 +550,26 @@ export async function regenerateCovers() {
   for (const k of Object.keys(covers)) delete covers[k];
   scheduleCovers();
   toast(`${n} previews are being made again`);
+}
+
+/** Fold the sidebar to a rail of icons, or open it again; remembered for the next start. */
+export function toggleSidebar() {
+  app.sidebarFolded = !app.sidebarFolded;
+  app.foldMoving = true; // the width eases while it folds, and only then (dragging must not lag)
+  setTimeout(() => (app.foldMoving = false), 260);
+  try {
+    localStorage.setItem('vuretro.sidebarFolded', app.sidebarFolded ? '1' : '0');
+  } catch {
+    /* not remembered: fine */
+  }
+}
+
+/** Close or open one group of the sidebar (Library, Systems...); remembered. */
+export function toggleSection(name) {
+  app.folded[name] = !app.folded[name];
+  try {
+    localStorage.setItem('vuretro.sections', JSON.stringify(app.folded));
+  } catch {
+    /* not remembered: fine */
+  }
 }

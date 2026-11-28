@@ -39,6 +39,11 @@ pub fn ready(system: &'static System, system_dir: &Path) -> bool {
     bios_ready(&check(system, system_dir))
 }
 
+/// The file name of a BIOS entry that may name a folder (`dc/dc_boot.bin`).
+fn base_name(file: &str) -> &str {
+    file.rsplit('/').next().unwrap_or(file)
+}
+
 /// What a file is, as far as the BIOS list can tell.
 pub struct Identified {
     pub system: &'static System,
@@ -67,7 +72,7 @@ pub fn identify(data: &[u8], name: &str) -> Result<Identified, String> {
         })
         .or_else(|| {
             all()
-                .find(|(_, b)| b.file.eq_ignore_ascii_case(name))
+                .find(|(_, b)| base_name(b.file).eq_ignore_ascii_case(name))
                 .map(|(system, spec)| Identified {
                     system,
                     spec,
@@ -91,8 +96,10 @@ pub fn import(src: &Path, system_dir: &Path) -> Result<ImportedBios, String> {
             found.spec.file, found.md5
         ));
     }
-    std::fs::create_dir_all(system_dir).map_err(|e| e.to_string())?;
-    std::fs::write(system_dir.join(found.spec.file), data).map_err(|e| e.to_string())?;
+    // a BIOS may live in a folder of its own (`dc/dc_boot.bin`)
+    let target = system_dir.join(found.spec.file);
+    std::fs::create_dir_all(target.parent().unwrap_or(system_dir)).map_err(|e| e.to_string())?;
+    std::fs::write(target, data).map_err(|e| e.to_string())?;
     Ok(ImportedBios {
         system: found.system.id,
         file: found.spec.file,

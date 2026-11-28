@@ -94,6 +94,11 @@ mod tests {
         assert!(bios::import(&src.path().join("readme.txt"), sys.path()).is_err());
     }
 
+    /// The file name of a BIOS entry that may sit in a folder (`dc/dc_boot.bin`).
+    fn base(file: &str) -> &str {
+        file.rsplit('/').next().unwrap()
+    }
+
     /// Every BIOS file of every system, checked the same way: this is what makes sure a file
     /// added to the list works the day someone drops the real dump on the page.
     fn all_bios() -> Vec<(
@@ -113,8 +118,11 @@ mod tests {
         for (sys, b) in &all {
             let who = format!("{} / {}", sys.id, b.file);
             assert!(
-                !b.file.is_empty() && !b.file.contains(['/', '\\']),
-                "{who}: a plain file name"
+                !b.file.is_empty()
+                    && !b.file.contains('\\')
+                    && !b.file.starts_with('/')
+                    && !b.file.split('/').any(|p| p.is_empty() || p == ".."),
+                "{who}: a file name, with folders of its own under the system folder at most"
             );
             for m in b.md5 {
                 assert!(
@@ -126,7 +134,7 @@ mod tests {
             }
             // a file that is dropped as a game must be refused as one
             assert!(
-                vuretro_core::detect::is_bios_file(b.file),
+                vuretro_core::detect::is_bios_file(base(b.file)),
                 "{who} is known as a BIOS file"
             );
         }
@@ -158,7 +166,7 @@ mod tests {
         for (sys, b) in all_bios() {
             let who = format!("{} / {}", sys.id, b.file);
             let (sysdir, src) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-            let file = src.path().join(b.file.to_ascii_uppercase());
+            let file = src.path().join(base(b.file).to_ascii_uppercase());
             fs::write(&file, b"content that is no real dump").unwrap();
 
             // missing: the system says so, and only a required file blocks it
@@ -195,7 +203,9 @@ mod tests {
                     !sysdir.path().join(b.file).exists(),
                     "{who}: nothing copied"
                 );
-                fs::write(sysdir.path().join(b.file), b"content that is no real dump").unwrap();
+                let placed = sysdir.path().join(b.file);
+                fs::create_dir_all(placed.parent().unwrap()).unwrap();
+                fs::write(placed, b"content that is no real dump").unwrap();
                 let st = bios::check(sys, sysdir.path());
                 assert!(
                     matches!(
@@ -218,7 +228,7 @@ mod tests {
     fn identify_falls_back_to_the_name_and_does_not_trust_wrong_content() {
         for (sys, b) in all_bios().into_iter().filter(|(_, b)| !b.md5.is_empty()) {
             // content that matches no listed MD5 falls back to the name, and is not verified
-            let by_name = bios::identify(b"other bytes", b.file).unwrap();
+            let by_name = bios::identify(b"other bytes", base(b.file)).unwrap();
             assert_eq!(by_name.spec.file, b.file, "{}", sys.id);
             assert!(
                 !by_name.verified,

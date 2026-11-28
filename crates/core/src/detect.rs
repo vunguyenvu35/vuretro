@@ -8,10 +8,13 @@ const ARCHIVE_EXTS: &[&str] = &["zip", "7z"];
 
 /// True for file names that are BIOS files of a known system (not games).
 pub fn is_bios_file(name: &str) -> bool {
-    systems()
-        .iter()
-        .flat_map(|s| s.bios.iter())
-        .any(|b| b.file.eq_ignore_ascii_case(name))
+    systems().iter().flat_map(|s| s.bios.iter()).any(|b| {
+        b.file
+            .rsplit('/')
+            .next()
+            .unwrap_or(b.file)
+            .eq_ignore_ascii_case(name)
+    })
 }
 
 fn alnum(s: &str) -> String {
@@ -142,6 +145,22 @@ mod tests {
         assert_eq!(id("/roms", "/roms/crash.chd"), Some("psx"));
         assert_eq!(id("/roms", "/roms/crash.cue"), Some("psx"));
         assert_eq!(id("/roms", "/roms/psx/crash.cue"), Some("psx"));
+    }
+
+    #[test]
+    fn computers_and_the_newer_consoles_are_found_by_folder_and_by_file_type() {
+        let r = "/roms";
+        assert_eq!(id(r, "/roms/c64/a.d64"), Some("c64"));
+        assert_eq!(id(r, "/roms/Commodore 64/a.zip"), Some("c64"));
+        assert_eq!(id(r, "/roms/amiga/a.adf"), Some("amiga"));
+        assert_eq!(id(r, "/roms/msx/a.rom"), Some("msx"));
+        assert_eq!(id(r, "/roms/jaguar/a.j64"), Some("jaguar"));
+        // a file type only one system has needs no folder; a disc image does
+        assert_eq!(id(r, "/roms/games/a.d64"), Some("c64"));
+        assert_eq!(id(r, "/roms/games/a.gdi"), None);
+        assert_eq!(id(r, "/roms/dreamcast/a.gdi"), Some("dreamcast"));
+        assert_eq!(id(r, "/roms/dreamcast/a.chd"), Some("dreamcast"));
+        assert_eq!(id(r, "/roms/psx/a.chd"), Some("psx"));
     }
 
     #[test]

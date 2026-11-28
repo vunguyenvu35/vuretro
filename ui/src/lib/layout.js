@@ -31,3 +31,20 @@ export function formatBytes(n) {
   if (n >= 1e6) return `${(n / 1e6).toFixed(1)} MB`;
   return `${Math.max(1, Math.round(n / 1e3))} KB`;
 }
+
+/** Width of the sidebar when it is folded to a rail of icons. */
+export const SIDEBAR_RAIL = 64;
+
+/**
+ * The systems the sidebar lists for what was typed in its search box (by name or id, ignoring
+ * case) and the "only with games" switch. The open system always stays, so the list never
+ * drops what the page shows.
+ */
+export function filterSystems(systems, query = '', onlyWithGames = false, activeId = null) {
+  const q = query.trim().toLowerCase();
+  return systems.filter((s) => {
+    if (s.id === activeId) return true;
+    if (onlyWithGames && !s.game_count) return false;
+    return !q || s.name.toLowerCase().includes(q) || s.id.toLowerCase().includes(q);
+  });
+}

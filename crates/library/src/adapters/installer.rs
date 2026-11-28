@@ -5,6 +5,14 @@ use vuretro_core::ports::CoreInstaller;
 use vuretro_core::registry::core_filename;
 
 const BASE: &str = "https://buildbot.libretro.com/nightly";
+/// Where libretro keeps the data some cores need beside them (`system/` folder contents).
+const ASSETS: &str = "https://buildbot.libretro.com/assets/system";
+/// Cores that do not run without data in the system folder: `(core, zip on ASSETS, a folder of
+/// it that tells it is there already)`. blueMSX needs its `Machines` and `Databases`.
+const SUPPORT_DATA: [(&str, &str, &str); 1] = [("bluemsx_libretro", "blueMSX", "Machines")];
+/// The most that a data zip may unpack to.
+const MAX_SUPPORT_BYTES: u64 = 300 * 1024 * 1024;
+
 /// The biggest download or unpacked core accepted (the current MAME core is a few hundred MB).
 const MAX_BYTES: u64 = 800 * 1024 * 1024;
 
@@ -210,6 +218,47 @@ fn unpack(zip_bytes: Vec<u8>, name: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+impl BuildbotInstaller {
+    /// Fetch the data a core needs in the system folder, if it needs any and it is not there yet.
+    fn install_support_data(&self, stem: &str) -> Result<(), String> {
+        let Some((_, asset, marker)) = SUPPORT_DATA.iter().find(|(c, _, _)| *c == stem) else {
+            return Ok(());
+        };
+        let system = self.paths.system_dir();
+        if system.join(marker).is_dir() {
+            return Ok(());
+        }
+        let url = format!("{ASSETS}/{asset}.zip");
+        let bytes = (self.fetch)(&url, &|_, _| {})?;
+        let mut zip =
+            zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| format!("bad archive: {e}"))?;
+        let mut total = 0u64;
+        for i in 0..zip.len() {
+            let mut file = zip.by_index(i).map_err(|e| e.to_string())?;
+            // only paths that stay inside the system folder
+            let Some(rel) = file.enclosed_name() else {
+                continue;
+            };
+            let target = system.join(rel);
+            if file.is_dir() {
+                std::fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+                continue;
+            }
+            total += file.size();
+            if total > MAX_SUPPORT_BYTES {
+                return Err(format!("{asset}.zip is bigger than it should be"));
+            }
+            if let Some(dir) = target.parent() {
+                std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+            }
+            let mut out = Vec::with_capacity(file.size() as usize);
+            file.read_to_end(&mut out).map_err(|e| e.to_string())?;
+            std::fs::write(&target, out).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+}
+
 impl CoreInstaller for BuildbotInstaller {
     /// The server's build is newer than the file that is installed (which dates from when it
     /// was installed, so a build made before that is not an update).
@@ -258,6 +307,11 @@ impl CoreInstaller for BuildbotInstaller {
         std::fs::write(&tmp, &lib).map_err(|e| format!("cannot write {}: {e}", tmp.display()))?;
         std::fs::rename(&tmp, &target)
             .map_err(|e| format!("cannot install {}: {e}", target.display()))?;
+        // a core that needs data of libretro's: the core is installed either way, and a failure
+        // here is told in the log (the core then says what it lacks when a game starts)
+        if let Err(e) = self.install_support_data(stem) {
+            log::warn!("data for {stem} not installed: {e}");
+        }
         progress(100);
         Ok(target)
     }
@@ -431,6 +485,50 @@ mod tests {
         let inst = inst.with_head(Box::new(|_| Err("offline".into())));
         assert!(inst.update_available("snes9x_libretro").is_err());
         assert!(inst.update_available("bad name").is_err());
+    }
+
+    #[test]
+    fn a_core_that_needs_data_gets_it_in_the_system_folder_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let name = core_filename("bluemsx_libretro");
+        let data = {
+            let mut w = zip::ZipWriter::new(Cursor::new(Vec::new()));
+            let o = zip::write::SimpleFileOptions::default();
+            w.add_directory("Machines/", o).unwrap();
+            w.start_file("Machines/MSX/config.ini", o).unwrap();
+            w.write_all(b"x").unwrap();
+            w.start_file("../escape.txt", o).unwrap();
+            w.write_all(b"x").unwrap();
+            w.finish().unwrap().into_inner()
+        };
+        let core = zip_of(&name, &magic());
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let seen = calls.clone();
+        let fetch: Fetch = Box::new(move |url, _| {
+            seen.lock().unwrap().push(url.to_string());
+            Ok(if url.ends_with("blueMSX.zip") {
+                data.clone()
+            } else {
+                core.clone()
+            })
+        });
+        let inst = BuildbotInstaller::with_fetch(
+            Paths::new(dir.path()),
+            "https://example.test".into(),
+            fetch,
+        );
+        inst.install("bluemsx_libretro", &|_| {}).unwrap();
+        let system = Paths::new(dir.path()).system_dir();
+        assert!(system.join("Machines/MSX/config.ini").is_file());
+        assert!(
+            !dir.path().join("escape.txt").exists(),
+            "nothing outside the system folder"
+        );
+        // there already: not fetched again
+        let before = calls.lock().unwrap().len();
+        inst.install("bluemsx_libretro", &|_| {}).unwrap();
+        let after = calls.lock().unwrap().len();
+        assert_eq!(after - before, 1, "only the core");
     }
 
     #[test]

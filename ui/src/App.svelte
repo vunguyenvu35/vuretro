@@ -18,6 +18,7 @@
   import AboutDialog from './components/AboutDialog.svelte';
   import SupportDialog from './components/SupportDialog.svelte';
   import { startGamepadNav } from './lib/gamepadNav.js';
+  import { SIDEBAR_RAIL } from './lib/layout.js';
 
   onMount(() => {
     refresh();
@@ -57,7 +58,7 @@
      system's Cut / Copy / Paste menu. Screens that have their own menu stop the event. -->
 <svelte:window oncontextmenu={(e) => { if (!(e.target instanceof HTMLElement && e.target.closest('input, textarea'))) e.preventDefault(); }} />
 
-<div class="shell" style="grid-template-columns: {app.sidebarW}px 1fr">
+<div class="shell" class:moving={app.foldMoving} style="grid-template-columns: {app.sidebarFolded ? SIDEBAR_RAIL : app.sidebarW}px 1fr">
   <Sidebar />
   <main>
     {#if !app.loaded}
@@ -90,6 +91,8 @@
 
 <style>
   .shell { display: grid; height: 100%; }
+  .shell.moving { transition: grid-template-columns .24s cubic-bezier(.3, .8, .3, 1); }
+  @media (prefers-reduced-motion: reduce) { .shell.moving { transition: none; } }
   main { min-width: 0; overflow: hidden; display: flex; }
   .loading { margin: auto; color: var(--muted); }
 </style>

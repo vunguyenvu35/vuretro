@@ -26,6 +26,11 @@ export const SYSTEM_COLORS = {
   ps2: '#5a7dff',
   '3ds': '#ff5b6e',
   saturn: '#6c8cff',
+  dreamcast: '#ff8a3d',
+  jaguar: '#d9534f',
+  c64: '#8fa6ff',
+  amiga: '#ff9f6b',
+  msx: '#ff5d73',
 };
 export const colorOf = (id) => SYSTEM_COLORS[id] ?? '#8b93a7';
 
