@@ -149,13 +149,14 @@
         </div>
       {:else}
         <button class="label head" aria-expanded={open('systems')} onclick={() => toggleSection('systems')}>
-          <span class="chev" class:shut={!open('systems')} aria-hidden="true">▾</span>Systems<span class="cnt">{allSystems}</span>
+          <span class="chev" class:shut={!open('systems')} aria-hidden="true">▾</span>Systems
         </button>
         {#if !rail}
           <button class="seek" aria-label="Find a system" title="Find a system" onclick={openSearch}>
             <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6" /><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
           </button>
         {/if}
+        <span class="cnt">{allSystems}</span>
       {/if}
     </div>
     {#if open('systems') || searching}
@@ -351,7 +352,8 @@
   .cnt { margin-left: auto; font-weight: 500; letter-spacing: 0; font-variant-numeric: tabular-nums; color: var(--faint); }
   /* the Systems heading: the title opens and closes the group, a magnifier at its end opens the search */
   .headrow { display: flex; align-items: center; gap: 2px; min-height: 30px; }
-  .headrow nav button.label.head, .headrow .label.head { flex: 1; min-width: 0; }
+  .headrow nav button.label.head, .headrow .label.head { flex: none; width: auto; }
+  .headrow .cnt { margin-left: auto; padding-right: 8px; }
   nav .seek {
     flex: none; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 7px;
     background: none; color: var(--faint); transition: color .14s, background .14s, transform .18s;
