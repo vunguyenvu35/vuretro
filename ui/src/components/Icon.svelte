@@ -28,6 +28,9 @@
   {:else if ['gba', 'gb', 'gbc', 'gg', 'lynx', 'ngp', 'wonderswan', 'virtualboy', 'nds', 'psp', '3ds'].includes(name)}
     <rect x="1.8" y="4.2" width="16.4" height="11.6" rx="2.8" /><rect x="7" y="6.6" width="6" height="5.2" rx=".9" />
     <path d="M4.4 8.8v2.8M3 10.2h2.8" /><circle cx="15.2" cy="9.1" r=".8" fill="currentColor" stroke="none" /><circle cx="16.4" cy="11.4" r=".8" fill="currentColor" stroke="none" />
+  {:else if name === 'windows'}
+    <!-- desktop computer -->
+    <rect x="2.6" y="3.4" width="14.8" height="10" rx="1.6" /><path d="M7.5 17h5M10 13.4V17" />
   {:else if name === 'cores'}
     <rect x="5.2" y="5.2" width="9.6" height="9.6" rx="1.9" /><rect x="8.3" y="8.3" width="3.4" height="3.4" rx=".6" />
     <path d="M8 2.8v2.4M12 2.8v2.4M8 14.8v2.4M12 14.8v2.4M2.8 8h2.4M2.8 12h2.4M14.8 8h2.4M14.8 12h2.4" />
